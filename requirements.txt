@@ -1,0 +1,7 @@
+# KIS 실시간 WebSocket 검증 (verify/yhr/kis_ws/*)
+websocket-client
+
+# python-kis 검증 (verify/yhr/pykis/*) — Python 3.10+
+python-kis
+
+# 참고: verify/yhr/kis_rest/* 는 표준 라이브러리만 사용(추가 의존성 없음)

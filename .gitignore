@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# KIS 토큰 캐시 (절대 커밋 금지 — 어디에 있든)
+.kis_token.json
+*.kis_token.json
+
+# OS
+.DS_Store
