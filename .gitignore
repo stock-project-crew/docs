@@ -8,5 +8,9 @@ venv/
 .kis_token.json
 *.kis_token.json
 
+# 자격증명 (절대 커밋 금지)
+.env
+*.env
+
 # OS
 .DS_Store
