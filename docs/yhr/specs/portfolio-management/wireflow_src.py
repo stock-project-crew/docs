@@ -651,7 +651,7 @@ hdr = y + 120
 text(x, hdr, 130, 18, '종목', 9, DIM, bold=True)
 text(x + 130, hdr, 80, 18, '평가금액', 9, DIM, align='right', bold=True)
 text(x + 214, hdr, 62, 18, '손익', 9, DIM, align='right', bold=True)
-rows = [('삼성전자', '10주 · 평단 65,600', '712,000', '+8.4%', UP, None),
+rows = [('삼성전자', '10주 · 평단 65,600', '712,000', '+8.5%', UP, None),
         ('TIGER 미국나스닥100', '5주 · 평단 98,400', '512,000', '+4.1%', UP, 'ETF'),
         ('AAPL', '3주 · 평단 $198.20', '848,000', '-2.3%', DOWN, 'US'),
         ('KRW 예수금', '—', '3,700,000', '—', DIM, '현금')]
@@ -873,7 +873,7 @@ mono(x, y + 396, 276, 'realized_pnl_line · 이동가중평균\ngrade는 positio
 x, y = ph(1160, B3, '삼성전자', back=True, right='＋ 알림')
 card(x, y + 6, 276, 66, PANEL, 'none')
 text(x + 12, y + 14, 150, 26, '71,200원', 17, TXT, bold=True)
-text(x + 160, y + 16, 104, 22, '▲ 8.4%', 12, UP, align='right', bold=True)
+text(x + 160, y + 16, 104, 22, '▲ 8.5%', 12, UP, align='right', bold=True)
 text(x + 12, y + 44, 252, 18, '10주 · 평단 65,600 · 평가 712,000', 10, MUT)
 text(x, y + 84, 276, 16, '계좌별 분해', 10, MUT, bold=True)
 for i, (nm, q, ap) in enumerate([('한국투자 위탁 (일반)', '7주', '평단 64,200'),
