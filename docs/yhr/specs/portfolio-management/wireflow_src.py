@@ -808,26 +808,37 @@ B3 = 1510
 
 # P11 자산 변화
 x, y = ph(360, B3, '자산 변화', back=True, right='이번 달 ▽')
-box(x, y + 6, 276, 92, 'ok')
-text(x + 14, y + 14, 248, 20, '자산이 800만원 늘었지만', 12, SUB)
-text(x + 14, y + 36, 248, 26, '실제로 번 돈은 191만원입니다', 15, GRN, bold=True)
-hr(x + 14, y + 66, 120, GRN_ST)
-text(x + 14, y + 72, 248, 20, '나머지 609만원은 입금·배당에서 왔어요', 10, MUT)
-wf = [('기초자산', '50,000,000', TXT, '#C8D3E4', .86, False),
-      ('＋ 입금', '+6,000,000', DOWN, '#7FB3F0', .10, False),
-      ('－ 출금', '0', DIM, None, 0, False),
-      ('＋ 배당', '+120,000', DOWN, '#7FB3F0', .012, False),
-      ('－ 수수료 · 세금', '-30,000', MUT, '#C8D3E4', .008, False),
-      ('± 투자손익', '+1,910,000', GRN, GRN_ST, .033, True)]
-yy = y + 112
-for lb, v, c, bc, p, hl in wf:
-    if hl:
-        rect(x - 2, yy - 2, 280, 28, GRN_BOX, 'none', 1, arc=6)
-    text(x + 4, yy, 130, 24, lb, 11, TXT if hl else SUB, bold=hl)
-    text(x + 120, yy, 100, 24, v, 11, c, align='right', bold=True)
-    if bc:
-        rect(x + 226, yy + 9, max(4, int(46 * (p / .86))), 7, bc, 'none', 1, arc=50)
-    yy += 28
+box(x, y + 6, 276, 86, 'ok')
+text(x + 14, y + 12, 248, 18, '자산이 800만원 늘었는데', 11, MUT)
+text(x + 14, y + 36, 120, 16, '넣은 돈', 9, MUT, bold=True)
+text(x + 14, y + 52, 120, 26, '+600만원', 15, DOWN, bold=True)
+rect(x + 140, y + 38, 1, 40, GRN_ST)
+text(x + 154, y + 36, 108, 16, '번 돈', 9, MUT, bold=True)
+text(x + 154, y + 52, 108, 26, '+200만원', 15, GRN, bold=True)
+wf = [('총', '기초자산', '50,000,000', TXT, '#C8D3E4', .86),
+      ('그룹', '넣은 돈', '+600만', DOWN, None, 0),
+      ('항목', '＋ 입금', '+6,000,000', DOWN, '#7FB3F0', .10),
+      ('항목', '－ 출금', '0', DIM, None, 0),
+      ('그룹', '번 돈', '+200만', GRN, None, 0),
+      ('강조', '± 투자손익', '+1,910,000', GRN, GRN_ST, .033),
+      ('항목', '＋ 배당', '+120,000', GRN, GRN_ST, .012),
+      ('항목', '－ 수수료 · 세금', '-30,000', MUT, '#C8D3E4', .008)]
+yy = y + 102
+for kind, lb, v, c, bc, p in wf:
+    h = 26 if kind in ('총', '강조') else 24
+    if kind == '강조':
+        rect(x - 2, yy - 1, 280, h, GRN_BOX, 'none', 1, arc=6)
+    if kind == '그룹':
+        text(x + 4, yy, 130, h, lb, 11, TXT, bold=True)
+        text(x + 120, yy, 100, h, v, 11, c, align='right', bold=True)
+    else:
+        ind = 4 if kind == '총' else 16
+        text(x + ind, yy, 130, h, lb, 11, TXT if kind == '강조' else SUB,
+             bold=(kind != '항목'))
+        text(x + 120, yy, 100, h, v, 11, c, align='right', bold=True)
+        if bc:
+            rect(x + 226, yy + 9, max(4, int(46 * (p / .86))), 7, bc, 'none', 1, arc=50)
+    yy += h
 hr(x, yy + 4, 276, LINE)
 text(x + 4, yy + 12, 130, 26, '기말자산', 12, TXT, bold=True)
 text(x + 120, yy + 12, 152, 26, '58,000,000', 13, TXT, align='right', bold=True)
@@ -840,8 +851,8 @@ text(x + 214, cyy + 30, 50, 18, '보기 →', 9, PRI, align='right', bold=True)
 text(x + 12, cyy + 50, 120, 18, '평가 (미실현) 변화', 11, SUB)
 text(x + 120, cyy + 50, 90, 18, '+1,060,000', 11, UP, align='right', bold=True)
 text(x + 12, cyy + 72, 252, 16, '※ 일부 계좌는 거래내역이 없어 분해를 생략했어요', 9, DIM)
-mono(x, cyy + 106, 276, '투자손익 = Δ총자산 - 순입금 - 배당 + 수수료\n거래 원장 없이 계산 — 연금계좌도 정확')
-text(x, y + 470, 276, 16, '기준 07-27 15:30 · 기초 06-30', 9, DIM)
+mono(x, cyy + 104, 276, '투자손익 = 나머지 전부 (잔차 항목 없음)\n거래 원장 없이 계산 — 연금계좌도 정확')
+text(x, cyy + 140, 276, 16, '기준 07-27 15:30 · 기초 06-30', 9, DIM)
 
 # P12 실현손익
 x, y = ph(760, B3, '실현손익', back=False, right='올해 ▽', tab='손익')
@@ -914,7 +925,7 @@ st = [('요약', '지연 배너 · 연동 계좌 없음(온보딩) · 동기화 
       ('비중 분석', '기타 버킷 · 구성비중 기준일 표기 · 축 전환 · 구성종목 없음'),
       ('계좌별', '재인증 필요 · 동기화 실패·이월 · 연동 해제 확인'),
       ('실현손익', '해당 기간 매도 없음 · 미포함 계좌 N개 · 추정 배지 · 전 계좌 조회 불가'),
-      ('자산 변화', '기초 스냅샷 없음 · 잔차 존재 · 현금흐름 미확보 · 손실 케이스'),
+      ('자산 변화', '기초 스냅샷 없음 · 계좌 편입·제외 · 현금흐름 미확보 · 손실 케이스'),
       ('종목 상세', '거래내역 없음 · 기업행위 경고(ca_unknown)'),
       ('계좌 연동', '추가 인증 요구 · 연동 실패·재시도 · 기관 선택')]
 yy = NY + 80
@@ -923,11 +934,9 @@ for k, v in st:
     text(NX + 112, yy, NW - 136, 36, v, 9, MUT, valign='top')
     yy += 40
 box(NX + 20, yy + 4, NW - 40, 74, 'warn')
-text(NX + 32, yy + 12, NW - 64, 18, '변형 — 잔차가 있을 때 (자산 변화)', 10, AMB_TX, bold=True)
-text(NX + 32, yy + 32, 200, 18, '? 설명되지 않는 변화', 10, SUB)
-text(NX + 240, yy + 32, 90, 18, '+180,000', 10, MUT, align='right', bold=True)
-text(NX + 32, yy + 52, NW - 64, 18, '일부 계좌의 입출금 내역을 못 가져왔어요 — 투자손익에 섞지 않는다',
-     9, MUT)
+text(NX + 32, yy + 12, NW - 64, 18, '변형 — 현금흐름 미확보 (자산 변화)', 10, AMB_TX, bold=True)
+text(NX + 32, yy + 32, NW - 64, 18, '1개 계좌의 입출금 내역이 없어 투자손익에 섞여 있을 수 있어요', 9, SUB)
+text(NX + 32, yy + 52, NW - 64, 18, '잔차 항목을 만들지 않고 경고로 노출한다', 9, MUT)
 
 # ── 노트 3 : 신뢰도 등급 ────────────────────────────────────
 NX = 2140
@@ -987,7 +996,7 @@ text(1720, B4 + 66, 100, 18, '서빙', 9, PRI, align='center', bold=True)
 
 L4 = B4 + 176
 led = [(380, 440, '보유 스냅샷 · position_line', '현재 상태 = 진실. 항상 신뢰.\n요약 · 종목별 · 비중 · 계좌별', GRN_BG, GRN),
-       (860, 440, '현금흐름 · cashflow', '자산 변화의 원인.\n불완전은 잔차로 정직하게 노출', BLU_BG, PRI),
+       (860, 440, '현금흐름 · cashflow', '자산 변화의 원인.\n미확보는 경고로 노출 (잔차 없음)', BLU_BG, PRI),
        (1340, 440, '거래 원장 · trade', '실현/미실현 분해 전용.\n등급 4단계 — 실현손익 뷰에만 노출', AMB_BG, AMB_TX)]
 for bx, bw, t, s, bg, fg in led:
     rect(bx, L4, bw, 92, bg, 'none', 1, arc=8)
