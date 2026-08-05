@@ -603,7 +603,7 @@ for t, b in notes:
 B2 = 830
 
 # P5 요약
-x, y = ph(360, B2, '포트폴리오', back=False, right='₩ 원화 ▽', tab='요약')
+x, y = ph(360, B2, '포트폴리오', back=False, tab='요약')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 rect(x - 12, y + 26, PW, 24, AMB_BOX)
 text(x, y + 26, 276, 24, '◆ 1개 계좌가 07-26 기준입니다', 9, AMB_TX, bold=True)
@@ -639,7 +639,7 @@ text(x, y + 422, 276, 14, '※ 이 미니차트에만 ETF 분해 렌즈가 적�
 mono(x, y + 440, 276, 'group_by = none · 예수금은 asset_class=CASH 종목')
 
 # P6 종목별
-x, y = ph(760, B2, '종목별', back=False, right='₩ 원화 ▽', tab='종목')
+x, y = ph(760, B2, '종목별', back=False, tab='종목')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 for i, (s, w, on) in enumerate([('전체 계좌 ▽', 82, False), ('전체 시장 ▽', 82, False),
                                 ('평가금액순 ▽', 88, True)]):
@@ -653,7 +653,7 @@ text(x + 130, hdr, 80, 18, '평가금액', 9, DIM, align='right', bold=True)
 text(x + 214, hdr, 62, 18, '손익', 9, DIM, align='right', bold=True)
 rows = [('삼성전자', '10주 · 평단 65,600', '712,000', '+8.5%', UP, None),
         ('TIGER 미국나스닥100', '5주 · 평단 98,400', '512,000', '+4.1%', UP, 'ETF'),
-        ('AAPL', '3주 · 평단 $198.20', '848,000', '-2.3%', DOWN, 'US'),
+        ('AAPL', '3주 · 평단 $198.20', '848,000', '-2.3%', DOWN, '$612.30'),
         ('KRW 예수금', '—', '3,700,000', '—', DIM, '현금')]
 for i, (nm, sub, amt, pnl, c, tag) in enumerate(rows):
     yy = y + 140 + i * 56
@@ -662,12 +662,14 @@ for i, (nm, sub, amt, pnl, c, tag) in enumerate(rows):
     text(x, yy + 27, 132, 16, sub, 9, MUT)
     text(x + 130, yy + 8, 80, 20, amt, 12, TXT, align='right', bold=True)
     text(x + 214, yy + 8, 62, 20, pnl, 11, c, align='right', bold=True)
-    if tag:
+    if tag and tag.startswith('$'):
+        text(x + 130, yy + 28, 80, 16, tag, 9, MUT, align='right')
+    elif tag:
         pill(x + 214, yy + 30, 62, 16, GRY_BG, MUT, tag, size=8)
 mono(x, y + 372, 276, 'group_by=instrument · 계좌 합산\n평단 = 수량가중평균 (계좌별 분해는 상세에서)')
 
 # P7 종목별 — 렌즈 ON
-x, y = ph(1160, B2, '종목별', back=False, right='₩ 원화 ▽', tab='종목')
+x, y = ph(1160, B2, '종목별', back=False, tab='종목')
 rect(x - 12, y, PW, 38, PANEL)
 text(x, y + 2, 200, 18, '기준 2026-07-27 15:30', 9, MUT)
 text(x, y + 18, 200, 18, '구성비중 기준 2026-07-26', 9, AMB_TX, bold=True)
@@ -698,7 +700,7 @@ for i, (nm, q, amt, wt, other) in enumerate(rows):
 mono(x, y + 410, 276, 'LOOK_THROUGH · 재귀 분해 · Σ 평가금액 보존\n평단 / 손익률 필드는 결과에 존재하지 않음')
 
 # P8 비중 분석 — DIRECT
-x, y = ph(1560, B2, '비중 분석', back=False, right='₩ 원화 ▽', tab='비중')
+x, y = ph(1560, B2, '비중 분석', back=False, tab='비중')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 rect(x, y + 34, 276, 28, PANEL, 'none', 1, arc=8)
 for i, (lb, on) in enumerate([('종목', False), ('섹터', True), ('시장', False),
@@ -730,7 +732,7 @@ text(x + 12, y + 398, 252, 32, 'ETF가 한 덩어리로 남아 실제 섹터가 
 mono(x, y + 444, 276, 'group_by=sector · lens=DIRECT')
 
 # P9 비중 분석 — LOOK_THROUGH
-x, y = ph(1960, B2, '비중 분석', back=False, right='₩ 원화 ▽', tab='비중')
+x, y = ph(1960, B2, '비중 분석', back=False, tab='비중')
 rect(x - 12, y, PW, 38, PANEL)
 text(x, y + 2, 200, 18, '기준 2026-07-27 15:30', 9, MUT)
 text(x, y + 18, 200, 18, '구성비중 기준 2026-07-26', 9, AMB_TX, bold=True)
@@ -766,7 +768,7 @@ for i, (lb, v, p, other) in enumerate([('반도체', '24.6%', .246, False),
 mono(x, y + 418, 276, 'lens=LOOK_THROUGH · 중첩 ETF 재귀 분해\n기타 버킷으로 합계 100% 보존')
 
 # P10 계좌별
-x, y = ph(2360, B2, '계좌별', back=False, right='₩ 원화 ▽', tab='계좌')
+x, y = ph(2360, B2, '계좌별', back=False, tab='계좌')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 groups = [('일반', '41,200,000',
            [('한국투자증권 위탁', '32,100,000', '+6.2%', UP, '07-27 15:30', None),
