@@ -807,7 +807,10 @@ mono(x, y + 424, 276, 'group_by=account_type → account\n렌즈 없음 — look
 B3 = 1510
 
 # P11 자산 변화
-x, y = ph(360, B3, '자산 변화', back=True, right='이번 달 ▽')
+x, y = ph(360, B3, '자산 변화', back=True)
+chip(x, y + 8, 82, '전체 계좌 ▽')
+chip(x + 90, y + 8, 78, '이번 달 ▽', True)
+y += 32
 box(x, y + 6, 276, 86, 'ok')
 text(x + 14, y + 12, 248, 18, '자산이 800만원 늘었는데', 11, MUT)
 text(x + 14, y + 36, 120, 16, '넣은 돈', 9, MUT, bold=True)
@@ -855,8 +858,11 @@ mono(x, cyy + 104, 276, '투자손익 = 나머지 전부 (잔차 항목 없음)\
 text(x, cyy + 140, 276, 16, '기준 07-27 15:30 · 기초 06-30', 9, DIM)
 
 # P12 실현손익
-x, y = ph(760, B3, '실현손익', back=False, right='올해 ▽', tab='손익')
+x, y = ph(760, B3, '실현손익', back=False, tab='손익')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
+chip(x, y + 34, 82, '전체 계좌 ▽')
+chip(x + 90, y + 34, 62, '올해 ▽', True)
+y += 32
 card(x, y + 34, 276, 62, PANEL, 'none')
 text(x + 12, y + 42, 252, 16, '올해 실현손익 (매도 확정)', 9, MUT, bold=True)
 text(x + 12, y + 60, 252, 28, '+2,140,000원', 19, UP, bold=True)

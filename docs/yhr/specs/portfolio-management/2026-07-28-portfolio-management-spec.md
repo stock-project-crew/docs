@@ -217,6 +217,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 원장 | 거래 원장 전용 |
 | 기간 | 이번 달 · 지난달 · 올해 · 작년 · 지정 |
 | 컬럼 | 종목 · 매도일 · 매도금액 · 취득원가 · 실현손익(금액/%) · **신뢰도 배지** |
+| 필터 | 계좌 — 전체 / 계좌유형(일반·연금) / 개별 계좌 |
 | 통화 | 종목 행은 병기, 기간 합계는 원화(§3.7) |
 | 렌즈 | 없음 (ETF는 ETF 단위로 체결됨) |
 
@@ -226,6 +227,8 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 합계는 확보된 계좌만 합산하고 `미포함 계좌 N개`를 함께 표시한다. 조용히 제외하지 않는다.
 
+연금계좌는 과세이연이라 일반계좌와 나눠 보는 수요가 크므로 계좌 필터를 제공한다.
+
 ### 2.9 자산 변화
 
 | | |
@@ -233,6 +236,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 그레인 | 기간 × 현금흐름 유형 |
 | 원장 | 보유 스냅샷 + 현금흐름 |
 | 기간 | 이번 달 · 올해 · 지정 |
+| 필터 | 계좌 — 전체 / 계좌유형(일반·연금) / 개별 계좌 |
 | 구성 | 기초자산 → 넣은 돈 → 번 돈 → 계좌 편입·제외 → 기말자산 (워터폴) |
 | 렌즈 | 없음 |
 
@@ -312,6 +316,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 기간 경계에 이월 계좌 | 경고 표시. 그 시점의 참값을 모르므로 오차는 정량화하지 않는다 |
 | 현금흐름 미확보 계좌 | 경고 표시(§4.6). 그 계좌의 입출금이 투자손익에 섞인다 |
 | 값이 0인 항목 | 행을 숨긴다 |
+| 계좌 간 이체 | 계좌 필터를 걸면 이체가 양쪽에 입금·출금으로 나타난다. 전체 보기에서는 상쇄된다. 이체 여부를 식별하지 않으므로 계좌별 보기에 `다른 계좌에서 옮긴 돈도 입금으로 표시돼요`를 각주로 둔다 |
 
 계좌 편입·제외는 사용자가 넣은 돈도 시장이 만든 돈도 아니므로 두 덩어리 어디에도 넣지 않고 별도로 표시한다.
 
@@ -351,7 +356,11 @@ SK하이닉스  매입   100만  평가   130만  → +30%
 
 **파생 지표는 스키마에 컬럼을 만들지 않는다.** 자리가 없으면 잘못 더할 방법도 없다. 규칙을 문서가 아니라 테이블 구조로 강제한다.
 
-### 3.3 축
+### 3.3 축과 필터
+
+축은 결과를 **어떻게 묶을지**를 정하고 그레인을 결정한다. 필터는 **어떤 행을 대상으로 할지**를 정하고 그레인을 바꾸지 않는다. 따라서 축에 없는 값으로도 필터할 수 있으며, 필터 가능 여부는 **팩트 라인에 그 컬럼이 존재하는가**로만 결정된다.
+
+실현손익과 자산 변화는 축이 고정이지만(§1.4) 팩트 라인에 계좌가 있으므로 계좌 필터가 성립한다.
 
 축 값은 **논리적으로는 라인의 속성이지만, 물리적으로는 마스터 조인**으로 얻는다. `position_line`은 `account_id`·`instrument_id`만 갖고 섹터·시장·통화·자산군은 `instrument`/`account` 마스터에서 조인한다.
 
@@ -549,7 +558,7 @@ corporate_action  instrument · type(SPLIT|RIGHTS|MERGER) · ratio · ex_date
 position_basis    PK(account_id, instrument_id)             ★ 등급의 집
                   coverage_start_at · opening_qty · seed_avg_price
                   · grade · ca_unknown
-realized_pnl_line 매도 체결 1건 · sold_at · quantity
+realized_pnl_line 매도 체결 1건 · account · instrument · sold_at · quantity
                   · sell_amount · cost_basis_amount · fee_tax
                   · realized_pnl_local · realized_pnl_krw
                   · fx_rate · fx_as_of · grade
@@ -598,8 +607,9 @@ Axis    { key, label, source, applicable_views[], lens_sensitive }
 Metric  { key, label, additive, formula, requires_ledger }
           additive=false 지표는 group_by 결과에만 적용 가능하도록 강제
 
-View    { view_key, question, grain, group_by[], metrics[],
+View    { view_key, question, grain, group_by[], metrics[], filters[],
           lens_policy: NONE | OPTIONAL | ALWAYS, ledgers[] }
+          filters[]는 축과 무관하게 허용되는 필터 목록 (§3.3)
 ```
 
 `lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다.
@@ -618,6 +628,7 @@ View    { view_key, question, grain, group_by[], metrics[],
 ```
 GET /portfolio/views/allocation?axis=sector&lens=look_through
 GET /portfolio/views/positions?lens=direct
+GET /portfolio/views/realized-pnl?period=2026&account=pension
 ```
 
 `Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 검증은 카탈로그 대조로 끝난다. 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다.
