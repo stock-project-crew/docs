@@ -4,7 +4,8 @@
 
 - **작성일**: 2026-08-09
 - **대상 저장소**: `back-end/` (github.com/stock-project-crew/back-end)
-- **근거 스펙**: [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) · [와이어플로우](../specs/portfolio-management/wireflow.png) · [설계 공유 문서](../meetings/2026-08-09-portfolio-design-review.md)
+- **근거 스펙**: [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) · [와이어플로우](../specs/portfolio-management/wireflow.png) · [설계 공유 문서](../meetings/2026-08-09-portfolio-design-review.md) · [KIS 실측](../verification/kis-portfolio-assumptions.md)
+- **갱신**: 2026-08-09 — 스펙 커밋 `1d9fa25`(실측 반영) 대응. 바뀐 것은 §A.12에 모았다.
 - **스펙 수정 금지**: 이 계획은 스펙을 인용만 한다. 스펙 파일을 고치지 않는다.
 
 **Goal:** `position_line`에 손으로 넣은 샘플 행만으로 6개 뷰의 REST 응답이 전부 나오는, 실행 가능한 조회 계층 뼈대를 만든다.
@@ -153,13 +154,18 @@ record MeasureBundle(Measures securities /* asset_class != CASH */,
 
 **구조로 강제하는 방법.** `MeasureBundle`이 통화 집합 `CurrencySet`을 함께 누산하고, 현지 통화 금액은 `Optional<LocalMoney>`로만 꺼낼 수 있다. 집합 크기가 1이 아니면 `Optional.empty()`다 — 응답 조립기가 섞인 그룹에 현지 통화를 실을 방법이 없다.
 
-게이트는 **두 겹**이다. 스펙 §3.7 본문("묶음 안에 통화가 하나뿐일 때만")과 §3.7 표(섹터·시장·자산군·계좌·전체는 ✗)가 미묘하게 다르므로, 표를 카탈로그의 `Axis.localCurrencyEligible`로, 본문을 `CurrencySet.single()`로 각각 구현하고 **둘 다 통과할 때만** 병기한다. 단일 통화가 `KRW`이면 병기하지 않는다(원화가 곧 현지 통화).
+**게이트는 한 겹이다. 축 이름을 보지 않는다.** 스펙 §3.7은 "이 표는 예시이고 **판정은 조회 시점에 이 묶음이 단일 통화인가로 한다**"고 못 박았다. 축 이름을 하드코딩하면 축이 늘 때마다 표를 고쳐야 한다. 따라서 `CurrencySet.single()`이 유일한 판정자이고, 카탈로그에 `localCurrencyEligible` 같은 축 플래그를 두지 않는다.
 
-| 묶음 | `localCurrencyEligible` |
-|---|---|
-| 종목 축(`instrument`) 행 · 종목별 뷰 행 | `true` |
-| 통화 축(`currency`) 행 | `true` |
-| 섹터 · 시장 · 자산군 · 레버리지 · 계좌 · 계좌유형 · 전체 합계 | `false` |
+단일 통화가 `KRW`이면 병기하지 않는다 — 원화가 곧 현지 통화라 중복이다.
+
+| 묶음 | 샘플에서의 판정 | 근거 |
+|---|---|---|
+| 종목 1행 (AAPL) | 병기 | 정의상 단일 통화 |
+| 통화 축 `USD` · 시장 축 `US` | 병기 | 정의상 단일 통화 |
+| 섹터 `IT서비스` (AAPL 단독) | **병기** | 우연히 단일 통화 — 런타임 판정이라 잡힌다 |
+| 섹터 `소프트웨어` (NAVER + MSFT) | 원화만 | 통화 혼합 |
+| 계좌 `미래에셋 연금` (MSFT + USD 예수금) | **병기** | 우연히 단일 통화 |
+| 계좌 `한국투자 위탁` · 포트폴리오 전체 | 원화만 | 통화 혼합 |
 
 ### 불변식 4 — 행 키와 합계 키는 이름이 겹치지 않는다 (§6.2)
 
@@ -181,8 +187,10 @@ record MeasureBundle(Measures securities /* asset_class != CASH */,
 ### A.4.1 축 8개 (§6.1)
 
 ```
-Axis { key, label, source, applicableViews[], lensSensitive, enabled, localCurrencyEligible }
+Axis { key, label, source, applicableViews[], lensSensitive, enabled }
 ```
+
+축에 현지 통화 병기 플래그를 두지 않는다 — 판정은 런타임 통화 집합으로만 한다(불변식 3).
 
 | key | 라벨 | 출처 | 사용 뷰 | `lensSensitive` | `enabled` |
 |---|---|---|---|---|---|
@@ -287,7 +295,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 ### A.5.2 notice 코드 (스펙 §8.2 기준 **16종**)
 
-> **요청서에는 "13종"으로 적혀 있으나 스펙 §8.2의 표는 16종이다.** 스펙을 기준으로 16종 전부를 옮겼다. 세는 방식의 차이일 수 있으니 계획 검토 시 확인이 필요하다.
+> **16종이 맞다** — 요청서의 "13종"이 낡은 수치였음을 확인받았다(2026-08-09). 스펙 §8.2가 정본이다.
 
 | # | code | severity | 발생 조건 | params | 이번 범위 |
 |---|---|---|---|---|---|
@@ -299,12 +307,12 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | 6 | `EXCLUDED_ACCOUNTS` | warn | 실현손익 합계에서 빠진 계좌 (§2.8) | `count` | 규칙 구현·샘플 미발화 |
 | 7 | `SEEDED_ROWS` | warn | 추정 등급 행 존재 (§4.5) | `count` | **발화** (`realized_pnl_line.grade`에서) |
 | 8 | `CA_UNKNOWN` | warn | 기업행위 이력 미확인 (§4.4) | `instrument_id` 배열 | 미발화 — `position_basis` 없음 |
-| 9 | `CASHFLOW_UNCOVERED` | warn | 현금흐름 미확보 계좌 (§4.6) | `count` | **발화** (전 계좌) |
+| 9 | `CASHFLOW_UNCOVERED` | warn | 현금흐름 미확보 — 판정 단위는 **(계좌, 유형)** (§4.6) | `types` 배열 · `account_count` | **발화** (`DIVIDEND`·`FEE`·`TAX` 3유형 × 4계좌) |
 | 10 | `PERIOD_TRUNCATED` | info | 기초 스냅샷 대체와 실제 시작일 (§2.9) | `actual_from` | **발화** |
 | 11 | `BOUNDARY_CARRIED_FORWARD` | warn | 기간 경계 스냅샷에 이월 계좌 (§2.9) | `count` · `boundary` | **발화** |
 | 12 | `REAUTH_REQUIRED` | warn | 재인증 대기 계좌 존재 (§7.2) | `count` | 규칙 구현·샘플 미발화 |
 | 13 | `SYNC_IN_PROGRESS` | info | 동기화 진행 중 | `sync_run_id` | 미발화 — 동기화 범위 밖 |
-| 14 | `PRICE_LAG_MARKET` | info | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 | 미발화 — **스펙 공백**, §A.10 참조 |
+| 14 | `PRICE_LAG_MARKET` | info | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 | 미발화 — 유도 규칙은 정해졌으나 시장 캘린더가 1단계 산출물이다 (§A.12 #2) |
 | 15 | `ALREADY_FINAL` | info | EOD 확정 후 또는 비영업일 수동 동기화 요청 | 확정 시각 | 미발화 — 동기화 범위 밖 |
 | 16 | `FX_STALE` | warn | 환율 폴백이 5영업일을 넘음 (§5.3) | 통화쌍 · `fx_as_of` | 규칙 구현·샘플 미발화 |
 
@@ -397,10 +405,11 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 ```json
 { "period": { "from": "2026-07-01", "to": "2026-07-31" },
   "opening": 56800000, "closing": 58000000,
-  "deposited": 0, "earned": 1200000,
+  "deposited": 2000000, "earned": -800000,
   "account_included": 0, "account_excluded": 0,
-  "breakdown": [ { "type": "INVESTMENT_PNL", "amount": 1200000 } ],
-  "investment_pnl": { "total": 1200000, "realized": null,
+  "breakdown": [ { "type": "DEPOSIT", "amount": 2000000 },
+                 { "type": "INVESTMENT_PNL", "amount": -800000 } ],
+  "investment_pnl": { "total": -800000, "realized": null,
                       "unrealized_change": null, "split_available": false } }
 ```
 
@@ -412,6 +421,8 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 ```
 
 - **투자손익은 나머지 전부로 정의한다.** 우변에 거래 원장이 들어가지 않아 체결내역이 막힌 연금계좌도 정확한 손익을 얻는다. **잔차 항목을 두지 않는다**(§4.6).
+- **"넣은 돈"은 사용자 입력에서 온다**(§2.9 · §4.6). `DEPOSIT`·`WITHDRAW`는 백엔드 소유 `manual_cashflow`에서 읽고, `DIVIDEND`·`FEE`·`TAX`만 데이터팀 `cln_cashflow`에서 온다. KIS에 입출금 이력 TR이 아예 없다는 실측 결과에 따른 것이다.
+- **현금흐름 조회 구간은 요청 기간이 아니라 실제 기초·기말 스냅샷 구간이다.** 기초가 `PERIOD_TRUNCATED`로 대체되면 현금흐름도 그 날짜로 잘라야 한다 — 안 자르면 `넣은 돈`이 Δ총자산과 어긋나 항등식이 깨진다. 구간은 `(기초 as_of, 기말 as_of]`로 잡는다.
 - `breakdown[].type` = `DEPOSIT` · `WITHDRAW` · `DIVIDEND` · `FEE_TAX` · `INVESTMENT_PNL` (표시 유형이며 `cln_cashflow.type`과 별개). **값이 0인 항목은 행을 숨긴다**(§2.9).
 - `split_available = false`이면 거래 원장이 없어 실현/미실현 분해를 생략한 것이고 `realized`·`unrealized_change`는 `null`이다. **`total`은 항상 정확하다.**
 - 계좌 편입·제외는 손익도 넣은 돈도 아니므로 `breakdown[]`에 넣지 않고 **최상위 두 필드**로 둔다.
@@ -490,7 +501,23 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | `realized_pnl_krw` | `numeric(20,0)` | |
 | `grade` | `text` CHECK | `VERIFIED` · `SEEDED` · `UNAVAILABLE` · `CONFLICT` (`MIXED`는 저장하지 않는다) |
 
-### A.7.4 `instrument` — 종목 마스터, **데이터팀 소유** (§5.1)
+### A.7.4 `manual_cashflow` — 사용자 입력 입출금, 백엔드 소유 (§5.1)
+
+증권사가 입출금 이력 API를 열어주지 않아(KIS는 TR 자체가 없다 — 실측 §4-1) `DEPOSIT`·`WITHDRAW`는 원천이 아니라 **사용자 입력**을 기본 경로로 둔다. 입력 빈도가 월 1~2건이고 사용자가 이체 기록으로 정확한 값을 아는 데이터라, "자동 연동만 지원"(§12) 원칙의 예외다.
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `account_id` | `uuid` | → `account` FK |
+| `type` | `text` CHECK | `DEPOSIT` · `WITHDRAW` |
+| `amount` | `numeric(20,0)` | |
+| `currency` | `text` CHECK | `KRW` · `USD` |
+| `occurred_on` | `date` | 사용자가 지정 |
+| `memo` | `text` null | |
+
+**입력 엔드포인트(`POST`)는 이번 범위가 아니다** — 조회 계층이 범위이고 입력은 쓰기 경로다. 샘플 행을 손으로 넣는 방식이 `position_line`과 같다. 단 §2.9가 워터폴의 `넣은 돈` 행에서 입력 화면으로 가는 진입점을 요구하므로, 후속 단계에서 가장 먼저 붙을 쓰기 경로다.
+
+### A.7.5 `instrument` — 종목 마스터, **데이터팀 소유** (§5.1)
 
 로컬·테스트 프로필에서만 미러를 만든다(§A.2.3).
 
@@ -506,7 +533,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | `sector` | `text` null | 분류 미확정 시 null → `미분류` |
 | `is_leveraged` | `boolean` null | 원천 확보 전 null |
 
-### A.7.5 예수금을 종목으로 취급한다 (§5.2)
+### A.7.6 예수금을 종목으로 취급한다 (§5.2)
 
 `instrument.asset_class = CASH`인 통화별 의사종목(`KRW 예수금` · `USD 예수금`)을 두고 예수금도 `position_line`에 넣는다. 그러면 **총자산·현금비중·자산군 축이 모두 같은 팩트 하나에서 나온다.**
 
@@ -527,6 +554,8 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | CASH 행은 원가 = 평가금액 (§5.2) | 검증기 — `asset_class`가 다른 테이블에 있어 CHECK로 표현 불가 |
 | look-through 전개 후 `Σ market_value_krw`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) | `LensOutputInvariants` — 렌즈 적용 직후 |
 | `etf_coverage.state = UNAVAILABLE`인 ETF는 전개하지 않고 ETF 행을 남긴다 | `LookThroughLens`의 분기 (§A.9) |
+| **`넣은 돈`은 `manual_cashflow`에서만 온다. `cln_cashflow`에 `DEPOSIT`·`WITHDRAW`가 있으면 거부** (§9.1 자산 변화) | **타입으로 강제** — `cln_cashflow`를 읽는 포트의 유형 enum이 `EarningsCashflowType { DIVIDEND, FEE, TAX }`라 두 값을 표현할 방법이 없다 |
+| 기간 양 끝의 `position_line` 필요. 기초가 없으면 가장 이른 스냅샷으로 대체하고 실제 시작일 표시 (§9.1 자산 변화) | `AssetChangeViewService` (§A.6.3) |
 
 **범위 밖인 §9.1 규칙과 이유**: `as_of` 영업일 생성·당일 외 수정 불가·비영업일 라인 미생성·`is_final` 보호는 모두 **라인을 만드는** 1단계 규칙이고, 평단·등급·실현손익 묶음은 1.5/1.6단계다.
 
@@ -535,33 +564,63 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 제외 항목 | 이유 | 뼈대에 남기는 자리 |
 |---|---|---|
 | `position_line` 생성 (1단계) | 입력이 될 `cln_*` 테이블 스키마가 팀 미합의 (설계 공유 문서 안건 5) | `position_line` 테이블 + 샘플 SQL. `cln_balance`/`cln_deposit` 미러는 만들지 않는다 |
-| 등급 판정 (1.5) · 실현손익 산출 (1.6) | 전제가 실측 대기 (안건 2·4, "검증되지 않은 가정 3가지") | `realized_pnl_line` 테이블과 **읽기** 경로는 만든다. `grade`는 샘플에 직접 넣는다. `position_basis` 테이블은 만들지 않는다 — 컬럼 구성이 실측에 달려 있다 |
+| 등급 판정 (1.5) · 실현손익 산출 (1.6) | 실측으로 역산 자체는 검증됐으나(`CONFLICT` 0건) 판정 규칙이 늘었다 — **영구 `SEEDED`**와 확보 구간 중간의 미설명 변동 대조(§4.4) | `realized_pnl_line` 테이블과 **읽기** 경로는 만든다. `grade`는 샘플에 직접 넣는다. `position_basis` 테이블은 만들지 않는다 — 영구 `SEEDED` 판정 사유를 담을 컬럼이 아직 미정이다. `SEEDED_ROWS` notice는 지금 사유를 구분하지 않으며, 1.5단계에서 사유(확보 구간 부족 / 비체결 입고)를 params에 실을 자리를 남긴다 |
 | ETF 분해 안분 (2단계) | 구성비중 제공 형태 미합의 (안건 3·8) | `LensTransform` 인터페이스 · `DirectLens` 완성 · `LookThroughLens`는 **미확보 분기만** 구현. `ConstituentPort`(커버리지 조회)와 `ConstituentExpander`(안분) 두 인터페이스를 갈라, 이번 범위에서 후자가 **호출 불가능**함을 테스트로 고정한다 |
 | 계좌 연동 · 동기화 | `collection_run` 계약·시크릿 관리 미합의 (안건 6·7) | `sync_run` 테이블을 만들지 않는다. `accounts` 뷰 행의 `last_collection`은 `CollectionStatusPort` 스텁이 `null`을 낸다. `link_state`는 `account` 테이블에서 실제로 내린다 |
-| 현금흐름 (`cln_cashflow`) | 매매대금 배제 규칙 미합의 (안건 1) | `CashflowPort` 인터페이스 + `EmptyCashflowPort`. 빈 결과가 곧 "미확보 계좌"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
+| 손익성 현금흐름 (`cln_cashflow` — `DIVIDEND`·`FEE`·`TAX`) | 매매대금 배제 규칙과 `FEE`·`TAX` 원천이 팀 미합의 (안건 1). KIS는 배당만 제공한다(실측 §4-3) | `EarningsCashflowPort` 인터페이스 + `EmptyEarningsCashflowPort`. 빈 결과가 곧 "미확보"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
+| 입출금 **입력 화면·`POST` 엔드포인트** | 조회 계층이 범위다. 읽기 경로와 테이블은 만든다 | `manual_cashflow` 테이블 + 샘플 행 + `ManualCashflowRepository`(읽기). **`DEPOSIT`·`WITHDRAW`는 스텁이 아니라 실제 값이다** |
 | 종목 상세 `GET /portfolio/instruments/{id}` | `position_basis` · `cln_trade` · `corporate_action`에 의존 | 만들지 않는다. 6개 뷰 엔드포인트만 노출 |
 | API 인증 | 자격증명 보관 방식이 안건 7에 걸려 있고, 단일 사용자 전제라 인증 모델이 계좌 연동과 함께 결정된다 | Spring Security를 넣지 않는다. 로컬 전용임을 README에 명시 |
 | 프론트엔드 | 담당자 미정 | — |
 
 **`LOOK_THROUGH` 스텁이 가짜가 아닌 이유.** `etf_coverage`에 행이 없으면 모든 ETF가 미확보이고, 스펙 §3.4는 그 경우 "**전개하지 않고 ETF 행을 그대로 남긴다**"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 **스펙이 정의한 정상 경로**를 타며, 미분해 평가금액을 `CONSTITUENT_UNAVAILABLE`에 실어 사용자에게 알린다. 구현하지 않는 것은 안분 산술 하나다.
 
-## A.10 스펙과 요청서의 차이 · 스펙 공백
+## A.10 남은 판단 (스펙이 정하지 않아 계획에서 결정한 것)
 
-계획 검토 시 확인이 필요한 것들이다. **스펙 파일은 고치지 않았다.**
+**스펙 파일은 고치지 않았다.** 아래 5건은 스펙이 정하지 않은 부분이라 계획에서 결정했고, 2026-08-09 검토에서 이견 없음을 확인받았다. 스펙 갱신으로 해소된 3건은 §A.12에 있다.
 
 | # | 항목 | 내용 | 이 계획의 처리 |
 |---|---|---|---|
-| 1 | 지표 수 | 요청서 "12개" vs 스펙 §6.2 표 **17개** | 17개 전부 옮겼다(§A.4.2) |
-| 2 | notice 수 | 요청서 "13종" vs 스펙 §8.2 표 **16종** | 16종 전부 옮겼다(§A.5.2) |
-| 3 | `PRICE_LAG_MARKET` | 시장별 가격 기준일을 담을 컬럼이 `position_line`에 **없다**. `source_as_of`는 계좌 단위라 한 계좌에 국내·미국이 섞이면 시장별로 말할 수 없다(§7.4가 이 층이 필요한 이유로 든 것과 같은 문제) | 이번 범위에서 발화하지 않는다. **1단계 설계 시 `price_as_of` 성격 컬럼 추가가 필요하다** |
-| 4 | §3.7 표 vs 본문 | 본문은 "묶음이 단일 통화일 때만 병기", 표는 섹터·시장 등을 ✗로 고정. 실제로 시장=US 그룹은 단일 통화다 | 두 게이트를 모두 통과할 때만 병기 (불변식 3). 표는 `Axis.localCurrencyEligible`로, 본문은 `CurrencySet.single()`로 구현 |
-| 5 | CASH 행의 `instrument_count` | `instrument_count`의 CASH 정책이 "제외"라 비중 분석의 `현금` 행은 값이 0이 된다 | **0으로 내린다**. 지표 정의를 뷰별로 예외 처리하지 않는 쪽을 택했다. 화면은 CASH 행에서 종목수를 표시하지 않으면 된다 |
-| 6 | `realized-pnl` 정렬 | 스펙은 "정렬은 평가금액 내림차순 고정"이라 하는데 이 뷰에 평가금액이 없다 | `last_sold_at` 내림차순 + `key` 오름차순으로 확정(§A.6.2) |
-| 7 | `CONSTITUENT_AS_OF` | §9.3은 "렌즈 적용 응답은 함께 싣는다"고 하나, 전개된 ETF가 0이면 실을 날짜가 없다 | 전개 ETF가 0이면 **생략**한다 |
-| 8 | 봉투 `as_of` 출처 | 어느 값에서 오는지 스펙에 없다 | §A.5.1의 규칙으로 확정 |
-| 9 | 기간 기준 시각 | `THIS_MONTH` 등의 기준이 벽시계인지 최신 `as_of`인지 스펙에 없다 | **최신 `as_of`** 기준. 벽시계를 쓰면 테스트가 날짜에 따라 깨지고, 스냅샷이 없는 날의 "이번 달"이 빈 응답이 된다 |
-| 10 | 종목별 뷰의 **현재가** | §2.5 컬럼 목록에 있으나 §6.2 지표 17개에 없고 `position_line`에도 컬럼이 없다 | 지표로 두지 않는다. `market_value_local ÷ quantity`로 클라이언트가 얻거나 종목 상세(범위 밖)가 제공한다. §2.5 자신이 "현재가·매입금액은 종목 상세로 미룬다"고 하므로 이 처리가 스펙과 어긋나지 않는다 |
-| 11 | 종목별 뷰의 **시장 배지** | §2.5가 행에 시장 배지를 요구하는데 §6.3은 `rowFields`가 `accounts` 뷰에만 있다고 한다 | `positions`의 `rowFields`에 `market`을 넣는다(§A.4.3). 축이 아니라 표시용 행 필드이며 집계에 참여하지 않는다 |
+| 1 | CASH 행의 `instrument_count` | `instrument_count`의 CASH 정책이 "제외"라 비중 분석의 `현금` 행은 값이 0이 된다 | **0으로 내린다**. 지표 정의를 뷰별로 예외 처리하지 않는 쪽을 택했다. 화면은 CASH 행에서 종목수를 표시하지 않으면 된다 |
+| 2 | `realized-pnl` 정렬 | 스펙은 "정렬은 평가금액 내림차순 고정"이라 하는데 이 뷰에 평가금액이 없다 | `last_sold_at` 내림차순 + `key` 오름차순으로 확정(§A.6.2) |
+| 3 | `CONSTITUENT_AS_OF` | §9.3은 "렌즈 적용 응답은 함께 싣는다"고 하나, 전개된 ETF가 0이면 실을 날짜가 없다 | 전개 ETF가 0이면 **생략**한다 |
+| 4 | 봉투 `as_of` 출처 | 어느 값에서 오는지 스펙에 없다 | §A.5.1의 규칙으로 확정 |
+| 5 | 기간 기준 시각 | `THIS_MONTH` 등의 기준이 벽시계인지 최신 `as_of`인지 스펙에 없다 | **최신 `as_of`** 기준. 벽시계를 쓰면 테스트가 날짜에 따라 깨지고, 스냅샷이 없는 날의 "이번 달"이 빈 응답이 된다 |
+| 6 | 종목별 뷰의 **현재가** | §2.5 컬럼 목록에 있으나 §6.2 지표 17개에 없고 `position_line`에도 컬럼이 없다 | 지표로 두지 않는다. `market_value_local ÷ quantity`로 클라이언트가 얻거나 종목 상세(범위 밖)가 제공한다. §2.5 자신이 "현재가·매입금액은 종목 상세로 미룬다"고 하므로 이 처리가 스펙과 어긋나지 않는다 |
+| 7 | 종목별 뷰의 **시장 배지** | §2.5가 행에 시장 배지를 요구하는데 §6.3은 `rowFields`가 `accounts` 뷰에만 있다고 한다 | `positions`의 `rowFields`에 `market`을 넣는다(§A.4.3). 축이 아니라 표시용 행 필드이며 집계에 참여하지 않는다 |
+
+## A.11 개발 환경 전제
+
+**손익 · 실현손익 · 권리 계열 증권사 TR 5종이 모의투자를 지원하지 않는다** (실측 결과). 스펙 §5.1 기준 `cln_trade` · 배당 · 실현손익의 원천에 닿는 TR들이며, 실측 문서 §4-2의 TR 7종 표에서 손익·실현손익·권리에 해당하는 것들이다.
+
+| 단계 | 개발·테스트에 필요한 것 |
+|---|---|
+| **이번 범위 (조회 계층)** | **없음.** 입력이 사람이 넣은 샘플 행이고 증권사를 호출하지 않는다. Docker Compose + Postgres로 끝난다 |
+| 1단계 (`position_line` 생성) | 잔고 TR은 모의투자로 가능하다. 실전 계좌가 없어도 착수할 수 있다 |
+| **1.5 · 1.6단계 (등급 판정 · 실현손익)** | **실전 계좌 필수.** 체결·손익·권리 TR이 모의를 지원하지 않아 모의 앱키로는 개발도 테스트도 되지 않는다 |
+| 자산 변화의 배당·수수료 | **실전 계좌 필수** (권리 TR `CTRGA011R`) |
+
+**후속 단계 착수 조건**: 1.5단계 이후를 시작하기 전에 개발용 실전 계좌와 앱키가 준비돼 있어야 한다. 계획 A는 이 제약과 무관하게 끝까지 진행할 수 있다.
+
+이 제약이 계획 A의 설계 판단을 지지한다 — 샘플 데이터만으로 도는 조회 계층을 먼저 세우기로 한 덕에, 실전 계좌 확보를 기다리지 않고 집계 엔진과 응답 계약을 완성할 수 있다.
+
+## A.12 스펙 갱신(`1d9fa25`)으로 바뀐 것
+
+실측 결과가 스펙에 반영되면서 이 계획에서 손댄 부분이다.
+
+| # | 스펙 변경 | 계획 반영 |
+|---|---|---|
+| 1 | **§6.2 지표 17개 · §8.2 notice 16종이 정본** — 요청서의 12개·13종이 낡은 수치였다 | 변경 없음. 이미 스펙 기준으로 썼다 |
+| 2 | **§7.4 시장별 가격 기준일은 저장하지 않고 유도한다** — `price_as_of = source_as_of 기준 직전 해당 시장 영업일`. 컬럼을 넣지 않는 이유는 평가금액이 증권사 잔고에서 오는 값이라 증권사가 어느 날짜 종가를 썼는지 알 수 없기 때문이다 | `position_line`에 컬럼을 추가하지 않는다(원안 유지가 맞았다). `MarketCalendarPort` 인터페이스를 두고 유도 규칙을 문서화하되, **`PRICE_LAG_MARKET`은 이번 범위에서 발화시키지 않는다** — 근거는 아래 |
+| 3 | **§3.7 판정을 조회 시점 런타임으로. 시장 축을 ✓로 정정하고 표는 예시로 격하** | 잠정 처리였던 "두 게이트" 방식을 **런타임 단독 판정**으로 바꿨다. `Axis.localCurrencyEligible`을 없앴다(불변식 3). **§C의 기대 응답이 바뀐다** — 섹터 `IT서비스`, 계좌 `미래에셋 연금`, 시장 `US` 그룹에 현지 통화가 새로 붙는다 |
+| 4 | **§5.1 `cln_cashflow`가 `DIVIDEND`·`FEE`·`TAX`만 담고 `manual_cashflow`가 신설됐다** | `manual_cashflow`를 백엔드 소유 테이블로 만들고(§A.7.4) 읽기 경로를 넣었다. `CashflowPort`를 둘로 갈랐다 — 입출금은 **실제 값**, 손익성 현금만 스텁. **§C.11 자산 변화 기대 응답이 바뀐다** |
+| 5 | **§4.6 커버리지 판정 단위가 (계좌, 유형)** | `CASHFLOW_UNCOVERED`의 params를 `types` 배열 + `account_count`로 바꿨다 |
+| 6 | **§4.4 영구 `SEEDED` 판정 · 확보 구간 중간의 미설명 변동** | 등급 판정은 여전히 범위 밖이다. `SEEDED_ROWS` notice가 사유를 구분하지 않는다는 사실과, 1.5단계에서 사유를 params에 실을 자리를 §A.9에 남겼다 |
+| 7 | **§9.1 검증 규칙 2건 추가** | `넣은 돈`은 `manual_cashflow`에서만 온다 → **타입으로 강제**(§A.8). 영구 `SEEDED` 규칙은 1.5단계라 범위 밖 |
+| 8 | §4.1 · §4.3 원가 근거 정정 (차이는 정확히 매수 수수료 전액, 증권사 화면과 부호가 갈릴 수 있음) | 실현손익 **산출**이 범위 밖이라 계획에 영향 없다. `realized_pnl_line`을 읽기만 한다 |
+| 9 | §2.9 워터폴에서 입출금 입력 화면으로 진입 · §12 수동 입력 예외 | 입력 화면·`POST`는 범위 밖으로 두고, **후속 단계에서 가장 먼저 붙을 쓰기 경로**로 §A.7.4에 적었다 |
+
+**#2에서 `PRICE_LAG_MARKET`을 발화시키지 않는 이유.** 유도 규칙은 정해졌지만 휴장일 캘린더가 없다. 국내는 `as_of`가 영업일에만 생성되므로 유도 결과가 항상 맞지만, **미국은 휴장일을 모르면 실제보다 최신 날짜를 주장하게 된다** — 직전 평일이 미국 휴장일이면 그날 종가가 없는데 있다고 말한다. 정보성 배너 하나 때문에 사용자에게 틀린 날짜를 보이는 쪽이 안 보이는 쪽보다 나쁘다. 시장 캘린더는 `as_of` 생성 규칙(§9.1)과 함께 1단계에서 들어오므로, 그때 `MarketCalendarPort` 구현체를 끼우면 notice가 살아난다. **뒤집고 싶으면 `WeekdayMarketCalendar`를 넣고 한계를 배너에 함께 적는 방법이 있다 — 판단만 주면 된다.**
 
 ---
 
@@ -713,7 +772,7 @@ USD 라인의 `fx_rate = 1400.000000`.
 | 일간 변화 | 07-24 대비 +1,200,000 |
 | 2단계 중첩 소계 | 계좌유형 2 × 계좌 2 |
 
-## C.4 `realized_pnl_line` — 3행
+## C.4 `realized_pnl_line` — 3행 · `manual_cashflow` — 1행
 
 | trade_id | 계좌 | 종목 | sold_at | qty | sell_krw | cost_basis_krw | fee_tax | pnl_krw | grade |
 |---|---|---|---|---|---|---|---|---|---|
@@ -722,6 +781,15 @@ USD 라인의 `fx_rate = 1400.000000`.
 | `T-0003` | 삼성증권 | 035420 | 2026-02-18 | 10 | 2,000,000 | 2,300,000 | 5,000 | −305,000 | VERIFIED |
 
 `*_local`은 KRW 종목이라 `*_krw`와 같은 값.
+
+**`manual_cashflow`** — 사용자 입력 입출금(§A.7.4)
+
+| id | 계좌 | type | amount | currency | occurred_on | memo |
+|---|---|---|---|---|---|---|
+| `30000000-…-0001` | 한국투자 위탁 | `DEPOSIT` | 2,000,000 | KRW | 2026-07-27 | 월 적립 |
+
+날짜가 `(기초 as_of 2026-07-24, 기말 as_of 2026-07-27]` 안에 들어와야 항등식이 성립한다(§A.6.3).
+이 한 행이 자산 변화 뷰의 존재 이유를 샘플에서 재현한다 — **자산은 120만원 늘었지만 200만원을 넣고 80만원을 잃은** 상황이다(§2.9).
 
 ## C.5 기대 응답 — `GET /portfolio/views/summary`
 
@@ -738,7 +806,8 @@ USD 라인의 `fx_rate = 1400.000000`.
     "rows": [],
     "mini_chart": { "group_by": ["market"], "lens": "DIRECT",
       "rows": [ { "key": "KR", "label": "국내", "market_value_krw": 46800000, "weight_pct": 80.7 },
-                { "key": "US", "label": "미국", "market_value_krw": 11200000, "weight_pct": 19.3 } ] } },
+                { "key": "US", "label": "미국", "market_value_krw": 11200000, "weight_pct": 19.3,
+                  "currency": "USD", "market_value_local": 8000.00 } ] } },
   "notices": [
     { "code": "FX_APPLIED", "severity": "info", "message": "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
       "params": { "rates": [ { "pair": "USD/KRW", "rate": 1400.0, "fx_as_of": "2026-07-24" } ],
@@ -750,6 +819,9 @@ USD 라인의 `fx_rate = 1400.000000`.
 미니차트 검산 — `KR = 14,240,000 + 9,000,000 + 8,000,000 + 11,000,000 + 2,560,000 + 1,000,000 + 1,000,000 = 46,800,000`,
 `US = 6,160,000 + 4,900,000 + 140,000 = 11,200,000`, 합 58,000,000, 비중 80.7 / 19.3.
 
+**`US` 행에 현지 통화가 붙는다** — 시장=US 묶음은 정의상 단일 통화다(§3.7 개정). `market_value_local = 4,400.00 + 3,500.00 + 100.00 = 8,000.00`.
+`KR` 행은 단일 통화지만 `KRW`라서 병기하지 않는다.
+
 ## C.6 기대 응답 — `GET /portfolio/views/allocation?axis=sector&lens=DIRECT`
 
 `total`은 §C.5의 `total`에서 `daily_change_*`를 뺀 것과 같다(일간 변화는 요약 전용 지표).
@@ -759,11 +831,22 @@ USD 라인의 `fx_rate = 1400.000000`.
 | 1 | `반도체` | 23,240,000 | 20,000,000 | 3,240,000 | 16.2 | 40.1 | 2 |
 | 2 | `소프트웨어` | 12,900,000 | 13,200,000 | −300,000 | −2.3 | 22.2 | 2 |
 | 3 | `미분류` | 11,000,000 | 10,000,000 | 1,000,000 | 10.0 | 19.0 | 1 |
-| 4 | `IT서비스` | 6,160,000 | 5,600,000 | 560,000 | 10.0 | 10.6 | 1 |
+| 4 | `IT서비스` | 6,160,000 | 5,600,000 | 560,000 | 10.0 | 10.6 | 1 | ← 현지 통화 병기
 | 5 | `현금` | 4,700,000 | **null** | **null** | **null** | 8.1 | 0 |
 
 `Σ market_value_krw = 58,000,000 = total.total_assets_krw` ✔ · `Σ weight_pct = 100.0` ✔ · `Σ cost = 48,800,000` ✔
-현지 통화 병기 없음 — 섹터 축은 `localCurrencyEligible = false`.
+
+**`IT서비스` 행에만 현지 통화가 붙는다** — AAPL 단독이라 우연히 단일 통화다(§3.7 개정: 판정은 축 이름이 아니라 런타임 통화 집합).
+
+```json
+{ "key": "IT서비스", "label": "IT서비스", "currency": "USD",
+  "market_value_krw": 6160000, "market_value_local": 4400.00,
+  "cost_amount_krw": 5600000, "cost_amount_local": 4000.00,
+  "unrealized_pnl_krw": 560000, "unrealized_pnl_pct": 10.0,
+  "weight_pct": 10.6, "instrument_count": 1 }
+```
+
+나머지 4행은 통화가 섞였거나(`소프트웨어`·`현금`) 단일 `KRW`라(`반도체`·`미분류`) 병기하지 않는다.
 
 ## C.7 기대 응답 — `GET /portfolio/views/allocation?axis=sector&lens=LOOK_THROUGH`
 
@@ -810,10 +893,13 @@ CASH-USD 행은 CASH지만 단일 통화 USD이므로 `market_value_local`은 �
 | 1.2 | `…0002` / 삼성증권 | 9,000,000 | 1,000,000 | 9,000,000 | −1,000,000 | −11.1 | 15.5 | 동일 |
 | 2 | `PENSION` / 연금 | 17,040,000 | 1,140,000 | 14,200,000 | 1,700,000 | 12.0 | 29.4 | – |
 | 2.1 | `…0003` / 한국투자 IRP | 12,000,000 | 1,000,000 | 10,000,000 | 1,000,000 | 10.0 | 20.7 | 동일 |
-| 2.2 | `…0004` / 미래에셋 연금 | 5,040,000 | 140,000 | 4,200,000 | 700,000 | 16.7 | 8.7 | 동일 |
+| 2.2 | `…0004` / 미래에셋 연금 | 5,040,000 | 140,000 | 4,200,000 | 700,000 | 16.7 | 8.7 | 동일 + `currency: USD` |
 
 `Σ 최상위 mv_krw = 58,000,000` ✔ · 자식 합 = 부모 ✔ · `Σ 최상위 weight_pct = 100.0` ✔
-계좌·계좌유형 축은 `localCurrencyEligible = false`이므로 병기 없음.
+
+**`미래에셋 연금` 행에만 현지 통화가 붙는다** — MSFT + USD 예수금뿐이라 우연히 단일 통화다.
+`market_value_local = 3,500.00 + 100.00 = 3,600.00`, `cost_amount_local = 3,000.00`(CASH 제외).
+나머지 계좌와 두 소계는 통화가 섞였거나 단일 `KRW`라 병기하지 않는다.
 
 ## C.10 기대 응답 — `GET /portfolio/views/realized-pnl?period=THIS_YEAR`
 
@@ -837,15 +923,16 @@ notices: SEEDED_ROWS { count: 1 }
 { "as_of": "2026-07-27T15:30:00+09:00", "empty_reason": null,
   "data": { "period": { "from": "2026-07-01", "to": "2026-07-31" },
     "opening": 56800000, "closing": 58000000,
-    "deposited": 0, "earned": 1200000,
+    "deposited": 2000000, "earned": -800000,
     "account_included": 0, "account_excluded": 0,
-    "breakdown": [ { "type": "INVESTMENT_PNL", "amount": 1200000 } ],
-    "investment_pnl": { "total": 1200000, "realized": null,
+    "breakdown": [ { "type": "DEPOSIT", "amount": 2000000 },
+                   { "type": "INVESTMENT_PNL", "amount": -800000 } ],
+    "investment_pnl": { "total": -800000, "realized": null,
                         "unrealized_change": null, "split_available": false } },
   "notices": [
     { "code": "CASHFLOW_UNCOVERED", "severity": "warn",
-      "message": "4개 계좌의 입출금 내역이 없어 투자손익에 섞여 있을 수 있어요",
-      "params": { "count": 4 } },
+      "message": "배당·수수료 내역이 확보되지 않아 투자손익에 섞여 있을 수 있어요",
+      "params": { "types": ["DIVIDEND", "FEE", "TAX"], "account_count": 4 } },
     { "code": "PERIOD_TRUNCATED", "severity": "info",
       "message": "2026-07-24부터 계산했습니다", "params": { "actual_from": "2026-07-24" } },
     { "code": "BOUNDARY_CARRIED_FORWARD", "severity": "warn",
@@ -853,8 +940,22 @@ notices: SEEDED_ROWS { count: 1 }
       "params": { "count": 1, "boundary": "2026-07-27" } } ] }
 ```
 
-`2026-07-01` 직전 스냅샷이 없어 가장 이른 `2026-07-24`를 기초로 대체 → `PERIOD_TRUNCATED`.
-현금흐름 포트가 비어 있어 `deposited = 0`, 배당·수수료 0 → 투자손익 = Δ총자산 = 1,200,000. 값이 0인 항목은 `breakdown`에서 숨긴다.
+**검산** — `2026-07-01` 직전 스냅샷이 없어 가장 이른 `2026-07-24`를 기초로 대체하고 `PERIOD_TRUNCATED`를 붙인다. 현금흐름 구간도 요청 기간이 아니라 `(2026-07-24, 2026-07-27]`로 잘린다.
+
+```
+Δ총자산       = 58,000,000 − 56,800,000 =  1,200,000
+넣은 돈       = manual_cashflow DEPOSIT  =  2,000,000   (사용자 입력, 실제 값)
+배당·수수료   = 미확보                   =          0   (cln_cashflow 스텁)
+투자손익      = 1,200,000 − 2,000,000    =   −800,000
+번 돈         = −800,000 + 0 − 0         =   −800,000
+항등식        56,800,000 + 2,000,000 + (−800,000) = 58,000,000 ✔
+```
+
+**이 응답이 뷰의 존재 이유를 보여준다** — 자산은 늘었는데 손실이다. 다른 어떤 뷰로도 드러나지 않는 상황이며(§2.9), 샘플 한 행으로 재현된다.
+
+> 자산이 120만원 늘었지만 200만원을 넣고 80만원을 잃었어요
+
+값이 0인 `WITHDRAW`·`DIVIDEND`·`FEE_TAX`는 `breakdown`에서 숨긴다. `split_available = false`는 거래 원장 산출이 범위 밖이기 때문이다 — `total`은 항상 정확하다.
 
 
 ---
@@ -873,7 +974,7 @@ notices: SEEDED_ROWS { count: 1 }
 - Create: `back-end/docker-compose.yml` · `back-end/Dockerfile` · `back-end/.env.example`
 - Create: `back-end/src/main/java/com/stockproject/portfolio/PortfolioApplication.java`
 - Create: `back-end/src/main/resources/application.yaml` · `application-local.yaml`
-- Create: `back-end/src/main/resources/db/migration/V1__account.sql` · `V2__position_line.sql` · `V3__realized_pnl_line.sql`
+- Create: `back-end/src/main/resources/db/migration/V1__account.sql` · `V2__position_line.sql` · `V3__realized_pnl_line.sql` · `V4__manual_cashflow.sql`
 - Create: `back-end/src/main/resources/db/external/V900__instrument_mirror.sql`
 - Create: `back-end/src/main/resources/db/sample/sample_portfolio.sql`
 - Test: `back-end/src/test/java/com/stockproject/portfolio/MigrationLintTest.java`
@@ -881,12 +982,12 @@ notices: SEEDED_ROWS { count: 1 }
 - Modify: `back-end/README.md` · `back-end/.gitignore` (Gradle·빌드 산출물 추가)
 
 **Interfaces:**
-- Produces: Flyway 마이그레이션이 만드는 테이블 3개(`account`·`position_line`·`realized_pnl_line`)와 로컬 전용 미러 `instrument`. 이후 모든 태스크의 저장소가 이 스키마를 읽는다.
+- Produces: Flyway 마이그레이션이 만드는 테이블 4개(`account`·`position_line`·`realized_pnl_line`·`manual_cashflow`)와 로컬 전용 미러 `instrument`. 이후 모든 태스크의 저장소가 이 스키마를 읽는다.
 
 **완료 조건**
 1. `./gradlew build`가 통과한다.
-2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 4개 마이그레이션을 적용한다.
-3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 20행(`as_of` 2개 × 10행), `realized_pnl_line` 3행, `account` 4행, `instrument` 8행이 들어간다.
+2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 5개 마이그레이션을 적용한다.
+3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 20행(`as_of` 2개 × 10행), `realized_pnl_line` 3행, `manual_cashflow` 1행, `account` 4행, `instrument` 8행이 들어간다.
 4. `MigrationLintTest`가 통과한다 — 마이그레이션에 비율 컬럼이 없다.
 5. `db/external`은 `local`·`test` 프로필에서만 적용되고 기본(운영) 프로필에서는 적용되지 않는다.
 
@@ -902,6 +1003,9 @@ docker compose exec -T db psql -U portfolio -d portfolio -c \
 docker compose exec -T db psql -U portfolio -d portfolio -c \
   "SELECT sum(market_value_krw) FROM position_line WHERE as_of='2026-07-27';"
 # 기대: 58000000
+docker compose exec -T db psql -U portfolio -d portfolio -c \
+  "SELECT type, amount FROM manual_cashflow;"
+# 기대: DEPOSIT | 2000000
 ```
 
 - [ ] **Step 1: Gradle 프로젝트 생성**
@@ -1072,6 +1176,29 @@ COMMENT ON COLUMN realized_pnl_line.grade IS
   '산출 시점 position_basis 등급의 스냅샷. 이후 갱신하지 않는다. MIXED는 응답 조립 시에만 생기며 저장하지 않는다 — 스펙 §4.3 · §8.4';
 ```
 
+`V4__manual_cashflow.sql`:
+```sql
+-- 사용자 입력 입출금. 증권사가 입출금 이력 API를 열어주지 않아(KIS는 TR 자체가 없음)
+-- DEPOSIT·WITHDRAW는 원천이 아니라 사용자 입력을 기본 경로로 둔다 — 스펙 §4.6 · §5.1
+CREATE TABLE manual_cashflow (
+    id           uuid PRIMARY KEY,
+    account_id   uuid           NOT NULL REFERENCES account (account_id),
+    type         text           NOT NULL CHECK (type IN ('DEPOSIT', 'WITHDRAW')),
+    amount       numeric(20, 0) NOT NULL CHECK (amount > 0),
+    currency     text           NOT NULL CHECK (currency IN ('KRW', 'USD')),
+    occurred_on  date           NOT NULL,
+    memo         text
+);
+
+CREATE INDEX idx_manual_cashflow_occurred_on ON manual_cashflow (occurred_on);
+CREATE INDEX idx_manual_cashflow_account_occurred_on ON manual_cashflow (account_id, occurred_on);
+
+COMMENT ON TABLE manual_cashflow IS
+  '자산 변화 뷰의 "넣은 돈"의 유일한 출처. cln_cashflow에는 DEPOSIT·WITHDRAW가 오지 않는다 — 스펙 §9.1';
+```
+
+`amount`를 양수로 제약하고 방향은 `type`이 정한다 — 부호와 유형이 어긋나 이중 부정이 생기는 것을 막는다.
+
 `V900__instrument_mirror.sql` (`db/external/`):
 ```sql
 -- 데이터팀 소유 테이블의 로컬·테스트 전용 미러.
@@ -1176,14 +1303,15 @@ class SchemaSmokeTest {
     @Autowired JdbcClient jdbc;
 
     @Test
-    void 마이그레이션이_테이블_네개를_만든다() {
+    void 마이그레이션이_테이블_다섯개를_만든다() {
         List<String> tables = jdbc.sql("""
                 SELECT table_name FROM information_schema.tables
                  WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                  ORDER BY table_name
                 """).query(String.class).list();
 
-        assertThat(tables).contains("account", "position_line", "realized_pnl_line", "instrument");
+        assertThat(tables).contains("account", "position_line", "realized_pnl_line",
+                                    "manual_cashflow", "instrument");
     }
 
     @Test
@@ -1269,7 +1397,7 @@ DB_PASSWORD=portfolio
 ```sql
 BEGIN;
 
-TRUNCATE realized_pnl_line, position_line, account, instrument;
+TRUNCATE realized_pnl_line, manual_cashflow, position_line, account, instrument;
 
 INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, currency, sector, is_leveraged) VALUES
  ('10000000-0000-0000-0000-000000000001','KR7005930003','005930','삼성전자','STOCK','KR','KRW','반도체',false),
@@ -1336,6 +1464,12 @@ INSERT INTO realized_pnl_line (trade_id, account_id, instrument_id, sold_at, qua
    '2026-05-12T10:02:00+09',5,700000,500000,700000,500000,2000,198000,198000,'VERIFIED'),
  ('T-0003','20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000003',
    '2026-02-18T13:44:00+09',10,2000000,2300000,2000000,2300000,5000,-305000,-305000,'VERIFIED');
+
+-- 사용자 입력 입출금. (기초 as_of 2026-07-24, 기말 as_of 2026-07-27] 안에 들어와야
+-- 자산 변화 항등식이 성립한다 (§A.6.3)
+INSERT INTO manual_cashflow (id, account_id, type, amount, currency, occurred_on, memo) VALUES
+ ('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+   'DEPOSIT',2000000,'KRW','2026-07-27','월 적립');
 
 COMMIT;
 ```
@@ -1420,28 +1554,26 @@ package com.stockproject.portfolio.catalog;
 import java.util.Set;
 
 public enum AxisKey {
-    ACCOUNT      ("account",      "계좌",     false, true,  false, Set.of(ViewKey.ACCOUNTS)),
-    ACCOUNT_TYPE ("account_type", "계좌유형", false, true,  false, Set.of(ViewKey.ACCOUNTS)),
-    INSTRUMENT   ("instrument",   "종목",     true,  true,  true,  Set.of(ViewKey.POSITIONS, ViewKey.ALLOCATION)),
-    SECTOR       ("sector",       "섹터",     true,  true,  false, Set.of(ViewKey.ALLOCATION)),
-    MARKET       ("market",       "시장",     true,  true,  false, Set.of(ViewKey.ALLOCATION, ViewKey.SUMMARY)),
-    CURRENCY     ("currency",     "통화",     true,  true,  true,  Set.of(ViewKey.ALLOCATION)),
-    ASSET_CLASS  ("asset_class",  "자산군",   true,  true,  false, Set.of(ViewKey.ALLOCATION, ViewKey.SUMMARY)),
+    ACCOUNT      ("account",      "계좌",     false, true,  Set.of(ViewKey.ACCOUNTS)),
+    ACCOUNT_TYPE ("account_type", "계좌유형", false, true,  Set.of(ViewKey.ACCOUNTS)),
+    INSTRUMENT   ("instrument",   "종목",     true,  true,  Set.of(ViewKey.POSITIONS, ViewKey.ALLOCATION)),
+    SECTOR       ("sector",       "섹터",     true,  true,  Set.of(ViewKey.ALLOCATION)),
+    MARKET       ("market",       "시장",     true,  true,  Set.of(ViewKey.ALLOCATION, ViewKey.SUMMARY)),
+    CURRENCY     ("currency",     "통화",     true,  true,  Set.of(ViewKey.ALLOCATION)),
+    ASSET_CLASS  ("asset_class",  "자산군",   true,  true,  Set.of(ViewKey.ALLOCATION, ViewKey.SUMMARY)),
     /** 원천 미확보로 비활성. 요청 시 AXIS_DISABLED로 거부한다 — 스펙 §6.1 · §9.3 */
-    IS_LEVERAGED ("is_leveraged", "레버리지", true,  false, false, Set.of(ViewKey.ALLOCATION));
+    IS_LEVERAGED ("is_leveraged", "레버리지", true,  false, Set.of(ViewKey.ALLOCATION));
 
     private final String key;
     private final String label;
     private final boolean lensSensitive;
     private final boolean enabled;
-    private final boolean localCurrencyEligible;
     private final Set<ViewKey> applicableViews;
 
     AxisKey(String key, String label, boolean lensSensitive, boolean enabled,
-            boolean localCurrencyEligible, Set<ViewKey> applicableViews) {
+            Set<ViewKey> applicableViews) {
         this.key = key; this.label = label; this.lensSensitive = lensSensitive;
-        this.enabled = enabled; this.localCurrencyEligible = localCurrencyEligible;
-        this.applicableViews = applicableViews;
+        this.enabled = enabled; this.applicableViews = applicableViews;
     }
 
     public String key() { return key; }
@@ -1449,9 +1581,9 @@ public enum AxisKey {
     /** true면 LOOK_THROUGH에서 이 축으로 필터할 수 없다 — 전개가 종목 자체를 바꾼다(스펙 §9.3). */
     public boolean lensSensitive() { return lensSensitive; }
     public boolean enabled() { return enabled; }
-    /** 스펙 §3.7 표 — 이 축의 그룹에 현지 통화를 병기할 수 있는가. */
-    public boolean localCurrencyEligible() { return localCurrencyEligible; }
     public Set<ViewKey> applicableViews() { return applicableViews; }
+
+    // 현지 통화 병기 플래그를 두지 않는다 — 판정은 조회 시점 통화 집합으로만 한다(스펙 §3.7 · 불변식 3).
 
     public static AxisKey of(String key) {
         for (AxisKey a : values()) if (a.key.equals(key)) return a;
@@ -1593,12 +1725,11 @@ class CatalogInvariantTest {
         }
     }
 
-    /** 스펙 §3.7 표 — 현지 통화 병기가 가능한 축은 종목·통화뿐이다. */
+    /** 스펙 §3.7 — 축에 현지 통화 병기 플래그를 두지 않는다. 판정은 런타임 통화 집합이 한다. */
     @Test
-    void 현지_통화_병기_가능_축은_종목과_통화뿐이다() {
-        assertThat(java.util.Arrays.stream(AxisKey.values())
-                .filter(AxisKey::localCurrencyEligible).toList())
-                .containsExactlyInAnyOrder(AxisKey.INSTRUMENT, AxisKey.CURRENCY);
+    void 축에는_현지_통화_병기_플래그가_없다() {
+        assertThat(AxisKey.class.getDeclaredFields())
+                .noneMatch(f -> f.getName().toLowerCase().contains("currencyeligible"));
     }
 }
 ```
