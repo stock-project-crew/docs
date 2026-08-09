@@ -61,7 +61,7 @@ position_line  ── 그레인: (as_of, 계좌, 종목)
 |---|---|
 | 요약 | (없음) |
 | 종목별 | 종목 |
-| 비중 분석 | 섹터 / 시장 / 통화 / 자산군 / 종목 |
+| 비중 분석 | 섹터 / 시장 / 통화 / 자산군 / 종목 / 레버리지(조건부) |
 | 계좌별 | 계좌유형 → 계좌 |
 
 축을 늘리는 일은 `group_by`에 컬럼 이름을 하나 더 쓰는 일이다. 섹터·자산군 같은 분류 축은 라인에 복사하지 않고 마스터에서 조인한다. 분류를 보정하면 과거 스냅샷에도 소급 반영된다.
@@ -106,14 +106,14 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 |------|------|
 | **그레인 (grain)** | 팩트 테이블의 한 행이 무엇을 나타내는가. 차원 모델링(dimensional modeling)의 표준 용어. 집계가 중복·누락 없이 한 번씩 일어나게 하는 기준 |
 | **팩트 (fact)** | 측정값을 담는 행 집합. `position_line`이 스냅샷 원장의 팩트 |
-| **축 (axis)** | 집계의 그룹핑 기준. 계좌·계좌유형·종목·섹터·시장·통화·자산군 |
+| **축 (axis)** | 집계의 그룹핑 기준. 계좌·계좌유형·종목·섹터·시장·통화·자산군·레버리지(조건부) |
 | **측정값 (measure)** | 더해도 되는 값. 수량·매입금액·평가금액 |
 | **파생 지표 (derived)** | 더할 수 없는 값. 평가손익률·비중. 집계 **후**에만 계산 |
 | **렌즈 (lens)** | 라인 집합을 라인 집합으로 바꾸는 변환. `DIRECT` / `LOOK_THROUGH` |
 | **원장 (ledger)** | 서로 다른 진실의 출처. 보유 스냅샷 / 현금흐름 / 거래 |
-| **신뢰도 등급 (grade)** | 거래 원장의 완전성 판정. `VERIFIED / SEEDED / UNAVAILABLE / CONFLICT` |
+| **신뢰도 등급 (grade)** | 거래 원장의 완전성 판정. `VERIFIED / SEEDED / UNAVAILABLE / CONFLICT`. 실현손익 응답의 종목 노드는 `MIXED`가 추가된다 |
 | **as-of** | 그 행이 나타내는 시점. 스냅샷의 기준일자이자 `position_line` 그레인의 일부. 적재 시각, 계좌별 실제 데이터 시각(`source_as_of`)과 구분 |
-| **캐리포워드** | 동기화 실패 시 직전 성공 스냅샷을 그날 기준시각으로 이월 |
+| **캐리포워드** | 그날 `collection_run` 최종 상태가 `DONE`이 아닐 때 직전 성공 스냅샷을 그날 기준일자로 이월 |
 
 ---
 
@@ -129,7 +129,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | **종목별** | 뭘 얼마나 갖고, 각각 얼마 벌었나? | 종목 1행(계좌 합산) | 스냅샷 | 선택 |
 | **비중 분석** | 내 돈이 어디에 쏠려 있나? | 축 값 1행 | 스냅샷 | **전면** |
 | **계좌별** | 어느 기관·계좌유형에 뭐가 있나? | 계좌 1행 | 스냅샷 | 없음 |
-| **실현손익** | 이번 달/올해 확정한 손익은? | 기간 × 종목 1행 | 거래 | 없음 |
+| **실현손익** | 이번 달/올해 확정한 손익은? | 기간 × 종목 × 매도 체결 | 거래 | 없음 |
 | **자산 변화** | 는 게 벌어서인가, 넣어서인가? | 기간 × 현금흐름 유형 | 스냅샷 + 현금흐름 | 없음 |
 
 하위 화면: **종목 상세**, **계좌 연동·동기화**.
@@ -153,7 +153,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 모든 뷰 상단에 고정된다.
 
-- **as-of 배너**: `기준 2026-07-27 15:30 · 새로고침`. 배치 실행 기준시각이며 수동 동기화 진입점을 겸한다.
+- **as-of 배너**: `기준 2026-07-27 15:30 · 새로고침`. 배치 실행 기준일자이며 수동 동기화 진입점을 겸한다. 자산 변화는 기초·기말 두 시점을 함께 표기하므로 하단에 둔다.
 - **환율 표기**: 원화 환산에 적용한 환율과 기준시점을 배너에 병기한다. 통화 표시 규칙은 §3.7.
 - **지연 배너**: 캐리포워드된 계좌가 있으면 `1개 계좌가 07-26 기준입니다`.
 
@@ -185,6 +185,8 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 같은 종목을 여러 계좌에 보유하면 **항상 합산해 1행으로 표시**하고, 평단은 수량가중평균으로 계산한다. 계좌별 분해는 종목 상세에서 제공한다.
 
+좁은 화면에서는 평가금액·비중·손익을 우선 노출하고 현재가·매입금액은 종목 상세로 미룬다.
+
 ### 2.6 비중 분석
 
 | | |
@@ -204,7 +206,8 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | | |
 |---|---|
 | 그레인 | 계좌 1행 |
-| 컬럼 | 기관 · **계좌유형(일반/연금)** · 기준통화 · 평가금액 · 예수금 · 평가손익 · 비중 · 마지막 동기화 · 연동 상태 |
+| 컬럼 | 기관 · **계좌유형(일반/연금)** · **계좌 총자산** · 예수금 · 평가손익 · 비중 · 마지막 동기화 · 연동 상태 |
+| 응답 키 | `market_value_krw`(계좌 총자산) · `deposit_krw`. 유가증권 평가금액은 클라이언트가 차감해 표시 |
 | 그룹 | **계좌유형별 소계** (일반 합계 / 연금 합계). 소계는 예수금을 포함한 계좌 총자산 기준 |
 | 렌즈 | 없음 |
 | 하위 | 행 탭 → 종목별 뷰(계좌 필터 적용 상태) |
@@ -366,7 +369,7 @@ SK하이닉스  매입   100만  평가   130만  → +30%
 
 ### 3.3 축과 필터
 
-축은 결과를 **어떻게 묶을지**를 정하고 그레인을 결정한다. 필터는 **어떤 행을 대상으로 할지**를 정하고 그레인을 바꾸지 않는다. 따라서 축에 없는 값으로도 필터할 수 있으며, 필터 가능 여부는 **팩트 라인에 그 컬럼이 존재하는가**로만 결정된다.
+축은 결과를 **어떻게 묶을지**를 정하고 그레인을 결정한다. 필터는 **어떤 행을 대상으로 할지**를 정하고 그레인을 바꾸지 않는다. 따라서 축에 없는 값으로도 필터할 수 있으며, 필터 가능 여부는 **마스터 조인 후 라인에 그 값이 붙는가**로 결정된다(§3.6 3.5단계).
 
 실현손익과 자산 변화는 축이 고정이지만(§1.4) 팩트 라인에 계좌가 있으므로 계좌 필터가 성립한다.
 
@@ -379,10 +382,10 @@ SK하이닉스  매입   100만  평가   130만  → +30%
 렌즈는 **입력도 라인 집합, 출력도 라인 집합인 변환 함수**다. 출력 스키마가 입력과 동일하므로 하위 집계·비중·환산 로직은 변경되지 않는다.
 
 ```
-DIRECT       : [TIGER나스닥100  평가 500만]
+DIRECT       : [TIGER 미국나스닥100  평가 512,000]
                      │ lens = LOOK_THROUGH
                      ▼ ETF 1행 → 구성종목 N행으로 안분 (총합 보존)
-LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
+LOOK_THROUGH : [AAPL 148,000] [MSFT 121,000] … [기타 16,000]
 ```
 
 안분 시 발생하는 반올림 잔차는 기타 버킷에 흡수해 총합을 맞춘다.
@@ -425,9 +428,9 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 뷰는 코드가 아니라 사양 데이터다.
 
 ```json
-{ "view_key": "sector_weight",
+{ "view_key": "allocation",
+  "axis": "sector",
   "lens": "LOOK_THROUGH",
-  "group_by": ["sector"],
   "metrics": ["market_value_krw", "weight_pct"],
   "filters": { "account_type": "PENSION" } }
 ```
@@ -457,7 +460,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 - 필터는 마스터 조인 뒤에 적용한다. 계좌 필터는 전개가 `account_id`를 보존하므로 2단계 앞으로 밀어도 결과가 같으며, 이는 구현 최적화 여지로 남긴다.
 - **`position_basis`는 전량 재계산한다.** 증분 누적하면 기업행위나 과거 체결이 뒤늦게 도착했을 때 되돌릴 수 없다. 계좌×종목 단위로 확보 구간 전체를 매번 다시 접는다. 재계산 대상은 현재 열린 포지션의 확보 구간이며, 청산으로 리셋된 과거 구간은 재현하지 않는다.
 - `realized_pnl_line`은 PK가 `trade_id`라 upsert로 멱등하다. 재계산 범위에 드는 행만 갱신되고 나머지는 그대로다.
-- `LOOK_THROUGH`에서는 `lens_sensitive` 축으로 필터할 수 없다(§9.5). 전개가 종목 자체를 바꾸므로 전개 전후 어느 순서로 걸어도 답이 성립하지 않는다 — 자산군=ETF 필터는 전개 후 ETF가 존재하지 않아 항상 빈 목록이 된다.
+- `LOOK_THROUGH`에서는 `lens_sensitive` 축으로 필터할 수 없다(§9.3). 전개가 종목 자체를 바꾸므로 전개 전후 어느 순서로 걸어도 답이 성립하지 않는다 — 자산군=ETF 필터는 전개 후 ETF가 존재하지 않아 항상 빈 목록이 된다.
 
 ### 3.7 통화 표시
 
@@ -467,7 +470,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 
 | 묶음 | 단일 통화 | 표시 |
 |---|---|---|
-| 종목 1행 | ✓ | `$198.20 · 274,000원` 병기 |
+| 종목 1행 | ✓ | 평가금액을 `$612.30 · 848,000원`으로 병기 |
 | 통화 축 그룹 | ✓ | 해당 통화로 표시 |
 | 섹터 · 시장 · 자산군 · 계좌 · 포트폴리오 전체 | ✗ | 원화만 |
 
@@ -498,7 +501,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 | 비중 분석 | ● | | | 없음 |
 | 계좌별 | ● | | | 없음 |
 | **실현손익** | | | ● | **있음** |
-| **자산 변화** | ● | ● | ○ (분해 시만) | 잔차로 표현 |
+| **자산 변화** | ● | ● | ○ (분해 시만) | `split_available`로 표현 |
 
 6개 뷰 중 4개가 **항상 신뢰 가능한 원장만** 사용한다. 거래내역 불완전 리스크는 실현손익 뷰 한 곳에 갇힌다.
 
@@ -539,7 +542,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 
 분할이 매수와 매도 사이에 끼면 보정 없이는 평단이 부호까지 틀어진다 — 10주@100이 2:1 분할로 20주@50이 되는데 거래내역에는 매수 10@100만 남는다. 이력이 없으면 `ca_unknown` 플래그를 세운다(§4.4).
 
-`realized_pnl_line`은 **산출 시점 상태의 스냅샷**이다. 금액과 등급 모두 그때의 `position_basis`로 계산하며, 청산 리셋(§4.3)이나 등급 강등(§4.4) 이후에도 과거 행을 소급 수정하지 않는다. 분류 보정은 소급 반영하고(§3.3) 손익 산출은 시점을 고정하는 것이 이 스펙의 대비다.
+`realized_pnl_line`은 **산출 시점 상태의 스냅샷**이다. 금액과 등급 모두 그때의 `position_basis`로 계산하며, 위의 청산 리셋이나 등급 강등(§4.4) 이후에도 과거 행을 소급 수정하지 않는다. 분류 보정은 소급 반영하고(§3.3) 손익 산출은 시점을 고정하는 것이 이 스펙의 대비다.
 
 **불완전 거래내역 보정**
 
@@ -640,7 +643,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 
 #### 정규화 원본 — 데이터 소유
 
-기관별 응답 차이를 흡수한 결과이며 백엔드는 읽기만 한다.
+기관별 응답 차이를 흡수한 결과이며 백엔드는 읽기만 한다. `raw_*`는 기관 응답 원문 보관용이며 백엔드는 읽지 않는다.
 
 | 테이블 | 컬럼 |
 |---|---|
@@ -648,6 +651,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `cln_deposit` | `account_ref` · `currency` · `amount` decimal · `source_as_of` |
 | `cln_trade` | `trade_id` · `account_ref` · `isin` · `side` enum(`BUY`·`SELL`) · `quantity` · `price` · `fee` · `tax` · `currency` · `executed_at` timestamptz |
 | `cln_cashflow` | `account_ref` · `type` enum(`DEPOSIT`·`WITHDRAW`·`DIVIDEND`·`FEE`·`TAX`) · `amount` · `currency` · `occurred_at` timestamptz |
+| `collection_run` | 수집 실행·트리거 상태 (§7.7) |
 
 `cln_cashflow`는 **계좌 경계를 넘는 자금 이동과 계좌에 귀속되는 손익성 현금만** 담는다. 증권사 입출금내역은 매수대금 출금·매도대금 입금을 같은 응답에 담아 주므로 데이터가 걸러낸다. 매매대금이 `DEPOSIT`/`WITHDRAW`로 들어오면 매도 한 번에 그 금액만큼 손실이 표시되어 §2.9 항등식이 붕괴한다.
 
@@ -659,7 +663,6 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | 매매 수수료·거래세 | 체결가에 반영되어 실현손익 계산에 이미 쓰인다(§4.3). `FEE`/`TAX`는 계좌 관리수수료·환전수수료·배당소득세 등 **매매 외 비용만** |
 
 `DIVIDEND`는 원천이 준 금액을 그대로 쓴다. 원천징수 후 실입금액이면 그대로 두고 세전 환원을 시도하지 않는다 — 투자손익이 나머지 전부로 정의되므로 자동으로 정합한다.
-| `collection_run` | 수집 실행·트리거 상태 (§7.7) |
 
 #### 도메인 — 백엔드 소유
 
@@ -672,7 +675,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `account_type` | enum | `GENERAL` · `PENSION` |
 | `base_currency` | enum | |
 | `source` | enum | `KIS` · `CODEF` |
-| `connected_id_ref` | text null | CODEF 계좌만. 인증정보는 저장하지 않음 |
+| `credential_ref` | text null | 시크릿 매니저 키. KIS 앱키·CODEF Connected ID 공용. 값 자체는 저장하지 않음 |
 | `link_state` | enum | 연동 상태만. `CONNECTING`·`CONNECTED`·`REAUTH_REQUIRED`·`DISCONNECTED` (§7.2) |
 | `last_synced_at` | timestamptz null | |
 
@@ -684,7 +687,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `account_id` · `instrument_id` | uuid | |
 | `quantity` | decimal(20,8) | 소수 허용 |
 | `cost_amount_local` · `market_value_local` | decimal(20,4) | 매입금액은 `cln_balance.avg_price × quantity`. `position_basis`를 쓰지 않는다 |
-| `cost_amount_krw` · `market_value_krw` | decimal(20,2) | |
+| `cost_amount_krw` · `market_value_krw` | decimal(20,0) | 원화는 정수 |
 | `fx_rate` | decimal(18,6) | `market_value_krw`가 있으면 필수 |
 | `fx_as_of` | date | |
 | `source_as_of` | timestamptz | 계좌별 실제 데이터 시각 |
@@ -747,7 +750,7 @@ PK `(as_of, account_id, instrument_id)`
 
 **이것이 '환율 기준시점 관리' 요구사항의 구현 전부다** — 별도 기능이 아니라 컬럼 두 개.
 
-환율이 결측이면 **직전 영업일 환율로 폴백**하고 `fx_as_of`가 그 날짜를 가리킨다. `fx_as_of < as_of`가 곧 폴백의 증거이므로 별도 플래그를 두지 않으며, `FX_APPLIED` notice가 최고령 `fx_as_of`를 싣는 덕에 화면 고지도 자동으로 붙는다. 폴백이 5영업일을 넘으면 그 계좌를 캐리포워드로 처리한다.
+환율이 결측이면 **직전 영업일 환율로 폴백**하고 `fx_as_of`가 그 날짜를 가리킨다. `fx_as_of < as_of`가 곧 폴백의 증거이므로 별도 플래그를 두지 않으며, `FX_APPLIED` notice가 최고령 `fx_as_of`를 싣는 덕에 화면 고지도 자동으로 붙는다. 폴백이 5영업일을 넘으면 `FX_STALE` notice로 통화쌍을 표시한다. 잔고는 최신이므로 캐리포워드하지 않는다.
 
 `cost_amount_krw`도 같은 `fx_rate`로 환산하므로 **원화 평가손익에는 환손익이 포함되지 않는다.** 가격손익을 평가시점 환율로 환산한 값이다.
 
@@ -774,7 +777,7 @@ PK `(as_of, account_id, instrument_id)`
 | 항목 | 타입 | 근거 |
 |---|---|---|
 | 수량 | 소수 허용 | look-through 환산수량이 소수다 |
-| 금액 | 통화별 소수 자릿수 유지 (KRW 0, USD 2) | 반올림 위치가 총합 보존(§9.2)에 영향을 준다 |
+| 금액 | 통화별 소수 자릿수 유지. 원화 라인은 정수 | 반올림 위치가 총합 보존에 영향을 준다 |
 | 환율 | 소수 4자리 이상 | |
 | 비중 · 수익률 | 컬럼 없음 | §1.5 |
 
@@ -838,6 +841,7 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 | `weight_pct` | 비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `행 평가금액 ÷ total_assets_krw` |
 | `cash_ratio_pct` | 현금비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `CASH 평가 ÷ total_assets_krw` |
 | `instrument_count` | 종목수 | ✕ | 제외 | `ROW_AND_TOTAL` | `COUNT DISTINCT 종목` |
+| `account_count` | 계좌수 | ✕ | 포함 | — | `COUNT DISTINCT 계좌` |
 
 **가산** — ○ 은 행을 더해도 되는 값, ✕ 는 집계 결과에만 적용 가능하며 라인 단위로 더하면 틀리는 값이다(§1.5).
 
@@ -865,17 +869,21 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 ```
 
 - `row_fields[]` — 공통 행 스키마(§8.3)에 더해지는 필드. 계좌별 뷰만 `link_state` · `last_collection`을 갖는다.
-- `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서는 `lens_sensitive` 축이 빠진다(§9.5).
+- `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서는 `lens_sensitive` 축이 빠진다(§9.3).
 - `sub_blocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. 요약만 해당하며 `lens_policy`는 뷰 전체가 아니라 이 블록에 붙는다.
 
 | view_key | 그레인 | group_by | 지표 | 필터 | 렌즈 | 원장 |
 |---|---|---|---|---|---|---|
 | `summary` | 전체 1행 | `[]` | 총자산 · 유가증권 평가금액 · 매입금액 · 평가손익(률) · 현금비중 · 일간 변화(금액/률) · 계좌수 · 종목수 | — | `NONE` (미니차트 `sub_block`에 `OPTIONAL`) | 스냅샷 |
 | `positions` | 종목 | `[instrument]` | 수량 · 평단 · 매입금액 · 평가금액 · 평가손익(률) · 비중 | 계좌 · 시장 · 자산군 | `OPTIONAL` | 스냅샷 |
-| `allocation` | 축 값 | 축 1개 택일 | 평가금액 · 비중 · 종목수 | — | `OPTIONAL` | 스냅샷 |
+
+정렬은 평가금액 내림차순 고정이며 요청 파라미터로 받지 않는다.
+| `allocation` | 축 값 | 축 1개 택일 | 평가금액 · 비중 · 종목수 | 계좌 · 계좌유형 | `OPTIONAL` | 스냅샷 |
 | `accounts` | 계좌 | `[account_type, account]` | 평가금액 · 예수금 · 평가손익(률) · 비중 | — | `NONE` | 스냅샷 |
 | `realized-pnl` | 기간 × 종목 × 체결 | `[instrument, trade]` | 매도금액 · 취득원가 · 실현손익(률) | 계좌 · 기간 | `NONE` | 거래 |
-| `asset-change` | 기간 × 유형 | `[cashflow_type]` | 금액 | 계좌 · 기간 | `NONE` | 스냅샷 + 현금흐름 |
+| `asset-change` | 기간 × 유형 | — | — | 계좌 · 기간 | `NONE` | 스냅샷 + 현금흐름 |
+
+`realized-pnl`과 `asset-change`는 공통 행 스키마를 쓰지 않는다. 응답 형태는 §8.4가 정의한다.
 
 `lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다. `OPTIONAL`인 뷰에서 렌즈를 켜면 `lens_safe`가 `TOTAL_ONLY`·`NEVER`인 지표가 행에서 빠진다.
 
@@ -883,7 +891,7 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 
 ### 6.4 서빙 계약
 
-뷰 사양은 서버가 보유한다. 클라이언트는 `view_key`와 카탈로그에 정의된 파라미터만 보내며, 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다. `Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 요청 검증은 카탈로그 대조로 끝난다. 엔드포인트와 응답 스키마는 §8.
+뷰 사양은 서버가 보유한다. 클라이언트는 `view_key`와 카탈로그에 정의된 파라미터만 보내며, 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다. **스냅샷 4개 뷰**는 `Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 요청 검증이 카탈로그 대조로 끝난다. 실현손익·자산 변화는 원장이 달라 축·지표가 고정이므로(§1.4) `period`·`account`만 검증한다. 엔드포인트와 응답 스키마는 §8.
 
 ---
 
@@ -958,7 +966,7 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 |---|---|---|
 | 일부 계좌 실패 | **포함**(이월값) | 요약 상단 `1개 계좌가 07-26 기준입니다` |
 | 재인증 필요 | 포함(이월값) | 계좌별 뷰 배지 + 재인증 CTA |
-| 연동 해제 | **제외** | 자산 변화 뷰에 `계좌 연동 해제 −X원` 별도 항목 |
+| 연동 해제 | **제외** | 자산 변화 뷰의 `－ 계좌 제외` 항목 |
 
 실패 계좌를 총자산에서 제외하면 자산이 급감해 더 큰 오해를 낳는다. **포함하되 낡았다고 말하는 쪽**이 안전하다. 연동 해제는 사용자가 의도한 행위이므로 제외하되, 손실로 오인되지 않게 자산 변화 뷰에서 별도 항목으로 분리한다.
 
@@ -984,6 +992,7 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 | `account_ref` | text | |
 | `requested_by` | enum | `SCHEDULE` · `USER` |
 | `state` | enum | `REQUESTED` · `RUNNING` · `DONE` · `FAILED` · `REAUTH_REQUIRED` |
+| `credential_ref` | text null | 픽업 시 전달되는 단기 참조 (§11.2) |
 | `as_of` | date | 수집 대상 기준일자 |
 | `requested_at` · `finished_at` | timestamptz | |
 | `failure_reason` | text null | |
@@ -1010,7 +1019,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 구분 | 경로 |
 |---|---|
 | 뷰 | `GET /portfolio/views/summary` |
-| | `GET /portfolio/views/positions?lens=&account=` |
+| | `GET /portfolio/views/positions?lens=&account=&market=&asset_class=` |
 | | `GET /portfolio/views/allocation?axis=&lens=` |
 | | `GET /portfolio/views/accounts` |
 | | `GET /portfolio/views/realized-pnl?period=&account=` |
@@ -1020,7 +1029,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 동기화 | `POST /sync` → `202` · `GET /sync/{run_id}` |
 | 카탈로그 | `GET /portfolio/catalog` |
 
-카탈로그 엔드포인트는 뷰별 허용 축·렌즈·필터 옵션과 연동 계좌 목록을 내린다. 허용 필터는 **렌즈 상태별로** 내려, `LOOK_THROUGH`에서 비활성화되는 필터(§9.5)를 클라이언트가 따로 판단하지 않게 한다. 클라이언트가 이 목록을 하드코딩하면 축 하나를 늘릴 때 앱 배포가 필요해져 서버가 뷰 사양을 갖는 의미가 사라진다.
+카탈로그 엔드포인트는 뷰별 허용 축·렌즈·필터 옵션과 연동 계좌 목록을 내린다. 허용 필터는 **렌즈 상태별로** 내려, `LOOK_THROUGH`에서 비활성화되는 필터(§9.3)를 클라이언트가 따로 판단하지 않게 한다. 클라이언트가 이 목록을 하드코딩하면 축 하나를 늘릴 때 앱 배포가 필요해져 서버가 뷰 사양을 갖는 의미가 사라진다.
 
 ### 8.2 응답 봉투
 
@@ -1049,7 +1058,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `FX_APPLIED` | 원화 환산에 적용한 환율 (§2.3) | 통화쌍별 배열 + 최고령 `fx_as_of`. 라인마다 환율이 달라 단일 값으로 표기할 수 없다 |
 | `STALE_ACCOUNTS` | 캐리포워드된 계좌 존재 (§7.3) | `count` · 최고령 `source_as_of` |
 | `CONSTITUENT_AS_OF` | 렌즈 적용 시 구성비중 기준일 (§3.4) | 최고령 기준일 + 대상 ETF 수. ETF마다 파일 갱신 주기가 달라 단일 날짜가 성립하지 않는다 |
-| `CONSTITUENT_UNAVAILABLE` | 구성종목 미확보 ETF 존재 (§12) | `count` · 미분해 평가금액 |
+| `CONSTITUENT_UNAVAILABLE` | 구성종목 미확보 ETF 존재 (§3.4) | `count` · 미분해 평가금액 |
 | `LENS_METRICS_OMITTED` | `TOTAL_ONLY` 지표가 행에서 빠짐 (§6.2) | 생략된 지표 키 배열 |
 | `EXCLUDED_ACCOUNTS` | 실현손익 합계에서 빠진 계좌 (§2.8) | `count` |
 | `SEEDED_ROWS` | 추정 등급 행 존재 (§4.5) | `count` |
@@ -1060,7 +1069,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `REAUTH_REQUIRED` | 재인증 대기 계좌 존재 (§7.2) | `count` |
 | `SYNC_IN_PROGRESS` | 동기화 진행 중 | `sync_run_id` |
 | `PRICE_LAG_MARKET` | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 |
-| `ALREADY_FINAL` | EOD 확정 후 수동 동기화 요청 | 확정 시각 |
+| `ALREADY_FINAL` | EOD 확정 후 또는 비영업일 수동 동기화 요청 | 확정 시각 |
+| `FX_STALE` | 환율 폴백이 5영업일을 넘음 (§5.3) | 통화쌍 · `fx_as_of` |
 
 **빈 상태는 notices가 아니라 봉투 필드로 표현한다.** `rows`가 비면 `empty_reason`이 필수다. 빈 상태마다 코드를 만들면 뷰가 늘 때마다 코드가 증식한다.
 
@@ -1078,7 +1088,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 ```json
 {
   "group_by": ["sector"],
-  "lens": "look_through",
+  "lens": "DIRECT",
   "total": { "total_assets_krw": 58000000, "securities_value_krw": 54300000,
              "deposit_krw": 3700000, "cost_amount_krw": 49200000,
              "unrealized_pnl_krw": 5100000, "unrealized_pnl_pct": 10.4,
@@ -1098,14 +1108,14 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 
 ```json
 { "total": { "total_assets_krw": 58000000, "daily_change_krw": 1240000,
-             "daily_change_pct": 2.1, "cash_ratio_pct": 6.4 },
-  "mini_chart": { "group_by": ["asset_class"], "lens": "look_through",
-                  "rows": [ { "key": "kr_stock", "label": "국내주식",
+             "daily_change_pct": 2.2, "cash_ratio_pct": 6.4 },
+  "mini_chart": { "group_by": ["market"], "lens": "LOOK_THROUGH",
+                  "rows": [ { "key": "KR", "label": "국내주식",
                               "market_value_krw": 25520000, "weight_pct": 44.0 } ] } }
 ```
 - 단일 통화 행에는 현지 통화 값을 함께 싣는다(§3.7).
 - `Σ rows.market_value_krw = total.total_assets_krw`가 항상 성립한다. 손익 계열은 `securities_value_krw`를 기준으로 하므로 `securities_value_krw − cost_amount_krw = unrealized_pnl_krw`도 성립한다.
-- `lens = look_through`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 빠지고 `total`에만 남는다.
+- `lens = LOOK_THROUGH`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 빠지고 `total`에만 남으며 `LENS_METRICS_OMITTED` notice가 붙는다. 위 예시의 `rows[]`에서 `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` 세 개가 사라진다.
 - CASH 행의 원가·손익은 `null`로 내린다.
 
 ### 8.4 실현손익 · 자산 변화 응답
@@ -1133,7 +1143,9 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
   "opening": 50000000, "closing": 58000000,
   "deposited": 6000000,
   "earned": 2000000,
-  "account_scope_change": 0,
+  "account_included": 0, "account_excluded": 0,
+  // breakdown[].type = DEPOSIT · WITHDRAW · DIVIDEND · FEE_TAX
+  //                    · INVESTMENT_PNL   (표시 유형이며 cln_cashflow.type과 별개)
   "breakdown": [ { "type": "DEPOSIT", "amount": 6000000 },
                  { "type": "DIVIDEND", "amount": 120000 },
                  { "type": "FEE_TAX", "amount": -30000 },
@@ -1142,16 +1154,18 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
                       "unrealized_change": 1060000, "split_available": true } }
 ```
 
+실현손익 응답에서 **종목 노드의 `grade`는 4값에 `MIXED`를 더한 5값**이고 체결 노드는 4값이다. `MIXED`는 저장되지 않으며 응답 조립 시에만 생긴다.
+
 `split_available`이 `false`이면 거래 원장이 없어 실현/미실현 분해를 생략한 것이다. `total`은 항상 정확하다(§2.9).
 
-`account_scope_change`는 §2.9 워터폴이 편입과 제외를 별도 행으로 그리므로 `account_included` · `account_excluded` 두 값으로 나눈다.
+계좌 편입·제외는 §2.9 워터폴이 별도 행으로 그리므로 `account_included` · `account_excluded` 두 최상위 필드로 둔다. `breakdown[]`에 넣지 않는다.
 
 ### 8.5 하위 화면 · 계좌 · 동기화 응답
 
 ```json
 // GET /portfolio/instruments/{id}
 { "instrument": { "id": "...", "label": "삼성전자", "market": "KR", "currency": "KRW" },
-  "position": { "quantity": 10, "avg_cost": 65600, "market_value_krw": 712000,
+  "position": { "quantity": 10, "avg_cost": 65610, "market_value_krw": 712000,
                 "unrealized_pnl_krw": 55900, "unrealized_pnl_pct": 8.5 },
   "by_account": [ { "account_id": "...", "label": "한국투자 위탁",
                     "account_type": "GENERAL", "quantity": 7, "avg_cost": 64200 } ],
@@ -1194,8 +1208,8 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 지연 배너 | `STALE_ACCOUNTS` notice (`is_carried_forward` 집계) |
 | 새로고침 | `POST /sync` → `sync_run` |
 | 총자산 | `Σ market_value_krw` (CASH 포함) |
-| 총평가손익 | `Σ market_value − Σ cost_amount` |
-| 일간 변화 | 당일 `as_of` 총자산 − 전일 `as_of` 총자산 |
+| 총평가손익 | `Σ market_value − Σ cost_amount` (CASH 제외) |
+| 일간 변화 | 당일 − 직전 `as_of`의 `total_assets_krw` |
 | 비중 | `Σ market_value_krw ÷ 전체 Σ` |
 | 현지 통화 병기 | 단일 통화 행의 `*_local` |
 | 렌즈 토글 | `View.lens_policy = OPTIONAL` 인 뷰에서만 노출 |
@@ -1205,6 +1219,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 신뢰도 배지 | `position_basis.grade` → `realized_pnl_line.grade` |
 | 미포함 계좌 N개 | `EXCLUDED_ACCOUNTS` notice |
 | 워터폴 막대 | `breakdown[]` |
+| 계좌 편입·제외 막대 | 최상위 `account_included` · `account_excluded` |
 | 투자손익 | `Δ총자산 − 넣은 돈 − 배당 + 수수료 − 계좌 편입·제외` |
 | 커버리지 경고 | `CASHFLOW_UNCOVERED` notice |
 
@@ -1212,53 +1227,48 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 
 ## 9. 검증 규칙
 
-저장·집계 전 **앱 계층에서 반드시 통과**해야 한다.
+강제 지점이 다른 세 묶음으로 나눈다. 첫 묶음만 저장·집계 전 앱 계층에서 실행 시점에 검사한다.
 
-### 9.1 팩트 정합성
+### 9.1 런타임 검증 — 저장·집계 전 통과
+
+**팩트 정합성**
 
 | 규칙 |
 |---|
 | `position_line`은 (as_of, account, instrument)마다 **정확히 1행** — 그레인 유일성 |
-| 비율 성격 컬럼(수익률·비중)은 스키마에 존재 불가 |
 | `market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수 (null 금지) |
 | 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 |
 | 그날 `collection_run` 최종 상태가 `DONE`이 아니면 캐리포워드 |
 | `is_carried_forward = true`이면 `source_as_of < as_of` |
 | `as_of`는 국내 증시 영업일에만 생성. 당일 외의 `as_of` 행은 수정 불가 |
+| 비영업일 `collection_run`은 라인을 만들지 않는다 |
 | `is_final = true`인 행은 수동 동기화가 덮지 않는다 |
-| `fx_rate` 결측 시 직전 영업일로 폴백하고 `fx_as_of`에 그 날짜를 기록. 5영업일 초과 시 캐리포워드 |
-| 현지 통화 표시는 묶음이 단일 통화일 때만 허용. 그 외 집계 값은 원화 |
+| `fx_rate` 결측 시 직전 영업일로 폴백하고 `fx_as_of`에 그 날짜를 기록 |
 | `position_line.cost_amount`는 잔고 평단 기준. `position_basis`를 참조하지 않는다 |
-| CASH 행은 원가 = 평가금액으로 저장하되 손익 계열 집계에서 제외 |
-| 비중의 분모는 `total_assets_krw`(CASH 포함), 손익률의 분모는 `cost_amount_krw`(CASH 제외) |
 
-### 9.2 렌즈
-
-| 규칙 |
-|---|
-| look-through 전개 후 `Σ market_value`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) |
-| `etf_constituent` 재귀 깊이 제한 + 순환 참조 차단 |
-| `LOOK_THROUGH` 결과에는 평단 필드가 존재하지 않음 |
-| `lens_safe = TOTAL_ONLY` 지표는 `LOOK_THROUGH` 응답의 `rows[]`에서 제외하고 `total`에만 포함 |
-| 렌즈 적용 화면은 `etf_constituent.as_of`를 반드시 함께 노출 |
-
-### 9.3 평단 · 실현손익 · 등급
+**평단 · 실현손익 · 등급**
 
 | 규칙 |
 |---|
 | 등급 판정은 `corporate_action` 반영 **후**의 수량으로 계산 |
-| `realized_pnl_line.grade`는 **산출 시점의 스냅샷**이며 이후 갱신하지 않는다 |
-| `SEEDED`이면 `seed_avg_price` 필수 |
-| `UNAVAILABLE`·`CONFLICT` 종목은 실현손익 합계에서 제외하되 제외 건수를 노출 |
-| 보유수량이 0이 되면 `position_basis` 리셋 |
-| 실현손익의 기간 귀속은 **체결일** 기준 |
-| 등급 판정의 좌변 수량은 `position_line.quantity`. `position_basis`에서 재구성한 수량을 쓰지 않는다 |
-| `ca_unknown`은 `ca_coverage` 대조로 판정 |
-| `realized_pnl_line`은 `trade_id` upsert로만 생성 (insert-only 금지) |
+| 등급 판정의 좌변 수량은 `position_line.quantity`. 재구성 수량을 쓰지 않는다 |
 | 등급 판정은 `position_line.as_of` 기준으로 정렬된 두 원장으로만 수행. 역산 체결은 `executed_at <= as_of` |
+| `SEEDED`이면 `seed_avg_price` 필수 |
+| `ca_unknown`은 `ca_coverage` 대조로 판정 |
+| 보유수량이 0이 되면 `position_basis` 리셋 |
+| `realized_pnl_line`은 `trade_id` upsert로만 생성 (insert-only 금지) |
+| `realized_pnl_line.grade`는 **산출 시점의 스냅샷**이며 이후 갱신하지 않는다 |
+| 실현손익의 기간 귀속은 **체결일** 기준 |
 | 외화 실현손익은 매입일·매도일 환율을 각각 적용 |
 
-### 9.4 자산 변화
+**렌즈**
+
+| 규칙 |
+|---|
+| look-through 전개 후 `Σ market_value`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) |
+| `etf_coverage.state = UNAVAILABLE`인 ETF는 전개하지 않고 ETF 행을 남긴다 |
+
+**자산 변화**
 
 | 규칙 |
 |---|
@@ -1266,21 +1276,39 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 투자손익은 나머지 전부로 정의 — 별도 잔차 항목을 두지 않는다 |
 | 계좌 편입·제외는 손익이 아닌 별도 항목. "넣은 돈"·"번 돈" 어디에도 넣지 않는다 |
 | 배당·수수료·세금은 "번 돈"에 귀속 |
-| 현금흐름 미확보 계좌가 있으면 경고 표시 |
-| `cln_cashflow`에 매매대금·예수금 내부 이동·환전·매매 수수료가 포함되지 않음 (§5.1) |
-| 기간 경계 스냅샷에 캐리포워드 계좌가 있으면 경고 표시 |
 
----
+### 9.2 스키마 · 코드 규약 — 마이그레이션과 코드 리뷰에서 강제
 
-### 9.5 요청 검증
+| 규칙 | 강제 지점 |
+|---|---|
+| 비율 성격 컬럼(수익률·비중)은 스키마에 존재 불가 | 마이그레이션 리뷰 |
+| `LOOK_THROUGH` 결과에는 평단 필드가 존재하지 않음 | 코드 리뷰 |
+| `additive = false` 지표는 라인 단위 합산 금지 — 집계 후에만 계산 | 코드 리뷰 |
+| CASH 행은 원가 = 평가금액으로 저장(§5.2) | 마이그레이션 리뷰 |
+
+### 9.3 요청 검증과 응답 조립
+
+**요청**
 
 | 규칙 |
 |---|
-| `view_key` · `axis` · `lens` · 필터 값은 카탈로그(§6)에 정의된 것만 허용 |
-| `lens = LOOK_THROUGH`이면 `lens_safe = false` 지표를 응답에서 제외 |
-| `additive = false` 지표는 라인 단위 합산 금지 — 집계 후에만 계산 |
+| `view_key` · `axis` · `lens` · 필터 값은 카탈로그(§6)에 정의된 것만 허용 (스냅샷 4개 뷰) |
 | 비활성 축(`is_leveraged` 등)은 요청 시 거부 |
-| `lens = LOOK_THROUGH`이면 `lens_sensitive = true` 축의 필터를 거부. 계좌 필터만 허용 |
+| `lens = LOOK_THROUGH`이면 `lens_sensitive = true` 축의 필터를 거부. 계좌 계열만 허용 |
+
+**응답**
+
+| 규칙 |
+|---|
+| `lens = LOOK_THROUGH`이면 `lens_safe = NEVER` 지표를 제외, `TOTAL_ONLY` 지표를 `rows[]`에서만 제외 |
+| 렌즈 적용 응답은 `CONSTITUENT_AS_OF` notice를 함께 싣는다 |
+| 현지 통화 표시는 묶음이 단일 통화일 때만 허용. 그 외 집계 값은 원화(§3.7) |
+| 비중의 분모는 `total_assets_krw`, 손익률의 분모는 `cost_amount_krw`(§6.2) |
+| `UNAVAILABLE`·`CONFLICT` 종목은 실현손익 합계에서 제외하되 제외 건수를 노출 |
+| 현금흐름 미확보 계좌, 기간 경계 캐리포워드 계좌는 notice로 표시 |
+| `rows`가 비면 `empty_reason` 필수(§8.2) |
+
+`etf_constituent`의 재귀 깊이 제한·순환 참조 차단과 `cln_cashflow`의 매매대금 배제는 **데이터 제공 계약**이며 백엔드에서 판정하지 않는다(§11.2).
 
 ---
 
@@ -1328,7 +1356,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 산출물 | 제공 → 소비 | 합의가 필요한 것 |
 |---|---|---|
 | 종목 마스터 | 데이터 → 백엔드 | 스키마 · 갱신 주기 · ISIN 미매칭 처리 |
-| ETF 구성비중(평탄화) | 데이터 → 백엔드 | 스키마 · `as_of` · 비중 합 보장 여부 |
+| ETF 구성비중(평탄화) | 데이터 → 백엔드 | 스키마 · `as_of` · 비중 합 보장 여부 · 깊이 제한 · 순환 참조 차단 |
 | 환율(일별) | 데이터 → 백엔드 | 통화쌍 · 소수 자릿수 · 결측 처리 |
 | 원본 잔고·거래·입출금 | 데이터 → 백엔드 | 정규화 수준 · 중복 처리 · 조회 기간 한계 |
 | `collection_run` | 양방향 | 상태 전이 규칙 · 픽업 주기 · 재시도 정책 (§7.7) |
@@ -1352,7 +1380,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 - **기간수익률(TWR·MWR)**: 입출금 타이밍을 보정한 수익률로 절대금액 손익이 대체하지 못한다. 기초·기말 스냅샷과 기간 현금흐름이 있어 **계산 입력은 이미 확보돼 있으나** 우선순위가 아니다.
 - **배당의 종목별 귀속**: 계좌 단위 현금흐름으로만 집계한다. 자산 변화 워터폴의 배당 행은 제공하되 어느 종목에서 나왔는지는 따지지 않는다.
 - **포트폴리오 스냅샷 비교·백테스트**: 후속 과제.
-- **과거 시점 화면 재현**: 전개 결과와 적용한 구성비중 버전을 저장하지 않으므로 과거 날짜의 ETF 분해는 재현하지 않는다.
+- **과거 시점 화면 재현**: 전개 시 어느 `as_of`의 구성비중을 썼는지 기록하지 않고 조회 시 항상 최신을 쓰므로, 과거 날짜의 분해를 그때 보였던 값으로 재현하지 않는다.
 - **미국 종가의 당일 반영**: 한국 EOD 시점에 미국 시장이 열리지 않았으므로 직전 미국 영업일 종가를 쓰고 나중에 소급하지 않는다(§5.4).
 - **미실현 평가손익의 환손익 분리**: 미실현 평가손익은 양변을 같은 환율로 환산해 환손익이 애초에 들어가지 않는다(§5.3). 실현손익은 매입일·매도일 환율을 각각 적용해 환손익을 포함하며(§4.3), 이를 가격손익과 분리하지 않는다.
 - **사전 집계**: 보유 규모상 조회 시 집계로 충분하므로 집계 캐시나 전개 결과 저장을 두지 않는다(§3.3 · §3.4).
