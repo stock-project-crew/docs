@@ -646,31 +646,69 @@ sync_run          account · 시작·종료 · 상태 · 실패사유 · 재인�
 
 ## 6. 카탈로그
 
-뷰가 6개로 고정이므로 운영자 UI 없이 **코드 시드 상수**로 둔다.
+뷰가 6개로 고정이고 운영자가 런타임에 뷰를 추가할 일이 없으므로 **코드 상수**로 둔다. DB 테이블이 아니다.
+
+### 6.1 축
 
 ```
-Axis    { key, label, source, applicable_views[], lens_sensitive }
-          account · account_type · instrument · sector · market
-          · currency · asset_class · is_leveraged(원천 확보 시)
-
-Metric  { key, label, additive, formula, requires_ledger }
-          additive=false 지표는 group_by 결과에만 적용 가능하도록 강제
-
-View    { view_key, question, grain, group_by[], metrics[], filters[],
-          lens_policy: NONE | OPTIONAL | ALWAYS, ledgers[] }
-          filters[]는 축과 무관하게 허용되는 필터 목록 (§3.3)
+Axis { key, label, source, applicable_views[], lens_sensitive }
 ```
 
-`lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다.
+| key | 라벨 | 출처 | 사용 뷰 | 렌즈 영향 |
+|---|---|---|---|---|
+| `account` | 계좌 | 계좌 마스터 | 계좌별 | 없음 |
+| `account_type` | 계좌유형 | 계좌 마스터 | 계좌별 | 없음 |
+| `instrument` | 종목 | 종목 마스터 | 종목별 · 비중 분석 | 받음 |
+| `sector` | 섹터 | 종목 마스터 | 비중 분석 | 받음 |
+| `market` | 시장 | 종목 마스터 | 비중 분석 · 요약 미니차트 | 받음 |
+| `currency` | 통화 | 종목 마스터 | 비중 분석 | 받음 |
+| `asset_class` | 자산군 | 종목 마스터 | 비중 분석 · 요약 미니차트 | 받음 |
+| `is_leveraged` | 레버리지 | 종목 속성 | 비중 분석 | 받음 |
 
-| 뷰 | lens_policy |
-|---|---|
-| 요약 | `OPTIONAL` (미니차트 한정) |
-| 종목별 | `OPTIONAL` |
-| 비중 분석 | `OPTIONAL` |
-| 계좌별 · 실현손익 · 자산 변화 | `NONE` |
+계좌 축이 렌즈 영향을 받지 않는 이유는 look-through가 총합을 보존하기 때문이다. 그래서 계좌별 뷰에는 렌즈를 노출하지 않는다(§2.7). `is_leveraged`는 원천 확보 전까지 비활성이다.
 
-**서빙 계약**
+### 6.2 지표
+
+```
+Metric { key, label, additive, lens_safe, formula, requires_ledger }
+```
+
+| key | 라벨 | 가산 | 렌즈 | 계산 |
+|---|---|---|---|---|
+| `quantity` | 수량 | ○ | ○ | `Σ 수량` |
+| `cost_amount_krw` | 매입금액 | ○ | ○ | `Σ 매입금액` |
+| `market_value_krw` | 평가금액 | ○ | ○ | `Σ 평가금액` |
+| `unrealized_pnl_krw` | 평가손익 | ○ | ○ | `Σ평가 - Σ매입` |
+| `realized_pnl_krw` | 실현손익 | ○ | ✕ | `Σ 실현손익` |
+| `instrument_count` | 종목수 | ✕ | ○ | `COUNT DISTINCT 종목` |
+| `avg_cost` | 평단 | ✕ | **✕** | `Σ매입 ÷ Σ수량` |
+| `unrealized_pnl_pct` | 평가손익률 | ✕ | **✕** | `평가손익 ÷ Σ매입` |
+| `weight_pct` | 비중 | ✕ | ○ | `Σ평가 ÷ 전체 Σ평가` |
+| `cash_ratio_pct` | 현금비중 | ✕ | ○ | `CASH 평가 ÷ 총평가` |
+
+- **가산 ○** 은 행을 더해도 되는 값, **가산 ✕** 는 집계 결과에만 적용 가능하며 라인 단위로 더하면 틀리는 값이다(§1.5).
+- **렌즈 ✕** 는 `LOOK_THROUGH` 결과에서 제공하지 않는다. 평단은 매입 시점 구성비중을 알 수 없어 정의가 성립하지 않고(§3.4), 손익률은 평단에 의존한다. 실현손익은 ETF 단위로 체결되므로 분해 대상이 아니다.
+- 평가손익은 파생 지표이지만 가산 가능하다. 저장하지 않는 이유는 가산 불가여서가 아니라 중복 저장을 피하기 위해서다.
+
+### 6.3 뷰
+
+```
+View { view_key, question, grain, group_by[], metrics[], filters[],
+       lens_policy: NONE | OPTIONAL | ALWAYS, ledgers[] }
+```
+
+| view_key | 그레인 | group_by | 지표 | 필터 | 렌즈 | 원장 |
+|---|---|---|---|---|---|---|
+| `summary` | 전체 1행 | `[]` | 평가금액 · 매입금액 · 평가손익(률) · 현금비중 | — | `OPTIONAL` 미니차트 한정 | 스냅샷 |
+| `positions` | 종목 | `[instrument]` | 수량 · 평단 · 매입금액 · 평가금액 · 평가손익(률) · 비중 | 계좌 · 시장 · 자산군 | `OPTIONAL` | 스냅샷 |
+| `allocation` | 축 값 | 축 1개 택일 | 평가금액 · 비중 · 종목수 | — | `OPTIONAL` | 스냅샷 |
+| `accounts` | 계좌 | `[account_type, account]` | 평가금액 · 예수금 · 평가손익(률) · 비중 | — | `NONE` | 스냅샷 |
+| `realized-pnl` | 기간 × 종목 | `[instrument]` | 매도금액 · 취득원가 · 실현손익(률) | 계좌 · 기간 | `NONE` | 거래 |
+| `asset-change` | 기간 × 유형 | `[cashflow_type]` | 금액 | 계좌 · 기간 | `NONE` | 스냅샷 + 현금흐름 |
+
+`lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다. `OPTIONAL`인 뷰에서 렌즈를 켜면 `lens_safe = ✕`인 지표가 응답에서 빠진다.
+
+### 6.4 서빙 계약
 
 뷰 사양은 서버가 보유한다. 클라이언트는 `view_key`와 카탈로그에 정의된 파라미터만 보내며, 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다. `Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 요청 검증은 카탈로그 대조로 끝난다. 엔드포인트와 응답 스키마는 §8.
 
@@ -938,6 +976,17 @@ View    { view_key, question, grain, group_by[], metrics[], filters[],
 | 배당·수수료·세금은 "번 돈"에 귀속 |
 | 현금흐름 미확보 계좌가 있으면 경고 표시 |
 | 기간 경계 스냅샷에 캐리포워드 계좌가 있으면 경고 표시 |
+
+---
+
+### 9.5 요청 검증
+
+| 규칙 |
+|---|
+| `view_key` · `axis` · `lens` · 필터 값은 카탈로그(§6)에 정의된 것만 허용 |
+| `lens = LOOK_THROUGH`이면 `lens_safe = false` 지표를 응답에서 제외 |
+| `additive = false` 지표는 라인 단위 합산 금지 — 집계 후에만 계산 |
+| 비활성 축(`is_leveraged` 등)은 요청 시 거부 |
 
 ---
 
