@@ -16,6 +16,8 @@
 
 평가금액·손익은 **EOD 일배치**로 계산한다(실시간 아님). 사용자는 필요할 때 수동 새로고침으로 온디맨드 동기화를 트리거한다.
 
+본인 키로 본인 계좌만 연동하는 **단일 사용자 전제**다. 테이블에 `user_id`를 두지 않으며, 멀티유저 전환 시 소유권 축과 자격증명 보관 모델을 다시 설계한다.
+
 ### 1.2 축
 
 보유 자산의 **현재 상태**를 여러 기준으로 집계해 보여준다. 지원 축과 각 축이 요구하는 데이터는 다음과 같다. (기간 기준 집계는 그레인이 달라 별도 원장에서 다룬다 — §1.4)
@@ -616,6 +618,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `cln_deposit` | `account_ref` · `currency` · `amount` decimal · `source_as_of` |
 | `cln_trade` | `trade_id` · `account_ref` · `isin` · `side` enum(`BUY`·`SELL`) · `quantity` · `price` · `fee` · `tax` · `currency` · `executed_at` timestamptz |
 | `cln_cashflow` | `account_ref` · `type` enum(`DEPOSIT`·`WITHDRAW`·`DIVIDEND`·`FEE`·`TAX`) · `amount` · `currency` · `occurred_at` timestamptz |
+| `collection_run` | 수집 실행·트리거 상태 (§7.7) |
 
 #### 도메인 — 백엔드 소유
 
@@ -863,6 +866,32 @@ View { view_key, question, grain, group_by[], metrics[], filters[],
 
 동기화는 무겁고 느리므로 **항상 비동기**다. 새로고침은 즉시 응답하고 진행 상태만 표시한다.
 
+### 7.7 팀 경계 오케스트레이션
+
+증권사 호출은 데이터가 하고 `position_line` 생성은 백엔드가 하므로(§11.1), 두 단계를 잇는 계약이 필요하다. 데이터 소유 `collection_run` 테이블 하나로 양방향을 처리한다.
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `run_id` | uuid PK | |
+| `account_ref` | text | |
+| `requested_by` | enum | `SCHEDULE` · `USER` |
+| `state` | enum | `REQUESTED` · `RUNNING` · `DONE` · `FAILED` · `REAUTH_REQUIRED` |
+| `as_of` | date | 수집 대상 기준일자 |
+| `requested_at` · `finished_at` | timestamptz | |
+| `failure_reason` | text null | |
+
+```
+수동 새로고침   백엔드가 REQUESTED 행 삽입 → 데이터 잡이 집어감
+EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
+수집 종료      데이터가 cln_* 기록 후 DONE / FAILED / REAUTH_REQUIRED 로 전이
+1단계 실행     백엔드가 계좌별 최종 상태를 읽어 진행
+```
+
+- **계좌 단위로 독립**이다. 한 계좌가 `FAILED`여도 나머지는 진행하고, 실패 계좌는 캐리포워드한다(§7.3).
+- `REAUTH_REQUIRED`는 계좌 상태로 옮겨 재인증 흐름에 태운다(§7.2).
+- 백엔드의 `sync_run`은 사용자에게 보여줄 진행 상태를 담고, `collection_run`을 참조한다.
+- 큐 인프라 없이 테이블 하나로 트리거·완료·부분 실패가 모두 표현된다.
+
 ---
 
 ## 8. API 계약
@@ -1109,8 +1138,9 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | ETF 구성비중(평탄화) | 데이터 → 백엔드 | 스키마 · `as_of` · 비중 합 보장 여부 |
 | 환율(일별) | 데이터 → 백엔드 | 통화쌍 · 소수 자릿수 · 결측 처리 |
 | 원본 잔고·거래·입출금 | 데이터 → 백엔드 | 정규화 수준 · 중복 처리 · 조회 기간 한계 |
+| `collection_run` | 양방향 | 상태 전이 규칙 · 픽업 주기 · 재시도 정책 (§7.7) |
 
-테이블 소유는 §5.1을 따른다. 데이터는 `raw_*` · `cln_*` · `instrument` · `etf_constituent` · `fx_rate` · `corporate_action`을, 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`을 소유한다.
+테이블 소유는 §5.1을 따른다. 데이터는 `raw_*` · `cln_*` · `collection_run` · `instrument` · `etf_constituent` · `fx_rate` · `corporate_action`을, 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`을 소유한다.
 
 ---
 
@@ -1141,6 +1171,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 레버리지 구분 | 원천 확보 시 `instrument.is_leveraged` 축 활성화 |
 | 종목 마스터 인터페이스 | 스키마·갱신 주기·미매칭 처리 규칙 합의 (§11.2) |
 | ETF 구성비중 평탄화 제공 | 중첩 분해를 데이터 측에서 처리하는 형태 합의 (§11.2) |
+| 알림 엔진과의 접점 | 알림 규칙이 평가손익률·비중을 읽는 인터페이스는 알림 스펙에서 정의 |
 
 ---
 
