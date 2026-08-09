@@ -162,7 +162,8 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | | |
 |---|---|
 | 그레인 | 포트폴리오 전체 1행 |
-| 지표 | 총자산(총평가+예수금) · 총매입 · 총평가손익(금액/%) · 현금비중 · 전일 대비 일간 변화 · 계좌수·종목수 |
+| 지표 | 총자산(예수금 포함) · 유가증권 평가금액 · 총매입 · 총평가손익(금액/%) · 현금비중 · 전일 대비 일간 변화 · 계좌수·종목수 |
+| CASH 범위 | 총자산·비중·현금비중은 예수금 포함, 손익 계열은 제외(§6.2) |
 | 보조 | 자산구성 미니차트(시장 또는 자산군) |
 | 렌즈 | 미니차트에만 적용 |
 
@@ -393,11 +394,12 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 
 | 컬럼 | LOOK_THROUGH | 근거 |
 |---|---|---|
-| 평가금액 · 비중 | 유효 | 총합 보존 |
-| 수량 | 환산수량으로 표시 | `(ETF 평가금액 × 구성비중) ÷ 구성종목 현재가`. 소수점이며 개별 매도 불가 → "환산" 표기 |
-| 매입금액 | 안분값으로 표시 | ETF 원가를 현재 구성비중으로 안분 → "안분" 표기 |
+| 평가금액 · 비중 | 행·합계 모두 유효 | 총합 보존 |
+| 수량 | 행에 환산수량으로 표시 | `(ETF 평가금액 × 구성비중) ÷ 구성종목 현재가`. 소수점이며 개별 매도 불가 → "환산" 표기 |
+| 매입금액 · 평가손익(금액/률) | **합계만 유효 — 행에서 제외** | 안분 원가는 사용자가 그 가격에 매수한 적 없는 값이다. 총합은 보존되므로 합계 수준에서는 성립 |
 | **평단가** | **정의 불가 — 컬럼 숨김** | 아래 참조 |
-| **평가손익률** | **정의 불가 — 컬럼 숨김** | 평단에 의존 |
+
+행에 남는 것은 **평가금액 · 비중 · 환산수량** 셋뿐이다. 허구인 값을 "안분" 배지로 라벨링해 노출하는 것보다 행에서 빼는 쪽이 일관된다.
 
 **평단가가 원리적으로 성립하지 않는 이유**는 데이터 부족이 아니라 정의 자체의 문제다.
 
@@ -421,7 +423,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 { "view_key": "sector_weight",
   "lens": "LOOK_THROUGH",
   "group_by": ["sector"],
-  "metrics": ["market_value_krw", "weight_pct", "unrealized_pnl_krw"],
+  "metrics": ["market_value_krw", "weight_pct"],
   "filters": { "account_type": "PENSION" } }
 ```
 
@@ -437,6 +439,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 | 1 | 잔고를 계좌×종목 행으로 정규화. **매입금액은 잔고 평단 기준**, 평가금액은 현재가 기준. 원화 환산, 예수금을 `CASH` 종목으로 편입, 실패 계좌 이월 | 원본 잔고 · 환율 → `position_line` | EOD 배치 · 수동 동기화 | 백엔드 |
 | 2 | ETF 행을 구성비중대로 안분. 미매칭·비중 미달분을 기타 버킷으로. 총합 보존 검증 | `position_line` · 구성비중 → 전개 라인 | 조회 시 | 백엔드 |
 | 3 | 종목·계좌 마스터를 조인해 축 값 부여 | 전개 라인 · 마스터 → 축이 붙은 라인 | 조회 시 | 백엔드 |
+| 3.5 | 요청 필터 적용 | 축이 붙은 라인 → 대상 라인 | 조회 시 | 백엔드 |
 | 4 | 요청 축으로 `GROUP BY` + 측정값 `SUM` | 축이 붙은 라인 → 축 값별 합계 | 조회 시 | 백엔드 |
 | 5 | 평가손익 · 손익률 · 비중 계산 | 축 값별 합계 → 파생 지표 | 조회 시 | 백엔드 |
 | 6 | 통화 선택, 평가금액순 정렬, 기타 버킷을 맨 끝에 배치, as-of · 구성비중 기준일 첨부 | 파생 지표 → 응답 | 조회 시 | 백엔드 |
@@ -444,6 +447,8 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 - `DIRECT` 렌즈는 2단계를 건너뛰고 `position_line`이 그대로 3단계로 간다.
 - 같은 종목의 직접보유분과 ETF 경유분은 4단계에서 합쳐진다.
 - 실현손익 뷰는 `realized_pnl_line`을, 자산 변화 뷰는 `position_line` 두 시점과 `cln_cashflow`를 읽으므로 2~3단계를 거치지 않는다.
+- 필터는 마스터 조인 뒤에 적용한다. 계좌 필터는 전개가 `account_id`를 보존하므로 2단계 앞으로 밀어도 결과가 같으며, 이는 구현 최적화 여지로 남긴다.
+- `LOOK_THROUGH`에서는 `lens_sensitive` 축으로 필터할 수 없다(§9.5). 전개가 종목 자체를 바꾸므로 전개 전후 어느 순서로 걸어도 답이 성립하지 않는다 — 자산군=ETF 필터는 전개 후 ETF가 존재하지 않아 항상 빈 목록이 된다.
 
 ### 3.7 통화 표시
 
@@ -468,7 +473,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 | 원장 | 그레인 | 답하는 것 | 확보 |
 |---|---|---|---|
 | **보유 스냅샷** `position_line` | (as_of, 계좌, 종목) | 현재 상태 전부 | 항상 확보 — 잔고가 진실 |
-| **현금흐름** `cln_cashflow` | (계좌, 유형, 일시) | 자산 변화의 원인 | KIS·CODEF 입출금내역 |
+| **현금흐름** `cln_cashflow` | (계좌, 유형, 일시) | 자산 변화의 원인 | KIS·CODEF 입출금내역 — 매매대금 제외 |
 | **거래** `cln_trade` | 체결 1건 | 실현/미실현 **분해** | 구간별 불완전 |
 
 미실현 손익의 원가는 **잔고 평단**, 실현손익의 원가는 **재구성 평단**이며 **둘은 일치하지 않는다.** 수수료 포함 여부가 증권사마다 다르고, `SEEDED` 구간의 재구성값은 추정이며, 기업행위 이력이 없으면 어긋난다. 잔고 평단의 수수료 취급은 보정하지 않는다. `position_line`은 `position_basis`를 참조하지 않으며, 이 분리가 §4.2의 리스크 격리를 성립시킨다.
@@ -622,6 +627,17 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `cln_deposit` | `account_ref` · `currency` · `amount` decimal · `source_as_of` |
 | `cln_trade` | `trade_id` · `account_ref` · `isin` · `side` enum(`BUY`·`SELL`) · `quantity` · `price` · `fee` · `tax` · `currency` · `executed_at` timestamptz |
 | `cln_cashflow` | `account_ref` · `type` enum(`DEPOSIT`·`WITHDRAW`·`DIVIDEND`·`FEE`·`TAX`) · `amount` · `currency` · `occurred_at` timestamptz |
+
+`cln_cashflow`는 **계좌 경계를 넘는 자금 이동과 계좌에 귀속되는 손익성 현금만** 담는다. 증권사 입출금내역은 매수대금 출금·매도대금 입금을 같은 응답에 담아 주므로 데이터가 걸러낸다. 매매대금이 `DEPOSIT`/`WITHDRAW`로 들어오면 매도 한 번에 그 금액만큼 손실이 표시되어 §2.9 항등식이 붕괴한다.
+
+| 배제 | 사유 |
+|---|---|
+| 매매대금 입출금 | 주식과 예수금 사이의 이동이라 총자산이 변하지 않는다 |
+| 예수금 내부 이동 | RP·CMA 자동매수/환매 |
+| 환전 | 통화 간 이동이라 원화 총자산이 변하지 않는다 |
+| 매매 수수료·거래세 | 체결가에 반영되어 실현손익 계산에 이미 쓰인다(§4.3). `FEE`/`TAX`는 계좌 관리수수료·환전수수료·배당소득세 등 **매매 외 비용만** |
+
+`DIVIDEND`는 원천이 준 금액을 그대로 쓴다. 원천징수 후 실입금액이면 그대로 두고 세전 환원을 시도하지 않는다 — 투자손익이 나머지 전부로 정의되므로 자동으로 정합한다.
 | `collection_run` | 수집 실행·트리거 상태 (§7.7) |
 
 #### 도메인 — 백엔드 소유
@@ -698,6 +714,8 @@ PK `(as_of, account_id, instrument_id)`
 
 이렇게 하면 **총자산·현금비중·자산군 축이 모두 같은 팩트 하나에서 나온다.** 예수금을 별도 테이블로 분리하면 "총자산 = 평가 + 예수금"을 화면마다 다시 조립해야 하고, 자산군 비중 차트에서 현금만 특수 처리하게 된다.
 
+**CASH 행의 원가는 평가금액과 같은 값으로 저장한다.** `null`을 두면 `fx_rate` 필수 규칙(§9.1)과 충돌하고 집계에서 NULL이 전파된다. 대신 **손익 계열 지표는 집계에서 `asset_class != CASH` 조건을 적용**해 예수금이 분모에 섞이지 않게 한다. 저장값과 노출값이 다르며, 응답의 CASH 행은 원가·손익을 `null`로 내린다.
+
 ### 5.3 원화 환산은 라인에 머티리얼라이즈한다
 
 `market_value_krw`를 라인 생성 시점에 계산해 저장하고 `fx_rate`·`fx_as_of`를 함께 기록한다. 집계 시점에 환율을 곱하면 여러 통화가 섞인 그룹에서 어떤 환율을 적용할지 모호해지지만, 라인 단위에서 환산해두면 단순 합산으로 끝난다.
@@ -759,25 +777,36 @@ Axis { key, label, source, applicable_views[], lens_sensitive }
 ### 6.2 지표
 
 ```
-Metric { key, label, additive, lens_safe, formula, requires_ledger }
+Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledger }
 ```
 
-| key | 라벨 | 가산 | 렌즈 | 계산 |
-|---|---|---|---|---|
-| `quantity` | 수량 | ○ | ○ | `Σ 수량` |
-| `cost_amount_krw` | 매입금액 | ○ | ○ | `Σ 매입금액` |
-| `market_value_krw` | 평가금액 | ○ | ○ | `Σ 평가금액` |
-| `unrealized_pnl_krw` | 평가손익 | ○ | ○ | `Σ평가 - Σ매입` |
-| `realized_pnl_krw` | 실현손익 | ○ | ✕ | `Σ 실현손익` |
-| `instrument_count` | 종목수 | ✕ | ○ | `COUNT DISTINCT 종목` |
-| `avg_cost` | 평단 | ✕ | **✕** | `Σ매입 ÷ Σ수량` — 잔고 평단 기준 |
-| `unrealized_pnl_pct` | 평가손익률 | ✕ | **✕** | `평가손익 ÷ Σ매입` |
-| `weight_pct` | 비중 | ✕ | ○ | `Σ평가 ÷ 전체 Σ평가` |
-| `cash_ratio_pct` | 현금비중 | ✕ | ○ | `CASH 평가 ÷ 총평가` |
+| key | 라벨 | 가산 | CASH | 렌즈 | 계산 |
+|---|---|---|---|---|---|
+| `quantity` | 수량 | ○ | 포함 | `ROW_AND_TOTAL` | `Σ 수량` |
+| `total_assets_krw` | 총자산 | ○ | **포함** | `ROW_AND_TOTAL` | `Σ 평가금액` |
+| `market_value_krw` | 평가금액 | ○ | 행 기준 | `ROW_AND_TOTAL` | 행의 평가금액. 합계는 `asset_class != CASH` |
+| `cost_amount_krw` | 매입금액 | ○ | **제외** | `TOTAL_ONLY` | `Σ 매입금액` |
+| `unrealized_pnl_krw` | 평가손익 | ○ | **제외** | `TOTAL_ONLY` | `Σ평가 - Σ매입` |
+| `unrealized_pnl_pct` | 평가손익률 | ✕ | **제외** | `TOTAL_ONLY` | `평가손익 ÷ Σ매입` |
+| `realized_pnl_krw` | 실현손익 | ○ | 제외 | `NEVER` | `Σ 실현손익` |
+| `avg_cost` | 평단 | ✕ | 제외 | `NEVER` | `Σ매입 ÷ Σ수량` — 잔고 평단 기준 |
+| `weight_pct` | 비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `행 평가금액 ÷ total_assets_krw` |
+| `cash_ratio_pct` | 현금비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `CASH 평가 ÷ total_assets_krw` |
+| `instrument_count` | 종목수 | ✕ | 제외 | `ROW_AND_TOTAL` | `COUNT DISTINCT 종목` |
 
-- **가산 ○** 은 행을 더해도 되는 값, **가산 ✕** 는 집계 결과에만 적용 가능하며 라인 단위로 더하면 틀리는 값이다(§1.5).
-- **렌즈 ✕** 는 `LOOK_THROUGH` 결과에서 제공하지 않는다. 평단은 매입 시점 구성비중을 알 수 없어 정의가 성립하지 않고(§3.4), 손익률은 평단에 의존한다. 실현손익은 ETF 단위로 체결되므로 분해 대상이 아니다.
-- 평가손익은 파생 지표이지만 가산 가능하다. 저장하지 않는 이유는 가산 불가여서가 아니라 중복 저장을 피하기 위해서다.
+**가산** — ○ 은 행을 더해도 되는 값, ✕ 는 집계 결과에만 적용 가능하며 라인 단위로 더하면 틀리는 값이다(§1.5).
+
+**CASH** — 예수금 의사종목을 집계에 포함하는지. 자산 배분 질문(총자산·비중·현금비중)은 포함하고, 손익 질문(매입금액·평가손익)은 제외한다. 제외하지 않으면 예수금이 손익률 분모에 섞여 값이 희석된다. **비중의 분모는 `total_assets_krw`(CASH 포함), 손익률의 분모는 `cost_amount_krw`(CASH 제외)로 서로 다르다.**
+
+**렌즈** — `LOOK_THROUGH`에서의 유효 범위.
+
+| 값 | 의미 |
+|---|---|
+| `ROW_AND_TOTAL` | 행과 합계 모두 유효 |
+| `TOTAL_ONLY` | 합계에만 싣고 `rows[]`에서 제외. 안분 원가가 허구이므로 행 단위로는 의미가 없으나 총합은 보존된다(§3.4) |
+| `NEVER` | 분해 결과에서 제공하지 않음 |
+
+평가손익은 파생 지표이지만 가산 가능하다. 저장하지 않는 이유는 가산 불가여서가 아니라 중복 저장을 피하기 위해서다.
 
 ### 6.3 뷰
 
@@ -923,7 +952,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 동기화 | `POST /sync` → `202` · `GET /sync/{run_id}` |
 | 카탈로그 | `GET /portfolio/catalog` |
 
-카탈로그 엔드포인트는 뷰별 허용 축·렌즈·필터 옵션과 연동 계좌 목록을 내린다. 클라이언트가 이 목록을 하드코딩하면 축 하나를 늘릴 때 앱 배포가 필요해져 서버가 뷰 사양을 갖는 의미가 사라진다.
+카탈로그 엔드포인트는 뷰별 허용 축·렌즈·필터 옵션과 연동 계좌 목록을 내린다. 허용 필터는 **렌즈 상태별로** 내려, `LOOK_THROUGH`에서 비활성화되는 필터(§9.5)를 클라이언트가 따로 판단하지 않게 한다. 클라이언트가 이 목록을 하드코딩하면 축 하나를 늘릴 때 앱 배포가 필요해져 서버가 뷰 사양을 갖는 의미가 사라진다.
 
 ### 8.2 응답 봉투
 
@@ -964,8 +993,10 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 {
   "group_by": ["sector"],
   "lens": "look_through",
-  "total": { "market_value_krw": 58000000, "cost_amount_krw": 52900000,
-             "unrealized_pnl_krw": 5100000, "unrealized_pnl_pct": 9.6 },
+  "total": { "total_assets_krw": 58000000, "market_value_krw": 54300000,
+             "cost_amount_krw": 49200000,
+             "unrealized_pnl_krw": 5100000, "unrealized_pnl_pct": 10.4,
+             "cash_ratio_pct": 6.4 },
   "rows": [
     { "key": "semiconductor", "label": "반도체",
       "market_value_krw": 14268000, "cost_amount_krw": 13100000,
@@ -979,6 +1010,9 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 - `group_by`가 2단계면 `rows[].rows`로 중첩된다. 계좌별이 `["account_type","account"]`이며 **소계는 항상 서버가 계산한다.**
 - 요약은 `group_by`가 비어 `total`만 채워진다.
 - 단일 통화 행에는 현지 통화 값을 함께 싣는다(§3.7).
+- `total_assets_krw`는 예수금을 포함하고 손익 계열은 제외하므로 `market_value_krw − cost_amount_krw`가 `total_assets_krw`와 맞아떨어지지 않는다(§6.2).
+- `lens = look_through`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 빠지고 `total`에만 남는다.
+- CASH 행의 원가·손익은 `null`로 내린다.
 
 ### 8.4 실현손익 · 자산 변화 응답
 
@@ -1060,6 +1094,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `as_of`는 일자 단위. 당일 외의 `as_of` 행은 수정 불가 |
 | 현지 통화 표시는 묶음이 단일 통화일 때만 허용. 그 외 집계 값은 원화 |
 | `position_line.cost_amount`는 잔고 평단 기준. `position_basis`를 참조하지 않는다 |
+| CASH 행은 원가 = 평가금액으로 저장하되 손익 계열 집계에서 제외 |
+| 비중의 분모는 `total_assets_krw`(CASH 포함), 손익률의 분모는 `cost_amount_krw`(CASH 제외) |
 
 ### 9.2 렌즈
 
@@ -1067,7 +1103,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 |---|
 | look-through 전개 후 `Σ market_value`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) |
 | `etf_constituent` 재귀 깊이 제한 + 순환 참조 차단 |
-| `LOOK_THROUGH` 결과에는 평단·평가손익률 필드가 존재하지 않음 |
+| `LOOK_THROUGH` 결과에는 평단 필드가 존재하지 않음 |
+| `lens_safe = TOTAL_ONLY` 지표는 `LOOK_THROUGH` 응답의 `rows[]`에서 제외하고 `total`에만 포함 |
 | 렌즈 적용 화면은 `etf_constituent.as_of`를 반드시 함께 노출 |
 
 ### 9.3 평단 · 실현손익 · 등급
@@ -1091,6 +1128,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 계좌 편입·제외는 손익이 아닌 별도 항목. "넣은 돈"·"번 돈" 어디에도 넣지 않는다 |
 | 배당·수수료·세금은 "번 돈"에 귀속 |
 | 현금흐름 미확보 계좌가 있으면 경고 표시 |
+| `cln_cashflow`에 매매대금·예수금 내부 이동·환전·매매 수수료가 포함되지 않음 (§5.1) |
 | 기간 경계 스냅샷에 캐리포워드 계좌가 있으면 경고 표시 |
 
 ---
@@ -1103,6 +1141,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `lens = LOOK_THROUGH`이면 `lens_safe = false` 지표를 응답에서 제외 |
 | `additive = false` 지표는 라인 단위 합산 금지 — 집계 후에만 계산 |
 | 비활성 축(`is_leveraged` 등)은 요청 시 거부 |
+| `lens = LOOK_THROUGH`이면 `lens_sensitive = true` 축의 필터를 거부. 계좌 필터만 허용 |
 
 ---
 
@@ -1113,7 +1152,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 화면 | 상태 |
 |---|---|
 | 요약 | default / **연동 계좌 없음(온보딩)** / 로딩 / **지연 배너**(캐리포워드) / 동기화 중 |
-| 종목별 | default / **보유 종목 없음** / 필터 결과 없음 / 렌즈 ON(평단·손익률 컬럼 제거) |
+| 종목별 | default / **보유 종목 없음** / 필터 결과 없음 / **렌즈 ON — 평단·매입금액·손익 컬럼 제거, 시장·자산군 필터 비활성** |
 | 비중 분석 | default / 축 전환 / 렌즈 ON(기타 버킷·구성비중 기준일 표기) / **구성종목 데이터 없음** |
 | 계좌별 | default / **재인증 필요 배지** / 동기화 실패 배지 / 연동 해제 확인 |
 | 실현손익 | default / **해당 기간 매도 없음** / 추정 배지 / **미포함 계좌 N개** / 전 계좌 UNAVAILABLE |
@@ -1152,6 +1191,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 환율(일별) | 데이터 → 백엔드 | 통화쌍 · 소수 자릿수 · 결측 처리 |
 | 원본 잔고·거래·입출금 | 데이터 → 백엔드 | 정규화 수준 · 중복 처리 · 조회 기간 한계 |
 | `collection_run` | 양방향 | 상태 전이 규칙 · 픽업 주기 · 재시도 정책 (§7.7) |
+| 현금흐름 배제 규칙 | 데이터 → 백엔드 | 매매대금 · 예수금 내부 이동 · 환전 · 매매 수수료를 제외한 결과만 제공 (§5.1) |
 
 테이블 소유는 §5.1을 따른다. 데이터는 `raw_*` · `cln_*` · `collection_run` · `instrument` · `etf_constituent` · `fx_rate` · `corporate_action`을, 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`을 소유한다.
 
