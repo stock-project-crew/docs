@@ -265,7 +265,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 \* `accounts` 뷰의 `deposit_krw`는 **행에도 실린다.** §2.7이 계좌 행 컬럼으로 예수금을 요구하고 응답 키를 `market_value_krw`(계좌 총자산) · `deposit_krw`로 못 박았다. 유가증권 평가금액은 클라이언트가 차감해 표시한다. 불변식 4와 충돌하지 않는다 — `deposit_krw`의 의미가 행·합계에서 같기 때문이다(그 묶음의 CASH 평가금액 합).
 
-- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다(§A.10 #11). 둘 다 집계에 참여하지 않는 표시용 필드다.
+- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다(§A.10 #7). 둘 다 집계에 참여하지 않는 표시용 필드다.
 - `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서 `lensSensitive` 축이 빠진다. `positions`에서 `market`·`asset_class`가 사라지는 게 이 규칙의 실체다 — 전개 후 ETF가 존재하지 않아 `자산군=ETF` 필터는 항상 빈 목록이 된다(§3.6).
 - `subBlocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. **요약만 해당**하며 미니차트 블록은 `groupBy: [market]` 또는 `[asset_class]`, `lensPolicy: OPTIONAL`, 지표 `market_value_krw` · `weight_pct`.
 - **정렬은 평가금액 내림차순 고정**이며 요청 파라미터로 받지 않는다. `기타` 버킷은 항상 맨 끝(§3.6 6단계).
@@ -613,7 +613,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 1 | **§6.2 지표 17개 · §8.2 notice 16종이 정본** — 요청서의 12개·13종이 낡은 수치였다 | 변경 없음. 이미 스펙 기준으로 썼다 |
 | 2 | **§7.4 시장별 가격 기준일은 저장하지 않고 유도한다** — `price_as_of = source_as_of 기준 직전 해당 시장 영업일`. 컬럼을 넣지 않는 이유는 평가금액이 증권사 잔고에서 오는 값이라 증권사가 어느 날짜 종가를 썼는지 알 수 없기 때문이다 | `position_line`에 컬럼을 추가하지 않는다(원안 유지가 맞았다). `MarketCalendarPort` 인터페이스를 두고 유도 규칙을 문서화하되, **`PRICE_LAG_MARKET`은 이번 범위에서 발화시키지 않는다** — 근거는 아래 |
 | 3 | **§3.7 판정을 조회 시점 런타임으로. 시장 축을 ✓로 정정하고 표는 예시로 격하** | 잠정 처리였던 "두 게이트" 방식을 **런타임 단독 판정**으로 바꿨다. `Axis.localCurrencyEligible`을 없앴다(불변식 3). **§C의 기대 응답이 바뀐다** — 섹터 `IT서비스`, 계좌 `미래에셋 연금`, 시장 `US` 그룹에 현지 통화가 새로 붙는다 |
-| 4 | **§5.1 `cln_cashflow`가 `DIVIDEND`·`FEE`·`TAX`만 담고 `manual_cashflow`가 신설됐다** | `manual_cashflow`를 백엔드 소유 테이블로 만들고(§A.7.4) 읽기 경로를 넣었다. `CashflowPort`를 둘로 갈랐다 — 입출금은 **실제 값**, 손익성 현금만 스텁. **§C.11 자산 변화 기대 응답이 바뀐다** |
+| 4 | **§5.1 `cln_cashflow`가 `DIVIDEND`·`FEE`·`TAX`만 담고 `manual_cashflow`가 신설됐다** | `manual_cashflow`를 백엔드 소유 테이블로 만들고(§A.7.4) 읽기 경로를 넣었다. 현금흐름 포트를 둘로 갈랐다 — 입출금은 **실제 값**, 손익성 현금만 스텁. **§C.11 자산 변화 기대 응답이 바뀐다** |
 | 5 | **§4.6 커버리지 판정 단위가 (계좌, 유형)** | `CASHFLOW_UNCOVERED`의 params를 `types` 배열 + `account_count`로 바꿨다 |
 | 6 | **§4.4 영구 `SEEDED` 판정 · 확보 구간 중간의 미설명 변동** | 등급 판정은 여전히 범위 밖이다. `SEEDED_ROWS` notice가 사유를 구분하지 않는다는 사실과, 1.5단계에서 사유를 params에 실을 자리를 §A.9에 남겼다 |
 | 7 | **§9.1 검증 규칙 2건 추가** | `넣은 돈`은 `manual_cashflow`에서만 온다 → **타입으로 강제**(§A.8). 영구 `SEEDED` 규칙은 1.5단계라 범위 밖 |
@@ -673,7 +673,9 @@ back-end/
     │   │   ├── SnapshotCalendarRepository.java   as_of 목록·직전·기간 경계
     │   │   ├── AccountRepository.java
     │   │   ├── RealizedPnlRepository.java
-    │   │   ├── CashflowPort.java · EmptyCashflowPort.java
+    │   │   ├── ManualCashflowRepository.java      넣은 돈 — 백엔드 소유, 실제 값
+    │   │   ├── EarningsCashflowPort.java · EmptyEarningsCashflowPort.java
+    │   │   ├── EarningsCashflowType.java          DIVIDEND·FEE·TAX — 입출금이 없다(§9.1 타입 강제)
     │   │   └── CollectionStatusPort.java · NoCollectionStatusPort.java
     │   ├── view/
     │   │   ├── SnapshotViewService.java · RealizedPnlViewService.java
@@ -693,6 +695,7 @@ back-end/
     └── main/resources/
         ├── application.yaml · application-local.yaml
         ├── db/migration/     V1__account.sql · V2__position_line.sql · V3__realized_pnl_line.sql
+        │                     V4__manual_cashflow.sql
         ├── db/external/      V900__instrument_mirror.sql   데이터팀 소유 미러 — local/test 전용
         └── db/sample/        sample_portfolio.sql
     └── test/java/com/stockproject/portfolio/
@@ -863,7 +866,9 @@ USD 라인의 `fx_rate = 1400.000000`.
   "params": { "metrics": ["cost_amount_krw", "unrealized_pnl_krw", "unrealized_pnl_pct"] } }
 ```
 
-`CONSTITUENT_AS_OF`는 전개된 ETF가 0이라 생략한다(§A.10 #7).
+`CONSTITUENT_AS_OF`는 전개된 ETF가 0이라 생략한다(§A.10 #3).
+
+`IT서비스` 행의 `currency` · `market_value_local`은 남는다 — 통화 병기는 지표가 아니라 표시 규칙이고 평가금액은 `ROW_AND_TOTAL`이다. 사라지는 것은 `cost_amount_local`뿐이다(원가 계열이 행에서 빠지므로).
 
 ## C.8 기대 응답 — `GET /portfolio/views/positions?lens=DIRECT`
 
@@ -1498,7 +1503,7 @@ git commit -m "feat: 조회 계층 스캐폴딩 · 마이그레이션 · 샘플 
 
 **Interfaces:**
 - Produces: `Catalog.axes()` · `Catalog.metrics()` · `Catalog.views()` · `Catalog.view(ViewKey)` · `Catalog.axis(String)` · `Catalog.allowedFilters(ViewKey, Lens)` · `Catalog.rowMetrics(ViewKey, Lens)` · `Catalog.totalMetrics(ViewKey)`. Task 3 이후 모든 태스크가 여기서 규칙을 읽는다.
-- `AxisKey.keyOf(Line)`는 Task 3에서 `Line`이 생긴 뒤 채운다. 이 태스크에서는 `AxisKey`에 `label`·`lensSensitive`·`enabled`·`localCurrencyEligible`·`applicableViews`만 둔다.
+- `AxisKey.keyOf(Line)`는 Task 3에서 `Line`이 생긴 뒤 채운다. 이 태스크에서는 `AxisKey`에 `label`·`lensSensitive`·`enabled`·`applicableViews`만 둔다. 현지 통화 병기 플래그는 두지 않는다(불변식 3).
 
 **완료 조건**
 1. §A.4의 세 표가 코드 상수로 1:1 존재한다 — 축 8개, 지표 17개, 뷰 6개.
@@ -3405,28 +3410,33 @@ class CurrencyDisplayPolicyTest {
 
     private final CurrencyDisplayPolicy policy = new CurrencyDisplayPolicy();
 
-    /** 불변식 3 — 두 게이트를 모두 통과할 때만 병기한다. */
+    /**
+     * 불변식 3 — 판정자는 묶음의 통화 집합 하나다. 축 이름을 보지 않는다(스펙 §3.7).
+     * 섹터 IT서비스(AAPL 단독)처럼 우연히 단일 통화인 묶음도 병기된다.
+     */
     @Test
-    void 섹터_축은_단일_통화여도_병기하지_않는다() {
-        // IT서비스 그룹은 AAPL 하나라 실제로 단일 USD지만, 섹터 축은 §3.7 표에서 ✗다
-        assertThat(policy.localOf(AxisKey.SECTOR, usdOnlyBundle())).isEmpty();
-    }
-
-    @Test
-    void 종목_축의_단일_USD_그룹에는_병기한다() {
-        assertThat(policy.localOf(AxisKey.INSTRUMENT, usdOnlyBundle()))
+    void 단일_USD_묶음이면_축과_무관하게_병기한다() {
+        assertThat(policy.localOf(usdOnlyBundle()))
                 .get().extracting(LocalMoney::currency).isEqualTo(CurrencyCode.USD);
     }
 
     @Test
     void 통화가_섞이면_병기하지_않는다() {
-        assertThat(policy.localOf(AxisKey.INSTRUMENT, mixedBundle())).isEmpty();
+        assertThat(policy.localOf(mixedBundle())).isEmpty();
     }
 
     /** 원화가 곧 현지 통화이므로 병기가 중복이다. */
     @Test
-    void 단일_KRW_그룹에는_병기하지_않는다() {
-        assertThat(policy.localOf(AxisKey.INSTRUMENT, krwOnlyBundle())).isEmpty();
+    void 단일_KRW_묶음에는_병기하지_않는다() {
+        assertThat(policy.localOf(krwOnlyBundle())).isEmpty();
+    }
+
+    /** 축 플래그로 막던 잠정 처리를 없앴다는 것을 고정한다. */
+    @Test
+    void 축을_인자로_받는_오버로드가_없다() {
+        assertThat(CurrencyDisplayPolicy.class.getMethods())
+                .filteredOn(m -> m.getName().equals("localOf"))
+                .allSatisfy(m -> assertThat(m.getParameterCount()).isEqualTo(1));
     }
 }
 ```
@@ -3445,13 +3455,13 @@ import java.util.Optional;
 
 /**
  * 불변식 3 — 집계 값은 항상 원화, 묶음이 단일 통화일 때만 현지 통화 병기(스펙 §3.7 · §9.3).
- * 게이트가 두 겹이다: 축이 병기 가능해야 하고(§3.7 표), 묶음의 통화 집합이 실제로 하나여야 한다(§3.7 본문).
+ * 판정자는 묶음의 통화 집합 하나다. 축 이름을 하드코딩하면 축이 늘 때마다 고쳐야 하므로
+ * §3.7이 판정을 조회 시점 런타임으로 못 박았다.
  */
 @Component
 public class CurrencyDisplayPolicy {
 
-    public Optional<LocalMoney> localOf(AxisKey axis, MeasureBundle bundle) {
-        if (axis != null && !axis.localCurrencyEligible()) return Optional.empty();
+    public Optional<LocalMoney> localOf(MeasureBundle bundle) {
         return bundle.currencies().single()
                 .filter(c -> c != CurrencyCode.KRW)          // 원화는 병기가 중복이다
                 .map(c -> new LocalMoney(c,
@@ -3748,7 +3758,7 @@ public class RowValuePolicy {
 
 `assemble(ViewSpec view, Lens lens, AxisKey rowAxis, Aggregation agg, AssemblyContext ctx)`가 하는 일:
 1. `totalMetrics` — `view.metrics()` 중 `scope != ROW`인 것을 `Derived`로 계산해 `Map`에 담는다. `market_value_krw`는 절대 넣지 않는다.
-2. `rows` — `agg.rows()`를 `RowDto`로 바꾼다. 지표는 `RowValuePolicy.rowMetrics(...)`가 결정하고, 현지 통화는 `CurrencyDisplayPolicy.localOf(rowAxis, node.measures())`가 결정한다. 자식이 있으면 재귀.
+2. `rows` — `agg.rows()`를 `RowDto`로 바꾼다. 지표는 `RowValuePolicy.rowMetrics(...)`가 결정하고, 현지 통화는 `CurrencyDisplayPolicy.localOf(node.measures())`가 결정한다(축을 넘기지 않는다 — 불변식 3). 자식이 있으면 재귀.
 3. `lens == LOOK_THROUGH`이면 `omittedRowMetrics`를 `AssemblyContext`에 넣어 `LENS_METRICS_OMITTED`가 뜨게 한다.
 4. `accounts` 뷰이면 자식 노드에 `rowFields`(`link_state`·`last_collection`·`last_synced_at`)를, `positions` 뷰이면 `market`을 더한다.
 
@@ -3972,6 +3982,9 @@ class SnapshotViewApiTest {
             .andExpect(jsonPath("$.data.mini_chart.rows[0].key").value("KR"))
             .andExpect(jsonPath("$.data.mini_chart.rows[0].market_value_krw").value(46800000))
             .andExpect(jsonPath("$.data.mini_chart.rows[0].weight_pct").value(80.7))
+            .andExpect(jsonPath("$.data.mini_chart.rows[0].currency").doesNotExist())   // 단일 KRW
+            .andExpect(jsonPath("$.data.mini_chart.rows[1].currency").value("USD"))     // 단일 USD
+            .andExpect(jsonPath("$.data.mini_chart.rows[1].market_value_local").value(8000.00))
             .andExpect(jsonPath("$.notices[?(@.code=='STALE_ACCOUNTS')].params.count").value(1));
     }
 
@@ -4307,22 +4320,28 @@ git add -A && git commit -m "feat: 실현손익 뷰 — 2단계 중첩 · MIXED 
 ### Task 10: 자산 변화 엔드포인트 (§2.9 · §8.4)
 
 **Files:**
-- Create: `view/AssetChangeViewService.java` · `query/CashflowPort.java` · `query/EmptyCashflowPort.java` · `api/dto/AssetChangeData.java`
+- Create: `view/AssetChangeViewService.java` · `api/dto/AssetChangeData.java`
+- Create: `query/ManualCashflowRepository.java` (실제 구현) · `query/EarningsCashflowPort.java` · `query/EmptyEarningsCashflowPort.java` · `query/EarningsCashflowType.java`
 - Modify: `api/ViewController.java`
 - Test: `test/.../view/AssetChangeViewServiceTest.java` · `test/.../api/AssetChangeApiTest.java`
 
 **Interfaces:**
 - Produces:
-  - `record CashflowTotals(BigDecimal deposit, BigDecimal withdraw, BigDecimal dividend, BigDecimal feeTax, Set<UUID> coveredAccountIds)`
-  - `CashflowTotals CashflowPort.totalsFor(Period, Set<UUID> accountIds)`
+  - `record ManualCashflowTotals(BigDecimal deposit, BigDecimal withdraw)` — 백엔드 소유 테이블에서 읽은 **실제 값**
+  - `ManualCashflowTotals ManualCashflowRepository.totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo, LineFilter)`
+  - `enum EarningsCashflowType { DIVIDEND, FEE, TAX }` — **`DEPOSIT`·`WITHDRAW`가 없다.** 스펙 §9.1의 "`cln_cashflow`에 `DEPOSIT`·`WITHDRAW`가 있으면 거부"를 타입으로 강제한다
+  - `record EarningsCashflowTotals(BigDecimal dividend, BigDecimal feeTax, Set<UUID> coveredAccountIds, Set<EarningsCashflowType> coveredTypes)`
+  - `EarningsCashflowTotals EarningsCashflowPort.totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo, Set<UUID> accountIds)`
   - `Envelope<AssetChangeData> AssetChangeViewService.render(String period, LocalDate from, LocalDate to, LineFilter)`
 
 **완료 조건**
-1. §C.11의 값을 낸다 — `opening 56,800,000` · `closing 58,000,000` · `investment_pnl 1,200,000` · `split_available false`.
+1. §C.11의 값을 낸다 — `opening 56,800,000` · `closing 58,000,000` · `deposited 2,000,000` · `investment_pnl −800,000` · `split_available false`.
 2. 항등식이 성립한다: `closing = opening + deposited + earned + included − excluded`.
-3. 값이 0인 `breakdown` 항목이 숨겨진다.
-4. `PERIOD_TRUNCATED` · `BOUNDARY_CARRIED_FORWARD` · `CASHFLOW_UNCOVERED`가 뜬다.
+3. 값이 0인 `breakdown` 항목이 숨겨진다 (`WITHDRAW`·`DIVIDEND`·`FEE_TAX`).
+4. `PERIOD_TRUNCATED` · `BOUNDARY_CARRIED_FORWARD` · `CASHFLOW_UNCOVERED`가 뜨고, `CASHFLOW_UNCOVERED`의 `types`가 `["DIVIDEND","FEE","TAX"]`다 — **입출금은 입력됐으므로 여기 포함되지 않는다.**
 5. 기초·기말 스냅샷이 없으면 `200` + `NO_HOLDINGS`.
+6. **현금흐름 조회 구간이 요청 기간이 아니라 `(기초 as_of, 기말 as_of]`다.** `2026-07-01` 요청이지만 기초가 `2026-07-24`로 대체되므로 `2026-07-24` 이전의 입출금은 더하지 않는다.
+7. `EarningsCashflowType`에 `DEPOSIT`·`WITHDRAW`가 없다(§9.1 타입 강제).
 
 **검증 방법**
 ```bash
@@ -4346,15 +4365,19 @@ class AssetChangeViewServiceTest {
         assertThat(lhs).isEqualByComparingTo(rhs);
     }
 
-    /** 현금흐름이 미확보면 투자손익 = Δ총자산이다. total은 항상 정확하다(스펙 §2.9). */
+    /**
+     * 이 뷰의 존재 이유 — 자산은 늘었는데 손실인 상황(스펙 §2.9).
+     * 넣은 돈은 manual_cashflow에서 온 실제 값이고, 배당·수수료만 미확보다.
+     */
     @Test
-    void 현금흐름_미확보시_투자손익은_자산_증감_전부다() {
+    void 자산이_늘었는데_손실인_경우를_드러낸다() {
         AssetChangeData d = render("2026-07-01", "2026-07-31").data();
 
         assertThat(d.opening()).isEqualByComparingTo("56800000");
-        assertThat(d.closing()).isEqualByComparingTo("58000000");
-        assertThat(d.deposited()).isEqualByComparingTo("0");
-        assertThat(d.investmentPnl().total()).isEqualByComparingTo("1200000");
+        assertThat(d.closing()).isEqualByComparingTo("58000000");   // 자산은 +1,200,000
+        assertThat(d.deposited()).isEqualByComparingTo("2000000");  // 넣은 돈 200만
+        assertThat(d.earned()).isEqualByComparingTo("-800000");     // 번 돈 −80만
+        assertThat(d.investmentPnl().total()).isEqualByComparingTo("-800000");
         assertThat(d.investmentPnl().splitAvailable()).isFalse();
         assertThat(d.investmentPnl().realized()).isNull();
     }
@@ -4363,7 +4386,23 @@ class AssetChangeViewServiceTest {
     @Test
     void 값이_0인_항목은_breakdown에서_숨는다() {
         AssetChangeData d = render("2026-07-01", "2026-07-31").data();
-        assertThat(d.breakdown()).extracting(b -> b.type()).containsExactly("INVESTMENT_PNL");
+        assertThat(d.breakdown()).extracting(b -> b.type())
+                .containsExactly("DEPOSIT", "INVESTMENT_PNL");   // WITHDRAW·DIVIDEND·FEE_TAX는 0
+    }
+
+    /**
+     * 현금흐름 구간은 요청 기간이 아니라 실제 스냅샷 구간이다(§A.6.3).
+     * 기초가 2026-07-24로 대체됐으므로 그 이전 입출금은 더하지 않는다 — 안 그러면 항등식이 깨진다.
+     */
+    @Test
+    void 현금흐름은_실제_기초_기말_구간으로_잘린다() {
+        insertManualCashflow("2026-07-05", "DEPOSIT", "9000000");   // 기초 스냅샷보다 이전
+
+        AssetChangeData d = render("2026-07-01", "2026-07-31").data();
+
+        assertThat(d.deposited()).isEqualByComparingTo("2000000");  // 900만은 제외
+        assertThat(d.closing()).isEqualByComparingTo(
+                d.opening().add(d.deposited()).add(d.earned()));    // 항등식 유지
     }
 
     /** 스펙 §2.9 경계 처리 — 기초 스냅샷이 없으면 가장 이른 스냅샷을 쓰고 실제 시작일을 표시한다. */
@@ -4382,16 +4421,85 @@ class AssetChangeViewServiceTest {
                 .containsEntry("boundary", LocalDate.of(2026, 7, 27));
     }
 
-    /** 스펙 §4.6 — 미확보 계좌의 입출금은 투자손익에 섞이므로 경고한다. 잔차 항목은 두지 않는다. */
+    /**
+     * 스펙 §4.6 — 커버리지 판정 단위는 (계좌, 유형)이다.
+     * 입출금은 입력됐고 배당·수수료만 미확보이므로 types가 셋이다.
+     */
     @Test
-    void 현금흐름_미확보_계좌를_경고한다() {
+    void 미확보_유형을_경고한다() {
         Envelope<AssetChangeData> env = render("2026-07-01", "2026-07-31");
-        assertThat(noticeParams(env, "CASHFLOW_UNCOVERED")).containsEntry("count", 4);
+
+        assertThat(noticeParams(env, "CASHFLOW_UNCOVERED"))
+                .containsEntry("types", List.of("DIVIDEND", "FEE", "TAX"))
+                .containsEntry("account_count", 4);
+    }
+
+    /** 스펙 §9.1 — 넣은 돈은 manual_cashflow에서만 온다. 타입이 그것을 강제한다. */
+    @Test
+    void 손익성_현금흐름_유형에_입출금이_없다() {
+        assertThat(EarningsCashflowType.values())
+                .containsExactly(EarningsCashflowType.DIVIDEND,
+                                 EarningsCashflowType.FEE,
+                                 EarningsCashflowType.TAX);
     }
 }
 ```
 
-- [ ] **Step 2: 현금흐름 포트와 빈 구현**
+- [ ] **Step 2: 현금흐름 두 경로 — 입출금은 실제, 손익성 현금은 스텁**
+
+스펙 §5.1이 갱신되면서 현금흐름의 출처가 둘로 갈렸다. **입출금은 백엔드 소유 테이블에서 읽는 실제 값이고, 손익성 현금만 데이터팀 미합의로 스텁이다.**
+
+```java
+package com.stockproject.portfolio.query;
+
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+/**
+ * manual_cashflow 조회 — 백엔드 소유(스펙 §5.1).
+ * 자산 변화 뷰의 "넣은 돈"의 유일한 출처다(§9.1). 스텁이 아니다.
+ * 구간은 (exclusiveFrom, inclusiveTo] — 기초 스냅샷 시점 이후에 발생한 것만 센다.
+ */
+@Repository
+public class ManualCashflowRepository {
+
+    private static final String SQL = """
+            SELECT coalesce(sum(CASE WHEN m.type = 'DEPOSIT'  THEN m.amount END), 0) AS deposit,
+                   coalesce(sum(CASE WHEN m.type = 'WITHDRAW' THEN m.amount END), 0) AS withdraw
+              FROM manual_cashflow m
+              JOIN account a ON a.account_id = m.account_id
+             WHERE m.occurred_on >  :from
+               AND m.occurred_on <= :to
+            """;
+
+    private final JdbcClient jdbc;
+
+    public ManualCashflowRepository(JdbcClient jdbc) { this.jdbc = jdbc; }
+
+    public ManualCashflowTotals totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo,
+                                              LineFilter filter) {
+        // 계좌 필터는 findLines와 같은 = ANY (:param) 방식으로 append 한다
+        return jdbc.sql(SQL).param("from", exclusiveFrom).param("to", inclusiveTo)
+                .query((rs, n) -> new ManualCashflowTotals(
+                        rs.getBigDecimal("deposit"), rs.getBigDecimal("withdraw")))
+                .single();
+    }
+}
+```
+
+```java
+package com.stockproject.portfolio.query;
+
+/**
+ * cln_cashflow의 유형 — 스펙 §5.1 갱신으로 DEPOSIT·WITHDRAW가 빠졌다.
+ * 이 enum에 두 값이 없다는 사실이 §9.1의 "cln_cashflow에 DEPOSIT·WITHDRAW가 있으면 거부"를
+ * 런타임 검사가 아니라 타입으로 강제한다.
+ */
+public enum EarningsCashflowType { DIVIDEND, FEE, TAX }
+```
 
 ```java
 package com.stockproject.portfolio.query;
@@ -4399,20 +4507,23 @@ package com.stockproject.portfolio.query;
 /**
  * cln_cashflow 조회 — 데이터팀 소유(스펙 §5.1 · §11.2).
  * 매매대금·예수금 내부 이동·환전·매매 수수료를 제외한 결과만 제공받는 계약이며(§5.1),
- * 그 배제 규칙이 팀 미합의라(설계 공유 문서 안건 1) 이번 범위에서는 EmptyCashflowPort가 빈 값을 낸다.
- * 빈 값은 곧 "전 계좌 미확보"이므로 CASHFLOW_UNCOVERED가 정직하게 뜨고 항등식은 그대로 성립한다.
+ * 배제 규칙과 FEE·TAX 원천이 팀 미합의라(설계 공유 문서 안건 1, KIS는 배당만 제공 — 실측 §4-3)
+ * 이번 범위에서는 EmptyEarningsCashflowPort가 빈 값을 낸다.
+ * 빈 값은 곧 "미확보"이므로 CASHFLOW_UNCOVERED가 정직하게 뜨고 항등식은 그대로 성립한다.
  */
-public interface CashflowPort {
-    CashflowTotals totalsFor(Period period, Set<UUID> accountIds);
+public interface EarningsCashflowPort {
+    EarningsCashflowTotals totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo,
+                                         Set<UUID> accountIds);
 }
 ```
 
 ```java
 @Component
-public class EmptyCashflowPort implements CashflowPort {
-    @Override public CashflowTotals totalsFor(Period period, Set<UUID> accountIds) {
-        return new CashflowTotals(BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, Set.of());
+public class EmptyEarningsCashflowPort implements EarningsCashflowPort {
+    @Override public EarningsCashflowTotals totalsBetween(LocalDate exclusiveFrom,
+                                                          LocalDate inclusiveTo,
+                                                          Set<UUID> accountIds) {
+        return new EarningsCashflowTotals(BigDecimal.ZERO, BigDecimal.ZERO, Set.of(), Set.of());
     }
 }
 ```
@@ -4452,12 +4563,14 @@ public record AssetChangeData(PeriodDto period,
 3. **기말 스냅샷**: `calendar.latestOnOrBefore(period.to())`. 없으면 `NO_HOLDINGS`.
 4. `opening` · `closing` = 각 시점의 `totalAssetsKrwAt(asOf, filter)`.
 5. **계좌 편입·제외**: 기초·기말 스냅샷의 계좌 집합을 비교한다. 편입 = 기말에만 있는 계좌의 기말 총자산, 제외 = 기초에만 있는 계좌의 기초 총자산. (§2.9 경계 처리의 "첫/마지막 스냅샷 총자산"을 기간 양 끝 스냅샷으로 근사한다 — 기간 내 중간 스냅샷을 훑지 않는 단순화이며, 계좌 편입·제외가 기간 경계 밖에서 일어난 경우를 다루지 않는다. 이 근사를 코드 주석에 남긴다.)
-6. `CashflowTotals`를 읽는다. `deposited = deposit − withdraw`.
-7. `investmentPnl = (closing − opening) − deposited − dividend + feeTax − included + excluded`.
-8. `earned = investmentPnl + dividend − feeTax`.
-9. `breakdown` = `DEPOSIT`(deposit) · `WITHDRAW`(−withdraw) · `DIVIDEND` · `FEE_TAX`(−feeTax) · `INVESTMENT_PNL` 중 **0이 아닌 것만**.
-10. `investment_pnl.split_available = false`, `realized`·`unrealized_change` = `null` — 거래 원장 산출이 범위 밖이다.
-11. notice: 미확보 계좌 수 = `연동 유효 계좌 − coveredAccountIds`, 경계 이월 계좌 수 = 두 경계 스냅샷의 `is_carried_forward` distinct 계좌 수(있으면 기말 날짜를 `boundary`로).
+6. **현금흐름 구간을 `(기초 as_of, 기말 as_of]`로 잡는다** — 요청 기간이 아니다(§A.6.3). 기초가 대체됐어도 항등식이 성립하게 하는 핵심이다.
+7. `ManualCashflowRepository.totalsBetween(...)`으로 입출금을 읽는다. `deposited = deposit − withdraw`. **실제 값이다.**
+8. `EarningsCashflowPort.totalsBetween(...)`으로 배당·수수료를 읽는다. 이번 범위에서는 0이다.
+9. `investmentPnl = (closing − opening) − deposited − dividend + feeTax − included + excluded`.
+10. `earned = investmentPnl + dividend − feeTax`.
+11. `breakdown` = `DEPOSIT`(deposit) · `WITHDRAW`(−withdraw) · `DIVIDEND` · `FEE_TAX`(−feeTax) · `INVESTMENT_PNL` 중 **0이 아닌 것만**.
+12. `investment_pnl.split_available = false`, `realized`·`unrealized_change` = `null` — 거래 원장 산출이 범위 밖이다.
+13. notice: `CASHFLOW_UNCOVERED`의 `types` = `EarningsCashflowType` 전체 − `coveredTypes`, `account_count` = 연동 유효 계좌 수 − `coveredAccountIds` 크기. **입출금은 `manual_cashflow`가 원천이므로 미확보 유형에 넣지 않는다.** 경계 이월 계좌 수 = 두 경계 스냅샷의 `is_carried_forward` distinct 계좌 수(있으면 기말 날짜를 `boundary`로).
 
 - [ ] **Step 5: 엔드포인트와 API 테스트**
 
@@ -4478,15 +4591,19 @@ public record AssetChangeData(PeriodDto period,
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.opening").value(56800000))
             .andExpect(jsonPath("$.data.closing").value(58000000))
-            .andExpect(jsonPath("$.data.deposited").value(0))
-            .andExpect(jsonPath("$.data.earned").value(1200000))
+            .andExpect(jsonPath("$.data.deposited").value(2000000))
+            .andExpect(jsonPath("$.data.earned").value(-800000))
             .andExpect(jsonPath("$.data.account_included").value(0))
             .andExpect(jsonPath("$.data.account_excluded").value(0))
-            .andExpect(jsonPath("$.data.breakdown.length()").value(1))
-            .andExpect(jsonPath("$.data.breakdown[0].type").value("INVESTMENT_PNL"))
-            .andExpect(jsonPath("$.data.investment_pnl.total").value(1200000))
+            .andExpect(jsonPath("$.data.breakdown.length()").value(2))
+            .andExpect(jsonPath("$.data.breakdown[0].type").value("DEPOSIT"))
+            .andExpect(jsonPath("$.data.breakdown[0].amount").value(2000000))
+            .andExpect(jsonPath("$.data.breakdown[1].type").value("INVESTMENT_PNL"))
+            .andExpect(jsonPath("$.data.breakdown[1].amount").value(-800000))
+            .andExpect(jsonPath("$.data.investment_pnl.total").value(-800000))
             .andExpect(jsonPath("$.data.investment_pnl.split_available").value(false))
-            .andExpect(jsonPath("$.notices[?(@.code=='CASHFLOW_UNCOVERED')].params.count").value(4))
+            .andExpect(jsonPath("$.notices[?(@.code=='CASHFLOW_UNCOVERED')].params.account_count")
+                    .value(4))
             .andExpect(jsonPath("$.notices[?(@.code=='PERIOD_TRUNCATED')].params.actual_from")
                     .value("2026-07-24"));
     }
@@ -4496,7 +4613,7 @@ public record AssetChangeData(PeriodDto period,
 
 ```bash
 ./gradlew test --tests '*AssetChange*'
-git add -A && git commit -m "feat: 자산 변화 뷰 — 항등식 · 현금흐름 포트 스텁 · 경계 경고"
+git add -A && git commit -m "feat: 자산 변화 뷰 — 항등식 · 입출금 실제 값 · 손익성 현금 스텁"
 ```
 
 ---
@@ -4626,14 +4743,26 @@ Run: `./gradlew test --tests '*SixViewGoldenTest'` → FAIL. 실패 메시지의
                 .isEqualByComparingTo(total.get("unrealized_pnl_krw").decimalValue());
     }
 
-    /** 불변식 3 — 여러 통화가 섞일 수 있는 묶음에는 현지 통화가 없다. */
+    /**
+     * 불변식 3 — 병기 여부는 축이 아니라 그 묶음의 통화 집합이 정한다(스펙 §3.7).
+     * 통화가 섞인 묶음에는 없고, 우연히 단일 외화인 묶음에는 있다.
+     */
     @Test
-    void 섹터_시장_계좌_행에는_현지_통화가_없다() throws Exception {
-        for (String path : List.of("allocation?axis=sector", "allocation?axis=market", "accounts")) {
-            for (JsonNode row : json("/portfolio/views/" + path).get("data").get("rows")) {
-                assertThat(row.has("market_value_local")).as(path).isFalse();
-            }
-        }
+    void 현지_통화는_단일_외화_묶음에만_실린다() throws Exception {
+        JsonNode sector = json("/portfolio/views/allocation?axis=sector&lens=DIRECT").get("data").get("rows");
+
+        assertThat(rowByKey(sector, "IT서비스").get("currency").asText()).isEqualTo("USD");
+        assertThat(rowByKey(sector, "IT서비스").get("market_value_local").decimalValue())
+                .isEqualByComparingTo("4400.00");
+        assertThat(rowByKey(sector, "소프트웨어").has("market_value_local")).isFalse();   // KRW + USD
+        assertThat(rowByKey(sector, "현금").has("market_value_local")).isFalse();         // KRW + USD
+        assertThat(rowByKey(sector, "반도체").has("market_value_local")).isFalse();       // 단일 KRW
+
+        JsonNode pension = json("/portfolio/views/accounts").get("data").get("rows").get(1);
+        assertThat(pension.has("market_value_local")).isFalse();                          // 소계는 혼합
+        JsonNode mirae = pension.get("rows").get(1);
+        assertThat(mirae.get("currency").asText()).isEqualTo("USD");                      // MSFT + USD 예수금
+        assertThat(mirae.get("market_value_local").decimalValue()).isEqualByComparingTo("3600.00");
     }
 
     /** 불변식 3 — 비중 합이 100.0이다(반올림 허용 오차 ±0.2). */
@@ -4654,6 +4783,22 @@ Run: `./gradlew test --tests '*SixViewGoldenTest'` → FAIL. 실패 메시지의
         assertThat(lensed.get("total_assets_krw")).isEqualTo(direct.get("total_assets_krw"));
         assertThat(lensed.get("cost_amount_krw")).isEqualTo(direct.get("cost_amount_krw"));
         assertThat(lensed.get("unrealized_pnl_krw")).isEqualTo(direct.get("unrealized_pnl_krw"));
+    }
+
+    /** 스펙 §2.9 항등식 — 잔차가 생길 자리가 없다. */
+    @Test
+    void 자산_변화_항등식이_응답_수준에서_성립한다() throws Exception {
+        JsonNode d = json("/portfolio/views/asset-change?period=CUSTOM&from=2026-07-01&to=2026-07-31")
+                .get("data");
+
+        BigDecimal rhs = d.get("opening").decimalValue()
+                .add(d.get("deposited").decimalValue())
+                .add(d.get("earned").decimalValue())
+                .add(d.get("account_included").decimalValue())
+                .subtract(d.get("account_excluded").decimalValue());
+
+        assertThat(d.get("closing").decimalValue()).isEqualByComparingTo(rhs);
+        assertThat(d.get("earned").decimalValue().signum()).isNegative();   // 자산은 늘고 손익은 손실
     }
 
     /** 스펙 §8.2 — rows가 비면 empty_reason이 필수다. */
@@ -4706,14 +4851,19 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 
 8·9·10은 서로 다른 서비스·DTO를 만들고 공유 상태가 없어 병렬로 진행할 수 있다. 단 셋 다 `api/ViewController.java`를 수정하므로, 병렬로 돌리면 그 파일에서 충돌한다 — 컨트롤러를 뷰별로 셋으로 쪼개거나(`SnapshotViewController` · `RealizedPnlController` · `AssetChangeController`) 순차로 처리한다. **쪼개는 쪽을 권한다** — 파일이 함께 바뀌는 이유가 없다.
 
-## E.2 착수 전에 답이 있으면 좋은 것 (없어도 진행 가능)
+## E.2 남은 판단 하나
 
-| 질문 | 없을 때의 진행 방식 |
-|---|---|
-| 지표 12개·notice 13종이라는 수치의 출처 | 스펙 §6.2·§8.2의 17개·16종으로 진행한다(§A.10 #1·#2) |
-| `PRICE_LAG_MARKET`용 시장별 가격 기준일을 어디에 담을지 | 이번 범위에서 발화하지 않는다. 1단계 설계 때 `position_line`에 컬럼 추가를 검토한다(§A.10 #3) |
-| §3.7 표와 본문의 우선순위 | 두 게이트를 모두 통과할 때만 병기한다. 표 쪽으로 좁히려면 `Axis.localCurrencyEligible`만 고치면 된다(§A.10 #4) |
-| CASH 행의 종목수 표기 | 0으로 내리고 화면이 숨긴다(§A.10 #5) |
+2026-08-09 검토에서 §A.10의 질문 3건에 답이 왔고 스펙에 반영됐다(§A.12). 남은 것은 하나다.
+
+| 질문 | 지금의 처리 | 뒤집는 방법 |
+|---|---|---|
+| `PRICE_LAG_MARKET`을 휴장일 캘린더 없이 발화시킬 것인가 | **발화시키지 않는다.** 미국 휴장일을 모르면 실제보다 최신 날짜를 주장하게 되어, 정보성 배너 하나 때문에 틀린 날짜를 보이게 된다(§A.12 #2) | `WeekdayMarketCalendar`를 `MarketCalendarPort` 구현으로 넣고 배너에 한계를 함께 적는다. 판단만 주면 Task 7에 한 스텝이 추가된다 |
+
+## E.2.1 후속 단계 착수 조건
+
+**계획 A(이번 범위)는 증권사 계좌가 필요 없다.** 입력이 사람이 넣은 샘플 행이다.
+
+**1.5단계(등급 판정) 이후는 개발용 실전 계좌가 필요하다** — 손익·실현손익·권리 계열 TR 5종이 모의투자를 지원하지 않아 모의 앱키로는 개발도 테스트도 되지 않는다(§A.11). 계획 A를 진행하는 동안 실전 계좌와 앱키를 준비해 두면 대기 시간이 겹치지 않는다.
 
 ## E.3 이 계획이 검증하는 스펙 항목 대조
 
@@ -4727,6 +4877,7 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | §3.6 파이프라인 2~6단계 | 4·5·6·7·8 |
 | §3.7 통화 표시 | 3(CurrencySet) · 7(정책) · 11(교차 검증) |
 | §5.1 테이블 | 1 |
+| §5.1 `manual_cashflow` (사용자 입력 입출금) | 1(마이그레이션·샘플) · 10(읽기 경로) |
 | §5.2 예수금을 종목으로 | 1(샘플) · 3(2슬롯) · 7(응답 null) |
 | §5.3 원화 환산 머티리얼라이즈 | 1(컬럼) · 7(`FX_APPLIED`·`FX_STALE`) |
 | §5.5 타입 정책·반올림 | 1(numeric) · 3(비율 1자리) |
@@ -4734,6 +4885,7 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | §8.1 엔드포인트 | 8·9·10 |
 | §8.2 봉투·notice·empty_reason | 7 |
 | §8.3 스냅샷 뷰 응답 | 7·8 |
+| §4.6 현금흐름 커버리지 (계좌, 유형) | 10 |
 | §8.4 실현손익·자산 변화 응답 | 9·10 |
 | §8.6 오류와 빈 상태 | 7·8 |
 | §9.1 런타임 검증(`position_line`·렌즈) | 4·5 |
@@ -4742,7 +4894,7 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | §10 화면 상태 전수 | 7·8·9·10 (빈 상태·경고·계좌 상태 세 표현 수단) |
 | §13이 계획에서 확정하라 한 것 | §A.2.5(인덱스·보관·파티셔닝) · §A.9(API 인증) |
 
-**이번 범위에서 다루지 않는 스펙 절**: §4(3원장·등급 판정 — 1.5/1.6단계) · §7(계좌 연동·동기화) · §9.1의 평단·등급 묶음 · §11(역할 분담, 문서) · §12(YAGNI 경계, 의도적 제외).
+**이번 범위에서 다루지 않는 스펙 절**: §4.1~4.5(평단·등급 판정 — 1.5/1.6단계) · §7(계좌 연동·동기화) · §9.1의 평단·등급 묶음 · §11(역할 분담, 문서) · §12(YAGNI 경계, 의도적 제외).
 
 ## E.4 실행 방식 선택
 
