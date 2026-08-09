@@ -517,7 +517,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 실현손익_krw = 매도금액 × 매도일 환율 - 취득원가 × 매입일 환율 - 비용
 ```
 
-원화 실현손익에는 환손익이 포함된다. §5.3의 평가손익과 같은 취급이며 가격손익과 환손익을 분리하지 않는다. 매입일·매도일 환율을 조회할 수 있도록 `FxRate`를 일별로 보관한다.
+원화 실현손익에는 **환손익이 포함된다.** 미실현 평가손익은 양변을 같은 환율로 환산해 환손익이 제외되므로(§5.3) 둘의 취급이 다르다. 매입일·매도일 환율을 조회할 수 있도록 `FxRate`를 일별로 보관한다.
 
 **기업행위 보정**
 
@@ -541,19 +541,25 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 등급은 감으로 붙이지 않고 **(계좌 × 종목)마다 역산해서 판정**한다.
 
 ```
-opening_qty = 현재 보유수량 − Σ(확보구간 매수) + Σ(확보구간 매도)   ← 기업행위 보정 후
+opening_qty = position_line.quantity − Σ(확보구간 매수) + Σ(확보구간 매도)   ← 기업행위 보정 후
 ```
 
-확보된 거래내역을 현재 잔고에서 거꾸로 되감았을 때 시작 시점 수량이 0이면, 그 구간이 곧 포지션 전체다.
+확보된 거래내역을 **잔고 수량**에서 거꾸로 되감았을 때 시작 시점 수량이 0이면, 그 구간이 곧 포지션 전체다. 좌변은 반드시 잔고여야 한다 — 역산의 목적이 잔고와 거래를 대조하는 것이므로, 거래에서 재구성한 수량을 넣으면 자기참조가 되어 `opening_qty`가 항상 0이 되고 모든 포지션이 `VERIFIED`로 판정된다.
+
+**판정 시점을 고정한다.** 등급은 파이프라인 1단계 직후 배치에서만 판정하고 조회 시 재판정하지 않는다. 역산에 쓰는 체결은 `executed_at <= as_of`로 자르며, 사용한 잔고 시점과 수량을 `evaluated_as_of` · `evaluated_qty`에 기록한다.
 
 | 등급 | 판정 | 실현손익 | UI |
 |---|---|---|---|
 | **VERIFIED** | `opening_qty = 0` | 신뢰 | 배지 없음 |
 | **SEEDED** | `opening_qty > 0` → 잔고 평단을 시드로 보정 | 추정값 | **"추정" 배지** |
 | **UNAVAILABLE** | 거래내역 미확보 | 미제공 | "거래내역 없음" |
-| **CONFLICT** | `opening_qty < 0` (수량 모순) | 미제공 | 경고 + 동기화 유도 |
+| **CONFLICT** | `opening_qty < 0` (수량 모순) | 미제공 | "거래내역이 아직 도착하지 않았을 수 있습니다" |
 
 **직교 플래그** `ca_unknown`: 보유 기간 중 기업행위가 있었을 정황인데 이력이 없으면 `VERIFIED`여도 경고를 덧붙인다. 등급은 "거래가 다 있는가", 플래그는 "그 거래를 올바로 해석했는가"를 판정하므로 성격이 다르다.
+
+**시차로 인한 일시적 오판을 전제한다.** 잔고와 체결은 도착 시점이 달라, 매수 직후 체결이 아직 안 왔으면 `SEEDED`, 반대 순서면 `CONFLICT`가 된다. 정상 매매 한 번이 경고를 띄울 수 있으므로 문구를 재동기화 유도가 아니라 도착 지연 안내로 둔다.
+
+**고칠 수 없는 경고를 영구 표시하지 않는다.** `CONFLICT`가 조회 기간 한계나 기업행위 미확보 같은 구조적 원인으로 판정되면 — 다음 판정에서도 동일하게 재현되면 — `UNAVAILABLE`로 강등해 조용히 제외하고 `미포함 계좌 N개`에 흡수한다(§2.8). 사용자가 해소할 수 없는 상태를 계속 노출하지 않기 위해서다.
 
 ### 4.5 SEEDED 표시 정책
 
@@ -652,7 +658,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `base_currency` | enum | |
 | `source` | enum | `KIS` · `CODEF` |
 | `connected_id_ref` | text null | CODEF 계좌만. 인증정보는 저장하지 않음 |
-| `state` | enum | §7.2 상태 기계 |
+| `link_state` | enum | 연동 상태만. `CONNECTING`·`CONNECTED`·`REAUTH_REQUIRED`·`DISCONNECTED` (§7.2) |
 | `last_synced_at` | timestamptz null | |
 
 **`position_line`** 보유 스냅샷 — 하루 한 벌
@@ -676,7 +682,8 @@ PK `(as_of, account_id, instrument_id)`
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
 | `account_id` · `instrument_id` | uuid | PK |
-| `quantity` | decimal(20,8) | 재구성된 보유수량 |
+| `evaluated_as_of` | date | 판정에 사용한 잔고 시점 |
+| `evaluated_qty` | decimal(20,8) | 그때의 `position_line.quantity` |
 | `avg_cost_local` · `avg_cost_krw` | decimal(20,4) | 매수 시점 환율로 누적 |
 | `coverage_start_at` | date null | 거래내역 확보 시작일 |
 | `opening_qty` | decimal(20,8) | 역산 결과 (§4.4) |
@@ -704,7 +711,9 @@ PK `(as_of, account_id, instrument_id)`
 
 | 컬럼 | 타입 |
 |---|---|
-| `run_id` uuid PK · `account_id` · `started_at` · `finished_at` null · `state` enum · `failure_reason` text null · `reauth_required` bool |
+| `run_id` uuid PK · `account_id` uuid **null**(전체 동기화는 null) · `started_at` · `finished_at` null · `state` enum(`RUNNING`·`PARTIAL`·`DONE`·`FAILED`) · `failure_reason` text null |
+
+사용자에게 보여줄 진행 상태 전용이다. 전 계좌 새로고침은 부모 `sync_run` 1행과 계좌별 `collection_run` N행으로 구성된다.
 
 > `Portfolio`는 테이블이 아니라 `position_line` 집계에서 파생된다.
 
@@ -789,7 +798,7 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 | `unrealized_pnl_krw` | 평가손익 | ○ | **제외** | `TOTAL_ONLY` | `Σ평가 - Σ매입` |
 | `unrealized_pnl_pct` | 평가손익률 | ✕ | **제외** | `TOTAL_ONLY` | `평가손익 ÷ Σ매입` |
 | `realized_pnl_krw` | 실현손익 | ○ | 제외 | `NEVER` | `Σ 실현손익` |
-| `avg_cost` | 평단 | ✕ | 제외 | `NEVER` | `Σ매입 ÷ Σ수량` — 잔고 평단 기준 |
+| `avg_cost` | 평단 | ✕ | 제외 | `NEVER` | `Σ매입 ÷ Σ수량` — 잔고 평단·잔고 수량 기준 |
 | `weight_pct` | 비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `행 평가금액 ÷ total_assets_krw` |
 | `cash_ratio_pct` | 현금비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `CASH 평가 ÷ total_assets_krw` |
 | `instrument_count` | 종목수 | ✕ | 제외 | `ROW_AND_TOTAL` | `COUNT DISTINCT 종목` |
@@ -846,7 +855,11 @@ View { view_key, question, grain, group_by[], metrics[], filters[],
 
 1차에서는 자동 연동만 지원한다. 수동 입력·CSV 업로드는 제공하지 않으며, 연동 불가 계좌는 안내만 표시한다.
 
-### 7.2 계좌 상태 기계
+### 7.2 계좌 상태
+
+**연동 상태와 수집 결과는 직교한다.** 연동은 자격증명의 지속적 상태이고 수집 결과는 매일 갱신되는 이벤트다. 한 enum에 섞으면 어제 실패한 정상 연동 계좌를 표현할 수 없다.
+
+`account.link_state` — 연동(자격증명) 상태만 담는다.
 
 ```
                   ┌──────────────┐
@@ -855,24 +868,29 @@ View { view_key, question, grain, group_by[], metrics[], filters[],
                     성공 │    추가인증 요구
                          ▼         ▼
                   ┌───────────┐  ┌──────────────────┐
-        ┌────────▶│ CONNECTED │  │ REAUTH_REQUIRED  │◀── 인증 만료
-        │         └─────┬─────┘  └────────┬─────────┘
-        │        배치/수동│                 │ 재인증
-        │               ▼                 │
-        │         ┌───────────┐           │
-        └─────────│  SYNCING  │───────────┘
-          성공     └─────┬─────┘
-                   실패  ▼
-                  ┌───────────┐      사용자 해제
-                  │  FAILED   │────▶ DISCONNECTED
-                  └───────────┘      (과거 라인 보존)
+                  │ CONNECTED │◀▶│ REAUTH_REQUIRED  │◀── 인증 만료
+                  └─────┬─────┘  └──────────────────┘
+                        │  사용자 해제
+                        ▼
+                  ┌──────────────┐
+                  │ DISCONNECTED │   과거 라인 보존
+                  └──────────────┘
 ```
+
+수집 결과는 저장하지 않고 **그 계좌의 최신 `collection_run`에서 파생**한다. 계좌별 뷰 응답은 두 값을 나란히 싣는다.
+
+| 필드 | 출처 |
+|---|---|
+| `link_state` | `account.link_state` |
+| `last_collection` | 최신 `collection_run`의 `state` · `as_of` · `failure_reason` |
+
+`REAUTH_REQUIRED` 계좌도 EOD 배치가 `collection_run`을 만들되 즉시 같은 상태로 종료한다. 그러면 캐리포워드 트리거가 계좌 상태와 무관하게 **"그날 `collection_run` 최종 상태가 `DONE`이 아니면 이월"** 이라는 단일 규칙이 된다. `DISCONNECTED` 계좌는 `collection_run`을 만들지 않으며, 이것이 §7.5의 "제외"를 구현한다.
 
 ### 7.3 캐리포워드 — 실패해도 라인은 만든다
 
 계좌 동기화가 실패해도 **그날의 `position_line`은 반드시 생성한다.** 직전 성공 스냅샷을 그날 `as_of`로 복제하고 `source_as_of`·`is_carried_forward`로 표시한다.
 
-1. **그레인 유일성이 유지된다.** `as_of`마다 모든 계좌가 정확히 1행씩 있어야 총자산·비중이 성립한다. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다.
+1. **그레인 유일성이 유지된다.** `as_of`마다 **연동이 유효한** 모든 계좌가 정확히 1행씩 있어야 총자산·비중이 성립한다. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다. `DISCONNECTED` 계좌는 대상이 아니다.
 2. **자산 변화 뷰가 깨지지 않는다.** 기초·기말 스냅샷이 항상 존재해야 항등식이 성립한다.
 3. **오차가 정직하게 흘러간다.** 이월된 평가금액은 낡은 시세이지만, 그 오차는 다음 성공 동기화 시 자산 변화 뷰의 `설명되지 않는 변화`로 드러난다.
 
@@ -962,6 +980,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 {
   "as_of": "2026-07-27T15:30:00+09:00",
   "data": { },
+  "empty_reason": null,
   "notices": [
     { "code": "STALE_ACCOUNTS",
       "severity": "warn",
@@ -975,15 +994,30 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 
 `severity`는 `info | warn | error`.
 
-| code | 발생 조건 |
-|---|---|
-| `FX_APPLIED` | 원화 환산에 적용한 환율과 기준시점 (§2.3) |
-| `STALE_ACCOUNTS` | 캐리포워드된 계좌 존재 (§7.3) |
-| `CONSTITUENT_AS_OF` | 렌즈 적용 시 구성비중 기준일 (§3.4) |
-| `EXCLUDED_ACCOUNTS` | 실현손익 합계에서 빠진 계좌 (§2.8) |
-| `CASHFLOW_UNCOVERED` | 현금흐름 미확보 계좌 (§4.6) |
-| `PERIOD_TRUNCATED` | 기초 스냅샷 대체와 실제 시작일 (§2.9) |
-| `REAUTH_REQUIRED` | 재인증 대기 계좌 존재 (§7.2) |
+| code | 발생 조건 | params |
+|---|---|---|
+| `FX_APPLIED` | 원화 환산에 적용한 환율 (§2.3) | 통화쌍별 배열 + 최고령 `fx_as_of`. 라인마다 환율이 달라 단일 값으로 표기할 수 없다 |
+| `STALE_ACCOUNTS` | 캐리포워드된 계좌 존재 (§7.3) | `count` · 최고령 `source_as_of` |
+| `CONSTITUENT_AS_OF` | 렌즈 적용 시 구성비중 기준일 (§3.4) | 최고령 기준일 + 대상 ETF 수. ETF마다 파일 갱신 주기가 달라 단일 날짜가 성립하지 않는다 |
+| `CONSTITUENT_UNAVAILABLE` | 구성종목 미확보 ETF 존재 (§12) | `count` · 미분해 평가금액 |
+| `LENS_METRICS_OMITTED` | `TOTAL_ONLY` 지표가 행에서 빠짐 (§6.2) | 생략된 지표 키 배열 |
+| `EXCLUDED_ACCOUNTS` | 실현손익 합계에서 빠진 계좌 (§2.8) | `count` |
+| `SEEDED_ROWS` | 추정 등급 행 존재 (§4.5) | `count` |
+| `CA_UNKNOWN` | 기업행위 이력 미확인 (§4.4) | `instrument_id` 배열 |
+| `CASHFLOW_UNCOVERED` | 현금흐름 미확보 계좌 (§4.6) | `count` |
+| `PERIOD_TRUNCATED` | 기초 스냅샷 대체와 실제 시작일 (§2.9) | 실제 시작일 |
+| `BOUNDARY_CARRIED_FORWARD` | 기간 경계 스냅샷에 이월 계좌 (§2.9) | `count` · 경계 시점 |
+| `REAUTH_REQUIRED` | 재인증 대기 계좌 존재 (§7.2) | `count` |
+| `SYNC_IN_PROGRESS` | 동기화 진행 중 | `sync_run_id` |
+
+**빈 상태는 notices가 아니라 봉투 필드로 표현한다.** `rows`가 비면 `empty_reason`이 필수다. 빈 상태마다 코드를 만들면 뷰가 늘 때마다 코드가 증식한다.
+
+```
+empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
+             · NO_TRADES_IN_PERIOD · ALL_UNAVAILABLE
+```
+
+**계좌 단위 상태는 notices에 넣지 않는다.** 전역 배너와 행 배지는 다른 물건이므로, 계좌별 뷰 응답의 행에 `link_state` · `last_collection`을 직접 싣는다(§7.2). 계좌별 뷰만 §8.3 공통 행 스키마를 확장하는 유일한 뷰다.
 
 ### 8.3 스냅샷 뷰 응답
 
@@ -1046,14 +1080,48 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 
 `split_available`이 `false`이면 거래 원장이 없어 실현/미실현 분해를 생략한 것이다. `total`은 항상 정확하다(§2.9).
 
-### 8.5 오류와 빈 상태
+`account_scope_change`는 §2.9 워터폴이 편입과 제외를 별도 행으로 그리므로 `account_included` · `account_excluded` 두 값으로 나눈다.
 
-- **빈 상태는 오류가 아니다.** `rows: []`와 해당 `notices`로 표현하며 상태 코드는 `200`이다. §10의 빈 상태가 모두 여기 해당한다.
+### 8.5 하위 화면 · 계좌 · 동기화 응답
+
+```json
+// GET /portfolio/instruments/{id}
+{ "instrument": { "id": "...", "label": "삼성전자", "market": "KR", "currency": "KRW" },
+  "position": { "quantity": 10, "avg_cost": 65600, "market_value_krw": 712000,
+                "unrealized_pnl_krw": 55900, "unrealized_pnl_pct": 8.5 },
+  "by_account": [ { "account_id": "...", "label": "한국투자 위탁",
+                    "account_type": "GENERAL", "quantity": 7, "avg_cost": 64200 } ],
+  "trades": [ { "executed_at": "2026-03-11", "side": "BUY", "quantity": 5, "price": 62000 } ],
+  "basis": { "grade": "SEEDED", "coverage_start_at": "2026-01-01", "ca_unknown": true },
+  "corporate_actions": [ { "type": "SPLIT", "ratio": 2, "ex_date": "2026-04-15" } ] }
+```
+
+```json
+// GET /sync/{run_id}
+{ "run_id": "...", "state": "RUNNING", "started_at": "...", "finished_at": null,
+  "accounts": [ { "account_id": "...", "label": "한국투자 위탁",
+                  "state": "DONE", "as_of": "2026-07-27", "failure_reason": null },
+                { "account_id": "...", "label": "미래에셋증권",
+                  "state": "FAILED", "as_of": "2026-07-26",
+                  "failure_reason": "SCRAPE_TIMEOUT" } ] }
+```
+
+```json
+// POST /accounts  → 202
+{ "account_id": "...", "link_state": "REAUTH_REQUIRED",
+  "challenge": { "type": "SMS_OTP", "expires_at": "...", "resend_available_at": "..." } }
+```
+
+`link_state`가 `CONNECTED`이면 `challenge`는 `null`이다.
+
+### 8.6 오류와 빈 상태
+
+- **빈 상태는 오류가 아니다.** `rows: []`와 `empty_reason`으로 표현하며 상태 코드는 `200`이다. §10의 빈 상태가 모두 여기 해당한다.
 - 동기화 중이거나 스냅샷이 아직 없어도 `200`과 `notices`로 알린다.
 - 재인증 필요는 오류가 아니라 계좌 상태다. `GET /accounts` 응답의 상태 필드와 `REAUTH_REQUIRED` notice로 표현한다.
 - 오류는 `{ "error": { "code", "message" } }` 형태로 내리고 `code`를 클라이언트 분기용으로 쓴다.
 
-### 8.6 UI ↔ 모델 매핑
+### 8.7 UI ↔ 모델 매핑
 
 | UI 요소 | 모델 경로 |
 |---|---|
@@ -1089,7 +1157,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `position_line`은 (as_of, account, instrument)마다 **정확히 1행** — 그레인 유일성 |
 | 비율 성격 컬럼(수익률·비중)은 스키마에 존재 불가 |
 | `market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수 (null 금지) |
-| 동기화 실패 계좌도 해당 `as_of`에 라인 존재 (캐리포워드) |
+| 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 |
+| 그날 `collection_run` 최종 상태가 `DONE`이 아니면 캐리포워드 |
 | `is_carried_forward = true`이면 `source_as_of < as_of` |
 | `as_of`는 일자 단위. 당일 외의 `as_of` 행은 수정 불가 |
 | 현지 통화 표시는 묶음이 단일 통화일 때만 허용. 그 외 집계 값은 원화 |
@@ -1117,6 +1186,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `UNAVAILABLE`·`CONFLICT` 종목은 실현손익 합계에서 제외하되 제외 건수를 노출 |
 | 보유수량이 0이 되면 `position_basis` 리셋 |
 | 실현손익의 기간 귀속은 **체결일** 기준 |
+| 등급 판정의 좌변 수량은 `position_line.quantity`. `position_basis`에서 재구성한 수량을 쓰지 않는다 |
+| 등급 판정은 `position_line.as_of` 기준으로 정렬된 두 원장으로만 수행. 역산 체결은 `executed_at <= as_of` |
 | 외화 실현손익은 매입일·매도일 환율을 각각 적용 |
 
 ### 9.4 자산 변화
@@ -1161,6 +1232,8 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | 계좌 연동 | 기관 선택 / 인증 입력 / **추가 인증 요구** / 연동 실패·재시도 / 연동 성공 |
 | 동기화 | 진행 중 / **부분 실패** / 전체 실패 / 완료 |
 
+빈 상태는 `empty_reason`, 품질 경고는 `notices`, 계좌 단위 상태는 계좌별 뷰의 행 필드로 표현한다(§8.2).
+
 > 뒤로·취소 이동은 각 화면 네비바의 `‹`로 일관 제공한다.
 
 ---
@@ -1203,12 +1276,12 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 
 - **벤치마크 비교**: KOSPI·S&P500 대비 상대 성과. 원천은 FinanceDataReader로 확보 가능하나 우선순위가 아니다.
 - **섹터 내 PER/PBR 분위수**: 데이터 원천 미확정.
-- **수동 입력·CSV 업로드**: 자동 연동만 지원. 연동 불가 계좌는 안내만.
-- **기간수익률(TWR·MWR)**: 자산 변화 뷰가 절대금액 손익까지 답하므로 1차에서는 불필요.
-- **배당손익 별도 지표**: 현금흐름 원장에 `DIVIDEND`로만 존재.
+- **수동 입력·CSV 업로드**: 자동 연동만 지원. 연동 불가 계좌는 안내만. 보정 경로가 없으므로 구조적 원인의 `CONFLICT`는 `UNAVAILABLE`로 강등해 경고를 영구 표시하지 않는다(§4.4).
+- **기간수익률(TWR·MWR)**: 입출금 타이밍을 보정한 수익률로 절대금액 손익이 대체하지 못한다. 기초·기말 스냅샷과 기간 현금흐름이 있어 **계산 입력은 이미 확보돼 있으나** 우선순위가 아니다.
+- **배당의 종목별 귀속**: 계좌 단위 현금흐름으로만 집계한다. 자산 변화 워터폴의 배당 행은 제공하되 어느 종목에서 나왔는지는 따지지 않는다.
 - **포트폴리오 스냅샷 비교·백테스트**: 후속 과제.
 - **과거 시점 화면 재현**: 전개 결과와 적용한 구성비중 버전을 저장하지 않으므로 과거 날짜의 ETF 분해는 재현하지 않는다.
-- **매입시점 FX 분리**: 원화 평가손익을 가격손익/환손익으로 분해하지 않는다(§5.3).
+- **미실현 평가손익의 환손익 분리**: 미실현 평가손익은 양변을 같은 환율로 환산해 환손익이 애초에 들어가지 않는다(§5.3). 실현손익은 매입일·매도일 환율을 각각 적용해 환손익을 포함하며(§4.3), 이를 가격손익과 분리하지 않는다.
 - **사전 집계**: 보유 규모상 조회 시 집계로 충분하므로 집계 캐시나 전개 결과 저장을 두지 않는다(§3.3 · §3.4).
 - **범용 쿼리 엔드포인트**: 뷰 사양은 서버가 보유하며 임의 축 조합을 받지 않는다(§6.4).
 - **계좌 간 이체 식별**: 이체를 입출금과 구분하지 않는다. 계좌 필터 적용 시 각주로 고지한다(§2.9).

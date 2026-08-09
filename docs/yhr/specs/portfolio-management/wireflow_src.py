@@ -427,12 +427,17 @@ hr(cx, cy + 34, LW - 32, '#E2E7EF')
 text(cx, cy + 46, LW - 32, 18, '범례 (Legend)', 12, TXT, bold=True)
 
 y = cy + 72
-text(cx, y, LW - 32, 16, '연동 상태색', 10, MUT, bold=True)
+text(cx, y, LW - 32, 16, '연동 상태 (link_state)', 10, MUT, bold=True)
 y += 20
 for lb, bg, fg, dot in [('연동됨 CONNECTED', GRN_BG, GRN, GRN),
-                        ('동기화 중 SYNCING', BLU_BG, PRI, PRI),
-                        ('재인증 필요 REAUTH', AMB_BG, AMB_TX, AMB),
-                        ('실패·이월 STALE', GRY_BG, MUT, DIM)]:
+                        ('재인증 필요 REAUTH', AMB_BG, AMB_TX, AMB)]:
+    pill(cx, y, 152, 20, bg, fg, lb, dot=dot)
+    y += 24
+y += 4
+text(cx, y, LW - 32, 16, '수집 결과 (collection_run)', 10, MUT, bold=True)
+y += 20
+for lb, bg, fg, dot in [('완료 DONE', BLU_BG, PRI, PRI),
+                        ('실패·이월 FAILED', GRY_BG, MUT, DIM)]:
     pill(cx, y, 152, 20, bg, fg, lb, dot=dot)
     y += 24
 
@@ -548,7 +553,7 @@ text(x, y + 114, 276, 36, '인증번호 재전송', 11, PRI, align='center', bol
 box(x, y + 162, 276, 76, 'warn')
 text(x + 12, y + 172, 252, 20, '이 계좌는 재인증 대기 상태예요', 11, AMB_TX, bold=True)
 text(x + 12, y + 192, 252, 38, '인증을 마치면 즉시 동기화가 시작되고, 그때까지는 마지막 데이터로 표시돼요.', 10, SUB)
-mono(x, y + 250, 276, 'account.state = REAUTH_REQUIRED\n인증 완료 → sync 즉시 트리거')
+mono(x, y + 250, 276, 'account.link_state = REAUTH_REQUIRED\n인증 완료 → collection_run 즉시 요청')
 rect(x, y + 455, 276, 44, PRI, 'none', 1, arc=8)
 text(x, y + 455, 276, 44, '확인', 13, '#FFFFFF', align='center', bold=True)
 
