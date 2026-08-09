@@ -194,6 +194,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 그레인 | 축 값 1행 |
 | 축 | 종목 · 섹터 · 시장(국내/미국) · 통화 · 자산군(주식/ETF/현금) · 레버리지(원천 확보 시) |
 | 지표 | 평가금액(원화) · 비중% · 종목수 |
+| 필터 | 계좌 · 계좌유형 |
 | 렌즈 | **핵심 용처.** 기본 `DIRECT`, 토글로 `LOOK_THROUGH` |
 | 시각화 | 도넛 + 순위 막대 리스트 |
 
@@ -673,7 +674,6 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `account_id` | uuid PK | |
 | `broker` | text | |
 | `account_type` | enum | `GENERAL` · `PENSION` |
-| `base_currency` | enum | |
 | `source` | enum | `KIS` · `CODEF` |
 | `credential_ref` | text null | 시크릿 매니저 키. KIS 앱키·CODEF Connected ID 공용. 값 자체는 저장하지 않음 |
 | `link_state` | enum | 연동 상태만. `CONNECTING`·`CONNECTED`·`REAUTH_REQUIRED`·`DISCONNECTED` (§7.2) |
@@ -721,9 +721,10 @@ PK `(as_of, account_id, instrument_id)`
 | `sold_at` | timestamptz | 기간 귀속은 체결일 |
 | `quantity` | decimal(20,8) | |
 | `sell_amount_local` · `cost_basis_local` | decimal(20,4) | |
-| `sell_amount_krw` · `cost_basis_krw` | decimal(20,2) | 각각 매도일·매입 시점 환율 적용 |
+| `sell_amount_krw` · `cost_basis_krw` | decimal(20,0) | 각각 매도일·매입 시점 환율 적용 |
 | `fee_tax` | decimal(20,4) | |
-| `realized_pnl_local` · `realized_pnl_krw` | decimal(20,2) | |
+| `realized_pnl_local` | decimal(20,4) | |
+| `realized_pnl_krw` | decimal(20,0) | |
 | `grade` | enum | `position_basis`에서 상속 |
 
 **`sync_run`** 동기화 실행
@@ -876,14 +877,12 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 |---|---|---|---|---|---|---|
 | `summary` | 전체 1행 | `[]` | 총자산 · 유가증권 평가금액 · 매입금액 · 평가손익(률) · 현금비중 · 일간 변화(금액/률) · 계좌수 · 종목수 | — | `NONE` (미니차트 `sub_block`에 `OPTIONAL`) | 스냅샷 |
 | `positions` | 종목 | `[instrument]` | 수량 · 평단 · 매입금액 · 평가금액 · 평가손익(률) · 비중 | 계좌 · 시장 · 자산군 | `OPTIONAL` | 스냅샷 |
-
-정렬은 평가금액 내림차순 고정이며 요청 파라미터로 받지 않는다.
 | `allocation` | 축 값 | 축 1개 택일 | 평가금액 · 비중 · 종목수 | 계좌 · 계좌유형 | `OPTIONAL` | 스냅샷 |
 | `accounts` | 계좌 | `[account_type, account]` | 평가금액 · 예수금 · 평가손익(률) · 비중 | — | `NONE` | 스냅샷 |
 | `realized-pnl` | 기간 × 종목 × 체결 | `[instrument, trade]` | 매도금액 · 취득원가 · 실현손익(률) | 계좌 · 기간 | `NONE` | 거래 |
 | `asset-change` | 기간 × 유형 | — | — | 계좌 · 기간 | `NONE` | 스냅샷 + 현금흐름 |
 
-`realized-pnl`과 `asset-change`는 공통 행 스키마를 쓰지 않는다. 응답 형태는 §8.4가 정의한다.
+정렬은 평가금액 내림차순 고정이며 요청 파라미터로 받지 않는다. `realized-pnl`과 `asset-change`는 공통 행 스키마를 쓰지 않으며 응답 형태는 §8.4가 정의한다.
 
 `lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다. `OPTIONAL`인 뷰에서 렌즈를 켜면 `lens_safe`가 `TOTAL_ONLY`·`NEVER`인 지표가 행에서 빠진다.
 
@@ -902,7 +901,7 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 | | KIS (본인 계좌) | CODEF (타 기관) |
 |---|---|---|
 | 입력 | 본인 앱키·시크릿·계좌번호 | 기관 선택 + 인증서 또는 ID/PW |
-| 저장 | 앱키(암호화 저장) | **Connected ID만** — 인증정보는 CODEF만 보유 |
+| 저장 | 시크릿 매니저에 보관하고 테이블에는 `credential_ref`만 | Connected ID를 시크릿 매니저에 보관 — 인증정보는 CODEF만 보유 |
 | 전송 | — | 프론트에서 CODEF 공개키로 RSA 암호화 후 전송 |
 | 특성 | 빠르고 안정적 | 스크래핑 기반 — 느리고 실패 가능 |
 | 재시도 | 레이트리밋 스로틀 중심 | 지수 백오프 + 부분 실패 허용 |
@@ -1020,7 +1019,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 |---|---|
 | 뷰 | `GET /portfolio/views/summary` |
 | | `GET /portfolio/views/positions?lens=&account=&market=&asset_class=` |
-| | `GET /portfolio/views/allocation?axis=&lens=` |
+| | `GET /portfolio/views/allocation?axis=&lens=&account=&account_type=` |
 | | `GET /portfolio/views/accounts` |
 | | `GET /portfolio/views/realized-pnl?period=&account=` |
 | | `GET /portfolio/views/asset-change?period=&account=` |
@@ -1095,9 +1094,9 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
              "cash_ratio_pct": 6.4 },
   "rows": [
     { "key": "semiconductor", "label": "반도체",
-      "market_value_krw": 14268000, "cost_amount_krw": 13100000,
-      "unrealized_pnl_krw": 1168000, "unrealized_pnl_pct": 8.9,
-      "weight_pct": 24.6, "instrument_count": 4 }
+      "market_value_krw": 10614000, "cost_amount_krw": 9750000,
+      "unrealized_pnl_krw": 864000, "unrealized_pnl_pct": 8.9,
+      "weight_pct": 18.3, "instrument_count": 4 }
   ]
 }
 ```
@@ -1139,13 +1138,13 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 
 ```json
 // asset-change
+// breakdown[].type = DEPOSIT · WITHDRAW · DIVIDEND · FEE_TAX · INVESTMENT_PNL
+//                    (표시 유형이며 cln_cashflow.type과 별개)
 { "period": { "from": "2026-07-01", "to": "2026-07-31" },
   "opening": 50000000, "closing": 58000000,
   "deposited": 6000000,
   "earned": 2000000,
   "account_included": 0, "account_excluded": 0,
-  // breakdown[].type = DEPOSIT · WITHDRAW · DIVIDEND · FEE_TAX
-  //                    · INVESTMENT_PNL   (표시 유형이며 cln_cashflow.type과 별개)
   "breakdown": [ { "type": "DEPOSIT", "amount": 6000000 },
                  { "type": "DIVIDEND", "amount": 120000 },
                  { "type": "FEE_TAX", "amount": -30000 },
@@ -1245,6 +1244,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | `is_final = true`인 행은 수동 동기화가 덮지 않는다 |
 | `fx_rate` 결측 시 직전 영업일로 폴백하고 `fx_as_of`에 그 날짜를 기록 |
 | `position_line.cost_amount`는 잔고 평단 기준. `position_basis`를 참조하지 않는다 |
+| CASH 행은 원가 = 평가금액으로 생성(§5.2) |
 
 **평단 · 실현손익 · 등급**
 
@@ -1282,9 +1282,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 규칙 | 강제 지점 |
 |---|---|
 | 비율 성격 컬럼(수익률·비중)은 스키마에 존재 불가 | 마이그레이션 리뷰 |
-| `LOOK_THROUGH` 결과에는 평단 필드가 존재하지 않음 | 코드 리뷰 |
 | `additive = false` 지표는 라인 단위 합산 금지 — 집계 후에만 계산 | 코드 리뷰 |
-| CASH 행은 원가 = 평가금액으로 저장(§5.2) | 마이그레이션 리뷰 |
 
 ### 9.3 요청 검증과 응답 조립
 
