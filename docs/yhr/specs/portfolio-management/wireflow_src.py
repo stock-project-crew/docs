@@ -879,23 +879,25 @@ hdr = y + 108
 text(x, hdr, 120, 18, '종목', 9, DIM, bold=True)
 text(x + 118, hdr, 70, 18, '매도일', 9, DIM, align='right', bold=True)
 text(x + 192, hdr, 84, 18, '실현손익', 9, DIM, align='right', bold=True)
-rows = [('삼성전자', '05-12', '+820,000', UP, None),
-        ('카카오', '03-04', '-310,000', DOWN, 'SEEDED'),
-        ('NAVER', '02-18', '+1,630,000', UP, 'SEEDED')]
+rows = [('삼성전자', '05-12 외 2건', '+820,000', UP, '혼합'),
+        ('카카오', '03-04', '-310,000', DOWN, '추정'),
+        ('NAVER', '02-18', '+1,630,000', UP, '추정')]
 for i, (nm, dt, v, c, g) in enumerate(rows):
     yy = y + 128 + i * 52
     hr(x, yy, 276)
     text(x, yy + 8, 120, 18, nm, 12, TXT, bold=True)
-    if g:
-        pill(x, yy + 28, 40, 16, AMB_BG, AMB_TX, '추정', size=8)
-    text(x + 118, yy + 8, 70, 18, dt, 10, MUT, align='right')
+    if g == '혼합':
+        pill(x, yy + 28, 40, 16, GRY_BG, MUT, g, size=8)
+    elif g:
+        pill(x, yy + 28, 40, 16, AMB_BG, AMB_TX, g, size=8)
+    text(x + 110, yy + 8, 78, 18, dt, 10, MUT, align='right')
     text(x + 192, yy + 8, 84, 18, v, 12, c, align='right', bold=True)
 box(x, y + 292, 276, 44, 'gray')
 text(x + 12, y + 300, 252, 30, '2개 종목은 추정치예요 · 미포함 계좌 1개', 10, MUT)
 box(x, y + 346, 276, 38, 'info')
 text(x + 12, y + 346, 180, 38, '이 기간 전체 투자손익', 11, TXT, bold=True)
 text(x + 186, y + 346, 78, 38, '보기 →', 11, PRI, align='right', bold=True)
-mono(x, y + 396, 276, 'realized_pnl_line · 이동가중평균\ngrade는 position_basis에서 상속')
+mono(x, y + 396, 276, 'realized_pnl_line · 그레인 = 기간 × 종목 × 체결\ngrade는 산출 시점 스냅샷 · 혼합이면 MIXED')
 
 # P13 종목 상세
 x, y = ph(1160, B3, '삼성전자', back=True, right='＋ 알림')
