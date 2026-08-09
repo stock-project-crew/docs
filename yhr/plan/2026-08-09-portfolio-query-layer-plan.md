@@ -5,7 +5,6 @@
 - **작성일**: 2026-08-09
 - **대상 저장소**: `back-end/` (github.com/stock-project-crew/back-end)
 - **근거 스펙**: [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) · [와이어플로우](../specs/portfolio-management/wireflow.png) · [설계 공유 문서](../meetings/2026-08-09-portfolio-design-review.md) · [KIS 실측](../verification/kis-portfolio-assumptions.md)
-- **갱신**: 2026-08-09 — 스펙 커밋 `1d9fa25`(실측 반영) 대응. 바뀐 것은 §A.12에 모았다.
 - **스펙 수정 금지**: 이 계획은 스펙을 인용만 한다. 스펙 파일을 고치지 않는다.
 
 **Goal:** `position_line`에 손으로 넣은 샘플 행만으로 6개 뷰의 REST 응답이 전부 나오는, 실행 가능한 조회 계층 뼈대를 만든다.
@@ -154,7 +153,7 @@ record MeasureBundle(Measures securities /* asset_class != CASH */,
 
 **구조로 강제하는 방법.** `MeasureBundle`이 통화 집합 `CurrencySet`을 함께 누산하고, 현지 통화 금액은 `Optional<LocalMoney>`로만 꺼낼 수 있다. 집합 크기가 1이 아니면 `Optional.empty()`다 — 응답 조립기가 섞인 그룹에 현지 통화를 실을 방법이 없다.
 
-**게이트는 한 겹이다. 축 이름을 보지 않는다.** 스펙 §3.7은 "이 표는 예시이고 **판정은 조회 시점에 이 묶음이 단일 통화인가로 한다**"고 못 박았다. 축 이름을 하드코딩하면 축이 늘 때마다 표를 고쳐야 한다. 따라서 `CurrencySet.single()`이 유일한 판정자이고, 카탈로그에 `localCurrencyEligible` 같은 축 플래그를 두지 않는다.
+**판정자는 `CurrencySet.single()` 하나다. 축 이름을 보지 않는다.** 스펙 §3.7이 "판정은 조회 시점에 이 묶음이 단일 통화인가로 한다"고 정한다 — 축 이름을 하드코딩하면 축이 늘 때마다 목록을 고쳐야 한다. 카탈로그에 축별 병기 허용 플래그를 두지 않는 이유가 이것이다.
 
 단일 통화가 `KRW`이면 병기하지 않는다 — 원화가 곧 현지 통화라 중복이다.
 
@@ -265,7 +264,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 \* `accounts` 뷰의 `deposit_krw`는 **행에도 실린다.** §2.7이 계좌 행 컬럼으로 예수금을 요구하고 응답 키를 `market_value_krw`(계좌 총자산) · `deposit_krw`로 못 박았다. 유가증권 평가금액은 클라이언트가 차감해 표시한다. 불변식 4와 충돌하지 않는다 — `deposit_krw`의 의미가 행·합계에서 같기 때문이다(그 묶음의 CASH 평가금액 합).
 
-- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다(§A.10 #7). 둘 다 집계에 참여하지 않는 표시용 필드다.
+- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다. 둘 다 축이 아니라 표시용이며 집계에 참여하지 않는다.
 - `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서 `lensSensitive` 축이 빠진다. `positions`에서 `market`·`asset_class`가 사라지는 게 이 규칙의 실체다 — 전개 후 ETF가 존재하지 않아 `자산군=ETF` 필터는 항상 빈 목록이 된다(§3.6).
 - `subBlocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. **요약만 해당**하며 미니차트 블록은 `groupBy: [market]` 또는 `[asset_class]`, `lensPolicy: OPTIONAL`, 지표 `market_value_krw` · `weight_pct`.
 - **정렬은 평가금액 내림차순 고정**이며 요청 파라미터로 받지 않는다. `기타` 버킷은 항상 맨 끝(§3.6 6단계).
@@ -290,12 +289,10 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 - `message`는 **서버가 완성해** 내리고 `code`를 함께 준다. 문구 수정에 앱 배포가 필요 없다.
 - `severity` = `info | warn | error`.
-- **봉투 `as_of`의 산출 규칙** (스펙이 값의 출처를 명시하지 않아 이 계획에서 확정): 대상 `as_of`의 라인 중 **캐리포워드가 아닌** 라인들의 `max(source_as_of)`. 그런 라인이 없으면 `as_of` 날짜의 `00:00:00+09:00`. 타임존은 `Asia/Seoul` 고정.
+- **봉투 `as_of`의 산출 규칙**: 대상 `as_of`의 라인 중 **캐리포워드가 아닌** 라인들의 `max(source_as_of)`. 그런 라인이 없으면 `as_of` 날짜의 `00:00:00+09:00`. 타임존은 `Asia/Seoul` 고정.
 - **카탈로그 엔드포인트는 봉투를 쓰지 않는다** — 뷰 응답이 아니다.
 
 ### A.5.2 notice 코드 (스펙 §8.2 기준 **16종**)
-
-> **16종이 맞다** — 요청서의 "13종"이 낡은 수치였음을 확인받았다(2026-08-09). 스펙 §8.2가 정본이다.
 
 | # | code | severity | 발생 조건 | params | 이번 범위 |
 |---|---|---|---|---|---|
@@ -312,7 +309,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | 11 | `BOUNDARY_CARRIED_FORWARD` | warn | 기간 경계 스냅샷에 이월 계좌 (§2.9) | `count` · `boundary` | **발화** |
 | 12 | `REAUTH_REQUIRED` | warn | 재인증 대기 계좌 존재 (§7.2) | `count` | 규칙 구현·샘플 미발화 |
 | 13 | `SYNC_IN_PROGRESS` | info | 동기화 진행 중 | `sync_run_id` | 미발화 — 동기화 범위 밖 |
-| 14 | `PRICE_LAG_MARKET` | info | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 | 미발화 — 유도 규칙은 정해졌으나 시장 캘린더가 1단계 산출물이다 (§A.12 #2) |
+| 14 | `PRICE_LAG_MARKET` | info | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 | 미발화 — 시장 캘린더가 1단계 산출물이다 (§A.10) |
 | 15 | `ALREADY_FINAL` | info | EOD 확정 후 또는 비영업일 수동 동기화 요청 | 확정 시각 | 미발화 — 동기화 범위 밖 |
 | 16 | `FX_STALE` | warn | 환율 폴백이 5영업일을 넘음 (§5.3) | 통화쌍 · `fx_as_of` | 규칙 구현·샘플 미발화 |
 
@@ -332,7 +329,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | `NO_TRADES_IN_PERIOD` | `realized-pnl` — 기간 내 `realized_pnl_line`이 없다 |
 | `ALL_UNAVAILABLE` | `realized-pnl` — 모든 행이 `UNAVAILABLE`·`CONFLICT`로 합계에서 제외됐다 |
 
-**판정 순서를 고정한다** (스펙이 명시하지 않아 이 계획에서 확정): `NO_ACCOUNTS` → `NO_HOLDINGS` → (`realized-pnl`이면 `NO_TRADES_IN_PERIOD` → `ALL_UNAVAILABLE`) → `NO_MATCH_FILTER`. 먼저 맞는 것 하나만 내린다.
+**판정 순서는 고정이다.** `NO_ACCOUNTS` → `NO_HOLDINGS` → (`realized-pnl`이면 `NO_TRADES_IN_PERIOD` → `ALL_UNAVAILABLE`) → `NO_MATCH_FILTER`. 먼저 맞는 것 하나만 내린다.
 
 `summary`는 `rows`가 없는 뷰지만 라인이 0이면 같은 규칙으로 `empty_reason`을 내린다. `asset-change`는 기초·기말 스냅샷을 못 찾으면 `NO_HOLDINGS`다.
 
@@ -376,6 +373,8 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 - **`Σ rows.market_value_krw = total.total_assets_krw`가 항상 성립한다.** 손익 계열은 `securities_value_krw`를 기준으로 하므로 `securities_value_krw − cost_amount_krw = unrealized_pnl_krw`도 성립한다.
 - `lens = LOOK_THROUGH`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 **빠지고**(`null`이 아니라 **키 자체가 없다**) `total`에만 남으며 `LENS_METRICS_OMITTED` notice가 붙는다. 위 예시 `rows[]`에서 `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` 세 개가 사라진다. `NEVER`인 `avg_cost`는 아예 제공하지 않는다.
 - **CASH 행의 원가·손익은 `null`로 내린다**(키는 있고 값이 `null`). 저장값은 원가 = 평가금액이지만 노출값이 다르다(§5.2).
+- **CASH 행의 `instrument_count`는 `0`이다.** 지표 정의가 CASH를 제외하므로(§A.4.2) 자연히 0이 되며, 뷰별 예외를 두지 않는다. 화면은 CASH 행에서 종목수를 표시하지 않으면 된다.
+- **현재가는 지표가 아니다.** `market_value_local ÷ quantity`로 얻을 수 있고 §2.5가 현재가를 종목 상세로 미루므로, 카탈로그 지표에 두지 않는다.
 
 ### A.6.2 실현손익 (§8.4)
 
@@ -398,7 +397,8 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 - **종목 노드의 `grade`는 4값에 `MIXED`를 더한 5값**이고 체결 노드는 4값(`VERIFIED`·`SEEDED`·`UNAVAILABLE`·`CONFLICT`)이다. `MIXED`는 저장되지 않으며 **응답 조립 시에만 생긴다** — 체결 등급이 하나면 그 값, 섞이면 `MIXED`.
 - `UNAVAILABLE`·`CONFLICT` 체결은 **합계에서 제외하되 제외 계좌 수를 `EXCLUDED_ACCOUNTS`로 노출**한다(§9.3). 조용히 제외하지 않는다.
 - 종목 행은 단일 통화이므로 현지 통화 병기가 성립한다. **기간 합계는 원화**(§2.8).
-- **정렬**: 스펙이 정하지 않았다. 이 계획에서 `last_sold_at` 내림차순, 동률은 `key` 오름차순으로 확정한다(와이어플로우의 목록 순서와 일치).
+- **정렬**: `last_sold_at` 내림차순, 동률은 `key` 오름차순. 체결 노드도 같은 규칙이다.
+- **기간의 기준일은 최신 `as_of`다.** `THIS_MONTH` · `THIS_YEAR` 같은 프리셋을 벽시계로 해석하면 스냅샷이 없는 날의 "이번 달"이 빈 응답이 되고 테스트가 날짜에 따라 깨진다. `asset-change`도 같다.
 
 ### A.6.3 자산 변화 (§8.4)
 
@@ -421,7 +421,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 ```
 
 - **투자손익은 나머지 전부로 정의한다.** 우변에 거래 원장이 들어가지 않아 체결내역이 막힌 연금계좌도 정확한 손익을 얻는다. **잔차 항목을 두지 않는다**(§4.6).
-- **"넣은 돈"은 사용자 입력에서 온다**(§2.9 · §4.6). `DEPOSIT`·`WITHDRAW`는 백엔드 소유 `manual_cashflow`에서 읽고, `DIVIDEND`·`FEE`·`TAX`만 데이터팀 `cln_cashflow`에서 온다. KIS에 입출금 이력 TR이 아예 없다는 실측 결과에 따른 것이다.
+- **"넣은 돈"은 사용자 입력에서 온다**(§2.9 · §4.6). `DEPOSIT`·`WITHDRAW`는 백엔드 소유 `manual_cashflow`에서 읽고, `DIVIDEND`·`FEE`·`TAX`만 데이터팀 `cln_cashflow`에서 온다. 증권사 API가 입출금 이력을 열어주지 않는 경우가 있어 원천에 기댈 수 없다.
 - **현금흐름 조회 구간은 요청 기간이 아니라 실제 기초·기말 스냅샷 구간이다.** 기초가 `PERIOD_TRUNCATED`로 대체되면 현금흐름도 그 날짜로 잘라야 한다 — 안 자르면 `넣은 돈`이 Δ총자산과 어긋나 항등식이 깨진다. 구간은 `(기초 as_of, 기말 as_of]`로 잡는다.
 - `breakdown[].type` = `DEPOSIT` · `WITHDRAW` · `DIVIDEND` · `FEE_TAX` · `INVESTMENT_PNL` (표시 유형이며 `cln_cashflow.type`과 별개). **값이 0인 항목은 행을 숨긴다**(§2.9).
 - `split_available = false`이면 거래 원장이 없어 실현/미실현 분해를 생략한 것이고 `realized`·`unrealized_change`는 `null`이다. **`total`은 항상 정확하다.**
@@ -503,7 +503,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 
 ### A.7.4 `manual_cashflow` — 사용자 입력 입출금, 백엔드 소유 (§5.1)
 
-증권사가 입출금 이력 API를 열어주지 않아(KIS는 TR 자체가 없다 — 실측 §4-1) `DEPOSIT`·`WITHDRAW`는 원천이 아니라 **사용자 입력**을 기본 경로로 둔다. 입력 빈도가 월 1~2건이고 사용자가 이체 기록으로 정확한 값을 아는 데이터라, "자동 연동만 지원"(§12) 원칙의 예외다.
+증권사 API가 입출금 이력을 열어주지 않는 경우가 있어(KIS OpenAPI에는 해당 TR이 없다) `DEPOSIT`·`WITHDRAW`는 원천이 아니라 **사용자 입력**을 기본 경로로 둔다. 입력 빈도가 월 1~2건이고 사용자가 이체 기록으로 정확한 값을 아는 데이터라, "자동 연동만 지원"(§12) 원칙의 예외다.
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
@@ -564,10 +564,10 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 제외 항목 | 이유 | 뼈대에 남기는 자리 |
 |---|---|---|
 | `position_line` 생성 (1단계) | 입력이 될 `cln_*` 테이블 스키마가 팀 미합의 (설계 공유 문서 안건 5) | `position_line` 테이블 + 샘플 SQL. `cln_balance`/`cln_deposit` 미러는 만들지 않는다 |
-| 등급 판정 (1.5) · 실현손익 산출 (1.6) | 실측으로 역산 자체는 검증됐으나(`CONFLICT` 0건) 판정 규칙이 늘었다 — **영구 `SEEDED`**와 확보 구간 중간의 미설명 변동 대조(§4.4) | `realized_pnl_line` 테이블과 **읽기** 경로는 만든다. `grade`는 샘플에 직접 넣는다. `position_basis` 테이블은 만들지 않는다 — 영구 `SEEDED` 판정 사유를 담을 컬럼이 아직 미정이다. `SEEDED_ROWS` notice는 지금 사유를 구분하지 않으며, 1.5단계에서 사유(확보 구간 부족 / 비체결 입고)를 params에 실을 자리를 남긴다 |
+| 등급 판정 (1.5) · 실현손익 산출 (1.6) | 영구 `SEEDED` 판정 사유(확보 구간 부족 / 비체결 입고)를 담을 컬럼과 확보 구간 중간의 미설명 변동 대조 방식이 미정이다(§4.4) | `realized_pnl_line` 테이블과 **읽기** 경로는 만든다. `grade`는 샘플에 직접 넣는다. `position_basis` 테이블은 만들지 않는다. `SEEDED_ROWS` notice는 사유를 구분하지 않으며, 1.5단계에서 사유를 params에 실을 자리를 남긴다 |
 | ETF 분해 안분 (2단계) | 구성비중 제공 형태 미합의 (안건 3·8) | `LensTransform` 인터페이스 · `DirectLens` 완성 · `LookThroughLens`는 **미확보 분기만** 구현. `ConstituentPort`(커버리지 조회)와 `ConstituentExpander`(안분) 두 인터페이스를 갈라, 이번 범위에서 후자가 **호출 불가능**함을 테스트로 고정한다 |
 | 계좌 연동 · 동기화 | `collection_run` 계약·시크릿 관리 미합의 (안건 6·7) | `sync_run` 테이블을 만들지 않는다. `accounts` 뷰 행의 `last_collection`은 `CollectionStatusPort` 스텁이 `null`을 낸다. `link_state`는 `account` 테이블에서 실제로 내린다 |
-| 손익성 현금흐름 (`cln_cashflow` — `DIVIDEND`·`FEE`·`TAX`) | 매매대금 배제 규칙과 `FEE`·`TAX` 원천이 팀 미합의 (안건 1). KIS는 배당만 제공한다(실측 §4-3) | `EarningsCashflowPort` 인터페이스 + `EmptyEarningsCashflowPort`. 빈 결과가 곧 "미확보"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
+| 손익성 현금흐름 (`cln_cashflow` — `DIVIDEND`·`FEE`·`TAX`) | 매매대금 배제 규칙과 `FEE`·`TAX` 원천이 팀 미합의 (안건 1) | `EarningsCashflowPort` 인터페이스 + `EmptyEarningsCashflowPort`. 빈 결과가 곧 "미확보"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
 | 입출금 **입력 화면·`POST` 엔드포인트** | 조회 계층이 범위다. 읽기 경로와 테이블은 만든다 | `manual_cashflow` 테이블 + 샘플 행 + `ManualCashflowRepository`(읽기). **`DEPOSIT`·`WITHDRAW`는 스텁이 아니라 실제 값이다** |
 | 종목 상세 `GET /portfolio/instruments/{id}` | `position_basis` · `cln_trade` · `corporate_action`에 의존 | 만들지 않는다. 6개 뷰 엔드포인트만 노출 |
 | API 인증 | 자격증명 보관 방식이 안건 7에 걸려 있고, 단일 사용자 전제라 인증 모델이 계좌 연동과 함께 결정된다 | Spring Security를 넣지 않는다. 로컬 전용임을 README에 명시 |
@@ -575,23 +575,19 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 
 **`LOOK_THROUGH` 스텁이 가짜가 아닌 이유.** `etf_coverage`에 행이 없으면 모든 ETF가 미확보이고, 스펙 §3.4는 그 경우 "**전개하지 않고 ETF 행을 그대로 남긴다**"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 **스펙이 정의한 정상 경로**를 타며, 미분해 평가금액을 `CONSTITUENT_UNAVAILABLE`에 실어 사용자에게 알린다. 구현하지 않는 것은 안분 산술 하나다.
 
-## A.10 남은 판단 (스펙이 정하지 않아 계획에서 결정한 것)
+## A.10 열린 판단 — `PRICE_LAG_MARKET`
 
-**스펙 파일은 고치지 않았다.** 아래 5건은 스펙이 정하지 않은 부분이라 계획에서 결정했고, 2026-08-09 검토에서 이견 없음을 확인받았다. 스펙 갱신으로 해소된 3건은 §A.12에 있다.
+| 항목 | 지금의 처리 | 뒤집는 방법 |
+|---|---|---|
+| 휴장일 캘린더 없이 `PRICE_LAG_MARKET`을 발화시킬 것인가 | **발화시키지 않는다** | `WeekdayMarketCalendar`를 `MarketCalendarPort` 구현으로 넣고 한계를 배너에 함께 적는다. Task 7에 한 스텝이 추가된다 |
 
-| # | 항목 | 내용 | 이 계획의 처리 |
-|---|---|---|---|
-| 1 | CASH 행의 `instrument_count` | `instrument_count`의 CASH 정책이 "제외"라 비중 분석의 `현금` 행은 값이 0이 된다 | **0으로 내린다**. 지표 정의를 뷰별로 예외 처리하지 않는 쪽을 택했다. 화면은 CASH 행에서 종목수를 표시하지 않으면 된다 |
-| 2 | `realized-pnl` 정렬 | 스펙은 "정렬은 평가금액 내림차순 고정"이라 하는데 이 뷰에 평가금액이 없다 | `last_sold_at` 내림차순 + `key` 오름차순으로 확정(§A.6.2) |
-| 3 | `CONSTITUENT_AS_OF` | §9.3은 "렌즈 적용 응답은 함께 싣는다"고 하나, 전개된 ETF가 0이면 실을 날짜가 없다 | 전개 ETF가 0이면 **생략**한다 |
-| 4 | 봉투 `as_of` 출처 | 어느 값에서 오는지 스펙에 없다 | §A.5.1의 규칙으로 확정 |
-| 5 | 기간 기준 시각 | `THIS_MONTH` 등의 기준이 벽시계인지 최신 `as_of`인지 스펙에 없다 | **최신 `as_of`** 기준. 벽시계를 쓰면 테스트가 날짜에 따라 깨지고, 스냅샷이 없는 날의 "이번 달"이 빈 응답이 된다 |
-| 6 | 종목별 뷰의 **현재가** | §2.5 컬럼 목록에 있으나 §6.2 지표 17개에 없고 `position_line`에도 컬럼이 없다 | 지표로 두지 않는다. `market_value_local ÷ quantity`로 클라이언트가 얻거나 종목 상세(범위 밖)가 제공한다. §2.5 자신이 "현재가·매입금액은 종목 상세로 미룬다"고 하므로 이 처리가 스펙과 어긋나지 않는다 |
-| 7 | 종목별 뷰의 **시장 배지** | §2.5가 행에 시장 배지를 요구하는데 §6.3은 `rowFields`가 `accounts` 뷰에만 있다고 한다 | `positions`의 `rowFields`에 `market`을 넣는다(§A.4.3). 축이 아니라 표시용 행 필드이며 집계에 참여하지 않는다 |
+시장별 가격 기준일은 저장하지 않고 유도한다(§7.4) — `price_as_of` = `source_as_of` 기준 직전 해당 시장 영업일. `position_line`에 컬럼을 두지 않는 이유는 평가금액이 증권사 잔고에서 오는 값이라 **증권사가 어느 날짜 종가를 썼는지 알 수 없기** 때문이다. 유도하면 "이 시장의 직전 영업일" 이상을 주장하지 않아 정직하다.
+
+유도에는 시장 캘린더가 필요하고, 그것은 `as_of` 생성 규칙(§9.1)과 함께 1단계 산출물이다. 휴장일을 모르는 상태로 유도하면 **미국 종목에서 실제보다 최신 날짜를 주장한다** — 직전 평일이 미국 휴장일이면 그날 종가가 없는데 있다고 말한다. 정보성 배너 하나 때문에 틀린 날짜를 보이는 쪽이 안 보이는 쪽보다 나쁘므로, 이번 범위에서는 `MarketCalendarPort` 인터페이스만 두고 notice를 내리지 않는다. 1단계에서 구현체를 끼우면 살아난다.
 
 ## A.11 개발 환경 전제
 
-**손익 · 실현손익 · 권리 계열 증권사 TR 5종이 모의투자를 지원하지 않는다** (실측 결과). 스펙 §5.1 기준 `cln_trade` · 배당 · 실현손익의 원천에 닿는 TR들이며, 실측 문서 §4-2의 TR 7종 표에서 손익·실현손익·권리에 해당하는 것들이다.
+**손익 · 실현손익 · 권리 계열 증권사 TR 5종이 모의투자를 지원하지 않는다.** `cln_trade` · 배당 · 실현손익의 원천에 닿는 TR들이며, 목록은 [KIS 실측 문서](../verification/kis-portfolio-assumptions.md) §4-2에 있다.
 
 | 단계 | 개발·테스트에 필요한 것 |
 |---|---|
@@ -602,25 +598,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 
 **후속 단계 착수 조건**: 1.5단계 이후를 시작하기 전에 개발용 실전 계좌와 앱키가 준비돼 있어야 한다. 계획 A는 이 제약과 무관하게 끝까지 진행할 수 있다.
 
-이 제약이 계획 A의 설계 판단을 지지한다 — 샘플 데이터만으로 도는 조회 계층을 먼저 세우기로 한 덕에, 실전 계좌 확보를 기다리지 않고 집계 엔진과 응답 계약을 완성할 수 있다.
-
-## A.12 스펙 갱신(`1d9fa25`)으로 바뀐 것
-
-실측 결과가 스펙에 반영되면서 이 계획에서 손댄 부분이다.
-
-| # | 스펙 변경 | 계획 반영 |
-|---|---|---|
-| 1 | **§6.2 지표 17개 · §8.2 notice 16종이 정본** — 요청서의 12개·13종이 낡은 수치였다 | 변경 없음. 이미 스펙 기준으로 썼다 |
-| 2 | **§7.4 시장별 가격 기준일은 저장하지 않고 유도한다** — `price_as_of = source_as_of 기준 직전 해당 시장 영업일`. 컬럼을 넣지 않는 이유는 평가금액이 증권사 잔고에서 오는 값이라 증권사가 어느 날짜 종가를 썼는지 알 수 없기 때문이다 | `position_line`에 컬럼을 추가하지 않는다(원안 유지가 맞았다). `MarketCalendarPort` 인터페이스를 두고 유도 규칙을 문서화하되, **`PRICE_LAG_MARKET`은 이번 범위에서 발화시키지 않는다** — 근거는 아래 |
-| 3 | **§3.7 판정을 조회 시점 런타임으로. 시장 축을 ✓로 정정하고 표는 예시로 격하** | 잠정 처리였던 "두 게이트" 방식을 **런타임 단독 판정**으로 바꿨다. `Axis.localCurrencyEligible`을 없앴다(불변식 3). **§C의 기대 응답이 바뀐다** — 섹터 `IT서비스`, 계좌 `미래에셋 연금`, 시장 `US` 그룹에 현지 통화가 새로 붙는다 |
-| 4 | **§5.1 `cln_cashflow`가 `DIVIDEND`·`FEE`·`TAX`만 담고 `manual_cashflow`가 신설됐다** | `manual_cashflow`를 백엔드 소유 테이블로 만들고(§A.7.4) 읽기 경로를 넣었다. 현금흐름 포트를 둘로 갈랐다 — 입출금은 **실제 값**, 손익성 현금만 스텁. **§C.11 자산 변화 기대 응답이 바뀐다** |
-| 5 | **§4.6 커버리지 판정 단위가 (계좌, 유형)** | `CASHFLOW_UNCOVERED`의 params를 `types` 배열 + `account_count`로 바꿨다 |
-| 6 | **§4.4 영구 `SEEDED` 판정 · 확보 구간 중간의 미설명 변동** | 등급 판정은 여전히 범위 밖이다. `SEEDED_ROWS` notice가 사유를 구분하지 않는다는 사실과, 1.5단계에서 사유를 params에 실을 자리를 §A.9에 남겼다 |
-| 7 | **§9.1 검증 규칙 2건 추가** | `넣은 돈`은 `manual_cashflow`에서만 온다 → **타입으로 강제**(§A.8). 영구 `SEEDED` 규칙은 1.5단계라 범위 밖 |
-| 8 | §4.1 · §4.3 원가 근거 정정 (차이는 정확히 매수 수수료 전액, 증권사 화면과 부호가 갈릴 수 있음) | 실현손익 **산출**이 범위 밖이라 계획에 영향 없다. `realized_pnl_line`을 읽기만 한다 |
-| 9 | §2.9 워터폴에서 입출금 입력 화면으로 진입 · §12 수동 입력 예외 | 입력 화면·`POST`는 범위 밖으로 두고, **후속 단계에서 가장 먼저 붙을 쓰기 경로**로 §A.7.4에 적었다 |
-
-**#2에서 `PRICE_LAG_MARKET`을 발화시키지 않는 이유.** 유도 규칙은 정해졌지만 휴장일 캘린더가 없다. 국내는 `as_of`가 영업일에만 생성되므로 유도 결과가 항상 맞지만, **미국은 휴장일을 모르면 실제보다 최신 날짜를 주장하게 된다** — 직전 평일이 미국 휴장일이면 그날 종가가 없는데 있다고 말한다. 정보성 배너 하나 때문에 사용자에게 틀린 날짜를 보이는 쪽이 안 보이는 쪽보다 나쁘다. 시장 캘린더는 `as_of` 생성 규칙(§9.1)과 함께 1단계에서 들어오므로, 그때 `MarketCalendarPort` 구현체를 끼우면 notice가 살아난다. **뒤집고 싶으면 `WeekdayMarketCalendar`를 넣고 한계를 배너에 함께 적는 방법이 있다 — 판단만 주면 된다.**
+샘플 데이터만으로 도는 조회 계층을 먼저 세우는 것이 이 제약과 맞물린다 — 실전 계좌 확보를 기다리지 않고 집계 엔진과 응답 계약을 완성할 수 있다.
 
 ---
 
@@ -822,7 +800,7 @@ USD 라인의 `fx_rate = 1400.000000`.
 미니차트 검산 — `KR = 14,240,000 + 9,000,000 + 8,000,000 + 11,000,000 + 2,560,000 + 1,000,000 + 1,000,000 = 46,800,000`,
 `US = 6,160,000 + 4,900,000 + 140,000 = 11,200,000`, 합 58,000,000, 비중 80.7 / 19.3.
 
-**`US` 행에 현지 통화가 붙는다** — 시장=US 묶음은 정의상 단일 통화다(§3.7 개정). `market_value_local = 4,400.00 + 3,500.00 + 100.00 = 8,000.00`.
+**`US` 행에 현지 통화가 붙는다** — 시장=US 묶음은 정의상 단일 통화다. `market_value_local = 4,400.00 + 3,500.00 + 100.00 = 8,000.00`.
 `KR` 행은 단일 통화지만 `KRW`라서 병기하지 않는다.
 
 ## C.6 기대 응답 — `GET /portfolio/views/allocation?axis=sector&lens=DIRECT`
@@ -839,7 +817,7 @@ USD 라인의 `fx_rate = 1400.000000`.
 
 `Σ market_value_krw = 58,000,000 = total.total_assets_krw` ✔ · `Σ weight_pct = 100.0` ✔ · `Σ cost = 48,800,000` ✔
 
-**`IT서비스` 행에만 현지 통화가 붙는다** — AAPL 단독이라 우연히 단일 통화다(§3.7 개정: 판정은 축 이름이 아니라 런타임 통화 집합).
+**`IT서비스` 행에만 현지 통화가 붙는다** — AAPL 단독이라 우연히 단일 통화다. 판정이 축 이름이 아니라 런타임 통화 집합이라 잡힌다(불변식 3).
 
 ```json
 { "key": "IT서비스", "label": "IT서비스", "currency": "USD",
@@ -866,7 +844,7 @@ USD 라인의 `fx_rate = 1400.000000`.
   "params": { "metrics": ["cost_amount_krw", "unrealized_pnl_krw", "unrealized_pnl_pct"] } }
 ```
 
-`CONSTITUENT_AS_OF`는 전개된 ETF가 0이라 생략한다(§A.10 #3).
+`CONSTITUENT_AS_OF`는 전개된 ETF가 0이라 생략한다.
 
 `IT서비스` 행의 `currency` · `market_value_local`은 남는다 — 통화 병기는 지표가 아니라 표시 규칙이고 평가금액은 `ROW_AND_TOTAL`이다. 사라지는 것은 `cost_amount_local`뿐이다(원가 계열이 행에서 빠지므로).
 
@@ -1730,12 +1708,6 @@ class CatalogInvariantTest {
         }
     }
 
-    /** 스펙 §3.7 — 축에 현지 통화 병기 플래그를 두지 않는다. 판정은 런타임 통화 집합이 한다. */
-    @Test
-    void 축에는_현지_통화_병기_플래그가_없다() {
-        assertThat(AxisKey.class.getDeclaredFields())
-                .noneMatch(f -> f.getName().toLowerCase().contains("currencyeligible"));
-    }
 }
 ```
 
@@ -3431,7 +3403,7 @@ class CurrencyDisplayPolicyTest {
         assertThat(policy.localOf(krwOnlyBundle())).isEmpty();
     }
 
-    /** 축 플래그로 막던 잠정 처리를 없앴다는 것을 고정한다. */
+    /** 판정자가 통화 집합 하나임을 고정한다 — 축을 받는 오버로드를 만들지 않는다. */
     @Test
     void 축을_인자로_받는_오버로드가_없다() {
         assertThat(CurrencyDisplayPolicy.class.getMethods())
@@ -4447,7 +4419,7 @@ class AssetChangeViewServiceTest {
 
 - [ ] **Step 2: 현금흐름 두 경로 — 입출금은 실제, 손익성 현금은 스텁**
 
-스펙 §5.1이 갱신되면서 현금흐름의 출처가 둘로 갈렸다. **입출금은 백엔드 소유 테이블에서 읽는 실제 값이고, 손익성 현금만 데이터팀 미합의로 스텁이다.**
+현금흐름의 출처는 둘로 갈린다. **입출금은 백엔드 소유 테이블에서 읽는 실제 값이고, 손익성 현금만 데이터팀 미합의로 스텁이다.**
 
 ```java
 package com.stockproject.portfolio.query;
@@ -4494,7 +4466,7 @@ public class ManualCashflowRepository {
 package com.stockproject.portfolio.query;
 
 /**
- * cln_cashflow의 유형 — 스펙 §5.1 갱신으로 DEPOSIT·WITHDRAW가 빠졌다.
+ * cln_cashflow의 유형 — 손익성 현금만 담는다(스펙 §5.1).
  * 이 enum에 두 값이 없다는 사실이 §9.1의 "cln_cashflow에 DEPOSIT·WITHDRAW가 있으면 거부"를
  * 런타임 검사가 아니라 타입으로 강제한다.
  */
@@ -4851,13 +4823,9 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 
 8·9·10은 서로 다른 서비스·DTO를 만들고 공유 상태가 없어 병렬로 진행할 수 있다. 단 셋 다 `api/ViewController.java`를 수정하므로, 병렬로 돌리면 그 파일에서 충돌한다 — 컨트롤러를 뷰별로 셋으로 쪼개거나(`SnapshotViewController` · `RealizedPnlController` · `AssetChangeController`) 순차로 처리한다. **쪼개는 쪽을 권한다** — 파일이 함께 바뀌는 이유가 없다.
 
-## E.2 남은 판단 하나
+## E.2 착수 전 확인 하나
 
-2026-08-09 검토에서 §A.10의 질문 3건에 답이 왔고 스펙에 반영됐다(§A.12). 남은 것은 하나다.
-
-| 질문 | 지금의 처리 | 뒤집는 방법 |
-|---|---|---|
-| `PRICE_LAG_MARKET`을 휴장일 캘린더 없이 발화시킬 것인가 | **발화시키지 않는다.** 미국 휴장일을 모르면 실제보다 최신 날짜를 주장하게 되어, 정보성 배너 하나 때문에 틀린 날짜를 보이게 된다(§A.12 #2) | `WeekdayMarketCalendar`를 `MarketCalendarPort` 구현으로 넣고 배너에 한계를 함께 적는다. 판단만 주면 Task 7에 한 스텝이 추가된다 |
+`PRICE_LAG_MARKET`을 휴장일 캘린더 없이 발화시킬지 여부다. 지금 계획은 발화시키지 않으며, 근거와 뒤집는 방법은 §A.10에 있다. 답이 없어도 진행에는 지장이 없다.
 
 ## E.2.1 후속 단계 착수 조건
 
