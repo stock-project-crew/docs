@@ -420,7 +420,7 @@ def ring(cx, cy, r, label):
 # 범례
 # ══════════════════════════════════════════════════════════════
 LX, LY, LW = 40, 150, 290
-rect(LX, LY, LW, 900, '#FBFCFE', '#C7CFDD', 1, arc=6, shadow=True)
+rect(LX, LY, LW, 940, '#FBFCFE', '#C7CFDD', 1, arc=6, shadow=True)
 cx, cy = LX + 16, LY + 16
 text(cx, cy, LW - 32, 26, '포트폴리오 종합 관리', 16, TXT, bold=True)
 hr(cx, cy + 34, LW - 32, '#E2E7EF')
@@ -433,6 +433,8 @@ for lb, bg, fg, dot in [('연동됨 CONNECTED', GRN_BG, GRN, GRN),
                         ('재인증 필요 REAUTH', AMB_BG, AMB_TX, AMB)]:
     pill(cx, y, 152, 20, bg, fg, lb, dot=dot)
     y += 24
+text(cx, y, 250, 16, '＋ CONNECTING · DISCONNECTED (화면 미등장)', 8, DIM)
+y += 20
 y += 4
 text(cx, y, LW - 32, 16, '수집 결과 (collection_run)', 10, MUT, bold=True)
 y += 20
@@ -614,7 +616,7 @@ rect(x - 12, y + 26, PW, 24, AMB_BOX)
 text(x, y + 26, 276, 24, '◆ 1개 계좌가 07-26 기준입니다', 9, AMB_TX, bold=True)
 text(x, y + 60, 276, 16, '총자산', 10, MUT, bold=True)
 text(x, y + 78, 276, 32, '58,000,000원', 22, TXT, bold=True)
-text(x, y + 112, 276, 18, '▲ 1,240,000 (+2.1%)', 11, UP, bold=True)
+text(x, y + 112, 276, 18, '▲ 1,240,000 (+2.2%)', 11, UP, bold=True)
 text(x + 152, y + 112, 124, 18, '전일 종가 대비', 9, DIM, align='right')
 kv = [('총매입', '49,200,000'), ('총평가손익', '+5,100,000'),
       ('현금비중', '6.4%'), ('계좌 · 종목', '4계좌 · 18종목')]
@@ -654,23 +656,24 @@ text(x + 12, y + 70, 180, 40, '구성종목 기준으로 보기', 11, SUB)
 toggle(x + 230, y + 80, False)
 hdr = y + 120
 text(x, hdr, 130, 18, '종목', 9, DIM, bold=True)
-text(x + 130, hdr, 80, 18, '평가금액', 9, DIM, align='right', bold=True)
+text(x + 126, hdr, 84, 18, '평가금액 · 비중', 9, DIM, align='right', bold=True)
 text(x + 214, hdr, 62, 18, '손익', 9, DIM, align='right', bold=True)
-rows = [('삼성전자', '10주 · 평단 65,600', '712,000', '+8.5%', UP, None),
-        ('TIGER 미국나스닥100', '5주 · 평단 98,400', '512,000', '+4.1%', UP, 'ETF'),
-        ('AAPL', '3주 · 평단 $198.20', '848,000', '-2.3%', DOWN, '$612.30'),
-        ('KRW 예수금', '—', '3,700,000', '—', DIM, '현금')]
-for i, (nm, sub, amt, pnl, c, tag) in enumerate(rows):
+rows = [('삼성전자', '10주 · 평단 65,600', '712,000', '1.2%', '+8.5%', UP, None),
+        ('TIGER 미국나스닥100', '5주 · 평단 98,400', '512,000', '0.9%', '+4.1%', UP, 'ETF'),
+        ('AAPL', '3주 · 평단 $198.20', '848,000', '1.5%', '-2.3%', DOWN, '$612.30'),
+        ('KRW 예수금', '—', '3,700,000', '6.4%', '—', DIM, '현금')]
+for i, (nm, sub, amt, wt, pnl, c, tag) in enumerate(rows):
     yy = y + 140 + i * 56
     hr(x, yy, 276)
     text(x, yy + 8, 132, 18, nm, 12, TXT, bold=True)
     text(x, yy + 27, 132, 16, sub, 9, MUT)
-    text(x + 130, yy + 8, 80, 20, amt, 12, TXT, align='right', bold=True)
-    text(x + 214, yy + 8, 62, 20, pnl, 11, c, align='right', bold=True)
+    text(x + 126, yy + 6, 84, 18, amt, 12, TXT, align='right', bold=True)
+    text(x + 126, yy + 25, 84, 15, wt, 9, MUT, align='right')
+    text(x + 214, yy + 6, 62, 18, pnl, 11, c, align='right', bold=True)
     if tag and tag.startswith('$'):
-        text(x + 130, yy + 28, 80, 16, tag, 9, MUT, align='right')
+        text(x + 214, yy + 25, 62, 15, tag, 9, MUT, align='right')
     elif tag:
-        pill(x + 214, yy + 30, 62, 16, GRY_BG, MUT, tag, size=8)
+        pill(x + 214, yy + 28, 62, 16, GRY_BG, MUT, tag, size=8)
 mono(x, y + 372, 276, 'group_by=instrument · 계좌 합산\n평단 = 수량가중평균 (계좌별 분해는 상세에서)')
 
 # P7 종목별 — 렌즈 ON
@@ -689,11 +692,11 @@ hdr = y + 164
 text(x, hdr, 120, 18, '종목', 9, DIM, bold=True)
 text(x + 118, hdr, 74, 18, '환산수량', 9, DIM, align='right', bold=True)
 text(x + 196, hdr, 80, 18, '평가금액 · 비중', 9, DIM, align='right', bold=True)
-rows = [('삼성전자', '10주', '712,000', '12.3%', False),
-        ('AAPL', '3.37주', '953,000', '16.4%', False),
-        ('MSFT', '0.82주', '428,000', '7.4%', False),
-        ('NVDA', '0.61주', '391,000', '6.7%', False),
-        ('기타 (현금·파생·미매칭)', '—', '182,000', '3.1%', True)]
+rows = [('삼성전자', '10주', '712,000', '1.2%', False),
+        ('AAPL', '3.37주', '953,000', '1.6%', False),
+        ('MSFT', '0.82주', '428,000', '0.7%', False),
+        ('NVDA', '0.61주', '391,000', '0.7%', False),
+        ('기타 (ETF 내 비주식·미매칭)', '—', '182,000', '0.3%', True)]
 for i, (nm, q, amt, wt, other) in enumerate(rows):
     yy = y + 184 + i * 44
     hr(x, yy, 276)
@@ -718,14 +721,14 @@ card(x, y + 72, 276, 38)
 text(x + 12, y + 72, 180, 38, '구성종목 분해', 11, SUB)
 toggle(x + 230, y + 81, False)
 ring(x + 52, y + 162, 42, '섹터')
-for i, (lb, v, c) in enumerate([('ETF', '42.1%', '#4C6EF5'),
+for i, (lb, v, c) in enumerate([('미분류', '42.1%', '#4C6EF5'),
                                 ('반도체', '18.3%', '#7FB3F0'),
                                 ('IT서비스', '11.2%', '#A8C6F0')]):
     yy = y + 132 + i * 22
     rect(x + 110, yy + 5, 8, 8, c, 'none', 1, arc=50)
     text(x + 124, yy, 90, 18, lb, 10, SUB)
     text(x + 210, yy, 56, 18, v, 10, TXT, align='right', bold=True)
-for i, (lb, v, p) in enumerate([('ETF', '42.1%', .421), ('반도체', '18.3%', .183),
+for i, (lb, v, p) in enumerate([('미분류', '42.1%', .421), ('반도체', '18.3%', .183),
                                 ('IT서비스', '11.2%', .112), ('금융', '8.0%', .080),
                                 ('현금', '6.4%', .064)]):
     yy = y + 216 + i * 34
@@ -733,7 +736,7 @@ for i, (lb, v, p) in enumerate([('ETF', '42.1%', .421), ('반도체', '18.3%', .
     text(x + 200, yy, 76, 16, v, 11, TXT, align='right', bold=True)
     bar(x, yy + 18, 276, 6, '#4C6EF5' if i == 0 else '#9DB6E6', p)
 box(x, y + 390, 276, 46, 'gray')
-text(x + 12, y + 398, 252, 32, 'ETF가 한 덩어리로 남아 실제 섹터가 보이지 않아요', 10, MUT)
+text(x + 12, y + 398, 252, 32, 'ETF는 섹터가 없어 미분류로 모여요 · 분해를 켜보세요', 10, MUT)
 mono(x, y + 444, 276, 'group_by=sector · lens=DIRECT')
 
 # P9 비중 분석 — LOOK_THROUGH
@@ -765,7 +768,7 @@ for i, (lb, v, p, other) in enumerate([('반도체', '24.6%', .246, False),
                                        ('헬스케어', '9.1%', .091, False),
                                        ('금융', '8.6%', .086, False),
                                        ('현금', '6.4%', .064, False),
-                                       ('기타 (현금·파생·미매칭)', '3.2%', .032, True)]):
+                                       ('기타 (ETF 내 비주식·미매칭)', '3.2%', .032, True)]):
     yy = y + 228 + i * 30
     text(x, yy, 176, 16, lb, 11, MUT if other else TXT, bold=(i == 0))
     text(x + 200, yy, 76, 16, v, 11, MUT if other else TXT, align='right', bold=True)
@@ -776,27 +779,28 @@ mono(x, y + 418, 276, 'lens=LOOK_THROUGH · 중첩 ETF 재귀 분해\n기타 버
 x, y = ph(2360, B2, '계좌별', back=False, tab='계좌')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 groups = [('일반', '41,200,000',
-           [('한국투자증권 위탁', '32,100,000', '+6.2%', UP, '07-27 15:30', None),
-            ('삼성증권', '9,100,000', '+1.4%', UP, '07-25 09:12', 'reauth')]),
+           [('한국투자증권 위탁', '32,100,000', '평가 3,000만 · 예수금 210만', '+6.2%', UP, '07-27 15:30', None),
+            ('삼성증권', '9,100,000', '평가 840만 · 예수금 70만', '+1.4%', UP, '07-25 09:12', 'reauth')]),
           ('연금', '16,800,000',
-           [('한국투자증권 IRP', '11,900,000', '+3.1%', UP, '07-27 15:30', None),
-            ('미래에셋 연금', '4,900,000', '—', DIM, '07-26 15:30', 'stale')])]
+           [('한국투자증권 IRP', '11,900,000', '평가 1,100만 · 예수금 90만', '+3.1%', UP, '07-27 15:30', None),
+            ('미래에셋 연금', '4,900,000', '평가 490만 · 예수금 0', '—', DIM, '07-26 15:30', 'stale')])]
 yy = y + 34
 for gname, gtot, accs in groups:
     rect(x, yy, 276, 22, PANEL)
     text(x + 10, yy, 100, 22, gname, 10, TXT, bold=True)
     text(x + 130, yy, 136, 22, gtot, 10, TXT, align='right', bold=True)
     yy += 26
-    for nm, amt, pnl, c, sync, flag in accs:
+    for nm, amt, split, pnl, c, sync, flag in accs:
         card(x, yy, 276, 58)
-        text(x + 12, yy + 8, 168, 18, nm, 12, TXT, bold=True)
-        text(x + 12, yy + 27, 168, 16, sync, 9, MUT)
-        text(x + 176, yy + 8, 88, 18, amt, 12, TXT, align='right', bold=True)
-        text(x + 176, yy + 27, 88, 16, pnl, 10, c, align='right', bold=True)
+        text(x + 12, yy + 5, 160, 18, nm, 12, TXT, bold=True)
+        text(x + 168, yy + 5, 96, 18, amt, 12, TXT, align='right', bold=True)
+        text(x + 12, yy + 23, 252, 14, split, 8, DIM)
+        text(x + 168, yy + 22, 96, 15, pnl, 10, c, align='right', bold=True)
+        text(x + 12, yy + 40, 120, 14, sync, 8, MUT)
         if flag == 'reauth':
-            pill(x + 12, yy + 40, 88, 15, AMB_BG, AMB_TX, '재인증 필요', size=8)
+            pill(x + 176, yy + 38, 88, 15, AMB_BG, AMB_TX, '재인증 필요', size=8)
         elif flag == 'stale':
-            pill(x + 12, yy + 40, 76, 15, GRY_BG, MUT, '07-26 이월', size=8)
+            pill(x + 188, yy + 38, 76, 15, GRY_BG, MUT, '07-26 이월', size=8)
         yy += 62
     yy += 6
 hr(x, yy, 276, LINE)
@@ -908,21 +912,25 @@ for i, (nm, q, ap) in enumerate([('한국투자 위탁 (일반)', '7주', '평�
     text(x + 158, yy, 44, 34, q, 11, SUB, align='right')
     text(x + 204, yy, 60, 34, ap, 9, MUT, align='right')
 text(x, y + 190, 276, 16, '거래내역', 10, MUT, bold=True)
-for i, (dt, tp, q, pr) in enumerate([('2026-03-11', '매수', '5주', '@62,000'),
-                                     ('2026-01-08', '매수', '5주', '@69,200')]):
+for i, (dt, tp, q, pr) in enumerate([('2026-03-11', '매수', '5주', '@62,000')]):
     yy = y + 210 + i * 32
     hr(x, yy, 276)
     text(x, yy + 6, 90, 20, dt, 10, MUT)
     text(x + 92, yy + 6, 40, 20, tp, 10, UP, bold=True)
     text(x + 134, yy + 6, 50, 20, q, 10, SUB, align='right')
     text(x + 190, yy + 6, 86, 20, pr, 10, SUB, align='right')
-box(x, y + 284, 276, 66, 'warn')
-pill(x + 12, y + 292, 52, 17, AMB_BG, AMB_TX, 'SEEDED', size=8)
-text(x + 72, y + 292, 192, 17, '거래내역 확보 2026-01-01부터', 9, AMB_TX, bold=True)
-text(x + 12, y + 314, 252, 30, '이전 거래는 잔고 평단을 출발점으로 보정했어요. 실현손익은 추정치예요.', 9, SUB)
-box(x, y + 360, 276, 46, 'warn')
-text(x + 12, y + 368, 252, 32, '◆ 2026-04-15 액면분할 이력을 확인하지 못했어요', 10, AMB_TX, bold=True)
-mono(x, y + 418, 276, 'position_basis(opening_qty, grade, ca_unknown)\ncorporate_action(ex_date) 보정 후 판정')
+text(x, y + 252, 276, 16, '실현손익 (올해)', 10, MUT, bold=True)
+card(x, y + 272, 276, 46, PANEL, 'none')
+text(x + 12, y + 278, 150, 18, '05-12 매도 3주', 11, SUB)
+text(x + 160, y + 278, 104, 18, '+120,000', 12, UP, align='right', bold=True)
+text(x + 12, y + 297, 252, 14, '취득원가 기준이 달라 위 평단과 맞지 않아요', 8, DIM)
+box(x, y + 328, 276, 62, 'warn')
+pill(x + 12, y + 336, 52, 17, AMB_BG, AMB_TX, 'SEEDED', size=8)
+text(x + 72, y + 336, 192, 17, '거래내역 확보 2026-01-01부터', 9, AMB_TX, bold=True)
+text(x + 12, y + 358, 252, 26, '이전 거래는 잔고 평단을 출발점으로 보정했어요', 9, SUB)
+box(x, y + 398, 276, 44, 'warn')
+text(x + 12, y + 404, 252, 32, '◆ 2026-04-15 액면분할 이력을 확인하지 못했어요', 10, AMB_TX, bold=True)
+mono(x, y + 452, 276, 'opening_qty = 10 - 5 = 5 > 0 → SEEDED\ngrade는 산출 시점 스냅샷 · 소급 수정 없음')
 
 # ── 노트 2 : 화면 상태 전수 ─────────────────────────────────
 NX, NY, NW = 1560, B3, 520
@@ -932,7 +940,7 @@ text(NX + 20, NY + 44, NW - 40, 18, '와이어플로우는 해피패스만 그�
      9, MUT)
 hr(NX + 20, NY + 68, NW - 40)
 st = [('요약', '지연 배너 · 연동 계좌 없음(온보딩) · 동기화 중'),
-      ('종목별', '렌즈 ON 시 평단·손익률 컬럼 제거 · 보유 없음 · 필터 결과 없음'),
+      ('종목별', '렌즈 ON 시 평단·매입금액·손익 제거, 시장·자산군 필터 비활성 · 보유 없음'),
       ('비중 분석', '기타 버킷 · 구성비중 기준일 표기 · 축 전환 · 구성종목 없음'),
       ('계좌별', '재인증 필요 · 동기화 실패·이월 · 연동 해제 확인'),
       ('실현손익', '해당 기간 매도 없음 · 미포함 계좌 N개 · 추정 배지 · 전 계좌 조회 불가'),
@@ -944,10 +952,14 @@ for k, v in st:
     text(NX + 20, yy, 88, 18, k, 10, TXT, bold=True)
     text(NX + 112, yy, NW - 136, 36, v, 9, MUT, valign='top')
     yy += 40
-box(NX + 20, yy + 4, NW - 40, 74, 'warn')
-text(NX + 32, yy + 12, NW - 64, 18, '변형 — 현금흐름 미확보 (자산 변화)', 10, AMB_TX, bold=True)
-text(NX + 32, yy + 32, NW - 64, 18, '1개 계좌의 입출금 내역이 없어 투자손익에 섞여 있을 수 있어요', 9, SUB)
-text(NX + 32, yy + 52, NW - 64, 18, '잔차 항목을 만들지 않고 경고로 노출한다', 9, MUT)
+box(NX + 20, yy + 4, NW - 40, 92, 'warn')
+text(NX + 32, yy + 12, NW - 64, 18, '상태의 표현 수단', 10, AMB_TX, bold=True)
+text(NX + 32, yy + 32, 130, 18, '빈 상태', 10, SUB)
+text(NX + 150, yy + 32, 300, 18, '봉투 empty_reason (5값)', 9, MUT)
+text(NX + 32, yy + 50, 130, 18, '품질 경고', 10, SUB)
+text(NX + 150, yy + 50, 300, 18, 'notices code + message', 9, MUT)
+text(NX + 32, yy + 68, 130, 18, '계좌 상태', 10, SUB)
+text(NX + 150, yy + 68, 300, 18, '계좌별 뷰 행의 link_state · last_collection', 9, MUT)
 
 # ── 노트 3 : 신뢰도 등급 ────────────────────────────────────
 NX = 2140

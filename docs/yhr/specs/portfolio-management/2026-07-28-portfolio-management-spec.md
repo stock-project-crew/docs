@@ -195,7 +195,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 렌즈 | **핵심 용처.** 기본 `DIRECT`, 토글로 `LOOK_THROUGH` |
 | 시각화 | 도넛 + 순위 막대 리스트 |
 
-렌즈를 켜면 **`기타(현금·파생·미매칭)` 버킷이 함께 표시**되어 합이 항상 100%가 되게 한다. ETF가 보유한 현금·선물·채권, weight 합의 반올림 오차, 종목 마스터에 매칭되지 않는 구성종목이 여기 들어간다. 이는 데이터 확보 실패가 아니라 **원래 종목이 아닌 것**이므로 별도 버킷으로 유지한다.
+렌즈를 켜면 **`기타(ETF 내 비주식·미매칭)` 버킷이 함께 표시**되어 합이 항상 100%가 되게 한다. 예수금은 `현금` 값으로 별도 집계되므로 라벨을 구분해 두 종류의 현금이 한 화면에서 겹치지 않게 한다. ETF가 보유한 현금·선물·채권, weight 합의 반올림 오차, 종목 마스터에 매칭되지 않는 구성종목이 여기 들어간다. 이는 데이터 확보 실패가 아니라 **원래 종목이 아닌 것**이므로 별도 버킷으로 유지한다.
 
 렌즈를 켜면 배너에 구성비중 파일의 기준일을 병기한다 (§3.4).
 
@@ -205,7 +205,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 |---|---|
 | 그레인 | 계좌 1행 |
 | 컬럼 | 기관 · **계좌유형(일반/연금)** · 기준통화 · 평가금액 · 예수금 · 평가손익 · 비중 · 마지막 동기화 · 연동 상태 |
-| 그룹 | **계좌유형별 소계** (일반 합계 / 연금 합계) |
+| 그룹 | **계좌유형별 소계** (일반 합계 / 연금 합계). 소계는 예수금을 포함한 계좌 총자산 기준 |
 | 렌즈 | 없음 |
 | 하위 | 행 탭 → 종목별 뷰(계좌 필터 적용 상태) |
 | 겸용 | 계좌 연동·재인증·해제의 진입점 |
@@ -431,12 +431,14 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 
 ### 3.6 처리 파이프라인
 
-배치에서 만드는 것은 `position_line` 하나뿐이고, 렌즈 전개부터는 조회할 때마다 수행한다.
+배치는 `position_line` · `position_basis` · `realized_pnl_line` 셋을 만들고, 렌즈 전개부터는 조회할 때마다 수행한다.
 
 | 단계 | 하는 일 | 입력 → 출력 | 시점 | 담당 |
 |---|---|---|---|---|
 | 0 | 잔고·구성종목 수집, 종목 마스터 갱신, 구성비중 중첩 평탄화 | 증권사 API · 운용사 파일 → 원본 · 마스터 | EOD 배치 | 데이터 |
 | 1 | 잔고를 계좌×종목 행으로 정규화. **매입금액은 잔고 평단 기준**, 평가금액은 현재가 기준. 원화 환산, 예수금을 `CASH` 종목으로 편입, 실패 계좌 이월 | 원본 잔고 · 환율 → `position_line` | EOD 배치 · 수동 동기화 | 백엔드 |
+| 1.5 | 기업행위 보정, `opening_qty` 역산, 등급 판정 | `position_line` · `cln_trade` · `corporate_action` → `position_basis` | EOD 배치 | 백엔드 |
+| 1.6 | 매도 체결마다 실현손익 산출 | `cln_trade` · `position_basis` · `fx_rate` → `realized_pnl_line` | EOD 배치 | 백엔드 |
 | 2 | ETF 행을 구성비중대로 안분. 미매칭·비중 미달분을 기타 버킷으로. 총합 보존 검증 | `position_line` · 구성비중 → 전개 라인 | 조회 시 | 백엔드 |
 | 3 | 종목·계좌 마스터를 조인해 축 값 부여 | 전개 라인 · 마스터 → 축이 붙은 라인 | 조회 시 | 백엔드 |
 | 3.5 | 요청 필터 적용 | 축이 붙은 라인 → 대상 라인 | 조회 시 | 백엔드 |
@@ -448,6 +450,8 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 - 같은 종목의 직접보유분과 ETF 경유분은 4단계에서 합쳐진다.
 - 실현손익 뷰는 `realized_pnl_line`을, 자산 변화 뷰는 `position_line` 두 시점과 `cln_cashflow`를 읽으므로 2~3단계를 거치지 않는다.
 - 필터는 마스터 조인 뒤에 적용한다. 계좌 필터는 전개가 `account_id`를 보존하므로 2단계 앞으로 밀어도 결과가 같으며, 이는 구현 최적화 여지로 남긴다.
+- **`position_basis`는 전량 재계산한다.** 증분 누적하면 기업행위나 과거 체결이 뒤늦게 도착했을 때 되돌릴 수 없다. 계좌×종목 단위로 확보 구간 전체를 매번 다시 접는다. 재계산 대상은 현재 열린 포지션의 확보 구간이며, 청산으로 리셋된 과거 구간은 재현하지 않는다.
+- `realized_pnl_line`은 PK가 `trade_id`라 upsert로 멱등하다. 재계산 범위에 드는 행만 갱신되고 나머지는 그대로다.
 - `LOOK_THROUGH`에서는 `lens_sensitive` 축으로 필터할 수 없다(§9.5). 전개가 종목 자체를 바꾸므로 전개 전후 어느 순서로 걸어도 답이 성립하지 않는다 — 자산군=ETF 필터는 전개 후 ETF가 존재하지 않아 항상 빈 목록이 된다.
 
 ### 3.7 통화 표시
@@ -529,6 +533,8 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 ```
 
 분할이 매수와 매도 사이에 끼면 보정 없이는 평단이 부호까지 틀어진다 — 10주@100이 2:1 분할로 20주@50이 되는데 거래내역에는 매수 10@100만 남는다. 이력이 없으면 `ca_unknown` 플래그를 세운다(§4.4).
+
+`realized_pnl_line`은 **산출 시점 상태의 스냅샷**이다. 금액과 등급 모두 그때의 `position_basis`로 계산하며, 청산 리셋(§4.3)이나 등급 강등(§4.4) 이후에도 과거 행을 소급 수정하지 않는다. 분류 보정은 소급 반영하고(§3.3) 손익 산출은 시점을 고정하는 것이 이 스펙의 대비다.
 
 **불완전 거래내역 보정**
 
@@ -783,6 +789,15 @@ Axis { key, label, source, applicable_views[], lens_sensitive }
 
 계좌 축이 렌즈 영향을 받지 않는 이유는 look-through가 총합을 보존하기 때문이다. 그래서 계좌별 뷰에는 렌즈를 노출하지 않는다(§2.7). `is_leveraged`는 원천 확보 전까지 비활성이다.
 
+**분류 축의 폴백**
+
+| 대상 | 값 |
+|---|---|
+| CASH 의사종목 | 모든 분류 축에서 전용 값 `현금` |
+| 분류가 없는 종목(`sector = null` 등) | `미분류` |
+
+**자산군 값을 다른 축에 넣지 않는다.** 섹터 축 `DIRECT`에서 ETF는 섹터가 비어 있으므로 `미분류`로 모이며, 실제 섹터를 보려면 렌즈를 켜라는 안내를 붙인다. ETF를 섹터 값으로 쓰면 축이 오염되고 §3.4가 정한 렌즈의 역할과 겹친다.
+
 ### 6.2 지표
 
 ```
@@ -792,8 +807,12 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 | key | 라벨 | 가산 | CASH | 렌즈 | 계산 |
 |---|---|---|---|---|---|
 | `quantity` | 수량 | ○ | 포함 | `ROW_AND_TOTAL` | `Σ 수량` |
-| `total_assets_krw` | 총자산 | ○ | **포함** | `ROW_AND_TOTAL` | `Σ 평가금액` |
-| `market_value_krw` | 평가금액 | ○ | 행 기준 | `ROW_AND_TOTAL` | 행의 평가금액. 합계는 `asset_class != CASH` |
+| `total_assets_krw` | 총자산 | ○ | **포함** | `ROW_AND_TOTAL` | 합계 전용. `Σ 평가금액` |
+| `securities_value_krw` | 유가증권 평가금액 | ○ | **제외** | `ROW_AND_TOTAL` | 합계 전용. `Σ 평가금액` |
+| `market_value_krw` | 평가금액 | ○ | 행 기준 | `ROW_AND_TOTAL` | **행 전용.** 그 행의 평가금액 |
+| `deposit_krw` | 예수금 | ○ | 포함 | `ROW_AND_TOTAL` | `Σ CASH 평가금액` |
+| `daily_change_krw` | 일간 변화 | ○ | 포함 | — | 당일 `total_assets_krw` − 전일 `total_assets_krw` |
+| `daily_change_pct` | 일간 변화율 | ✕ | 포함 | — | `daily_change_krw ÷ 전일 total_assets_krw` |
 | `cost_amount_krw` | 매입금액 | ○ | **제외** | `TOTAL_ONLY` | `Σ 매입금액` |
 | `unrealized_pnl_krw` | 평가손익 | ○ | **제외** | `TOTAL_ONLY` | `Σ평가 - Σ매입` |
 | `unrealized_pnl_pct` | 평가손익률 | ✕ | **제외** | `TOTAL_ONLY` | `평가손익 ÷ Σ매입` |
@@ -804,6 +823,8 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 | `instrument_count` | 종목수 | ✕ | 제외 | `ROW_AND_TOTAL` | `COUNT DISTINCT 종목` |
 
 **가산** — ○ 은 행을 더해도 되는 값, ✕ 는 집계 결과에만 적용 가능하며 라인 단위로 더하면 틀리는 값이다(§1.5).
+
+**행 키와 합계 키는 이름이 겹치지 않는다.** 같은 키가 행에서는 CASH를 포함하고 합계에서는 제외하면, 소비자가 `Σ rows`와 `total`을 대조했을 때 어긋난다. 합계는 `total_assets_krw`·`securities_value_krw`로 갈라 각 키가 한 의미만 갖게 한다.
 
 **CASH** — 예수금 의사종목을 집계에 포함하는지. 자산 배분 질문(총자산·비중·현금비중)은 포함하고, 손익 질문(매입금액·평가손익)은 제외한다. 제외하지 않으면 예수금이 손익률 분모에 섞여 값이 희석된다. **비중의 분모는 `total_assets_krw`(CASH 포함), 손익률의 분모는 `cost_amount_krw`(CASH 제외)로 서로 다르다.**
 
@@ -820,20 +841,28 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 ### 6.3 뷰
 
 ```
-View { view_key, question, grain, group_by[], metrics[], filters[],
-       lens_policy: NONE | OPTIONAL | ALWAYS, ledgers[] }
+View { view_key, question, grain, group_by[], metrics[], row_fields[],
+       filters: { DIRECT: [...], LOOK_THROUGH: [...] },
+       lens_policy: NONE | OPTIONAL | ALWAYS,
+       sub_blocks[], ledgers[] }
 ```
+
+- `row_fields[]` — 공통 행 스키마(§8.3)에 더해지는 필드. 계좌별 뷰만 `link_state` · `last_collection`을 갖는다.
+- `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서는 `lens_sensitive` 축이 빠진다(§9.5).
+- `sub_blocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. 요약만 해당하며 `lens_policy`는 뷰 전체가 아니라 이 블록에 붙는다.
 
 | view_key | 그레인 | group_by | 지표 | 필터 | 렌즈 | 원장 |
 |---|---|---|---|---|---|---|
-| `summary` | 전체 1행 | `[]` | 평가금액 · 매입금액 · 평가손익(률) · 현금비중 | — | `OPTIONAL` 미니차트 한정 | 스냅샷 |
+| `summary` | 전체 1행 | `[]` | 총자산 · 유가증권 평가금액 · 매입금액 · 평가손익(률) · 현금비중 · 일간 변화(금액/률) · 계좌수 · 종목수 | — | `NONE` (미니차트 `sub_block`에 `OPTIONAL`) | 스냅샷 |
 | `positions` | 종목 | `[instrument]` | 수량 · 평단 · 매입금액 · 평가금액 · 평가손익(률) · 비중 | 계좌 · 시장 · 자산군 | `OPTIONAL` | 스냅샷 |
 | `allocation` | 축 값 | 축 1개 택일 | 평가금액 · 비중 · 종목수 | — | `OPTIONAL` | 스냅샷 |
 | `accounts` | 계좌 | `[account_type, account]` | 평가금액 · 예수금 · 평가손익(률) · 비중 | — | `NONE` | 스냅샷 |
 | `realized-pnl` | 기간 × 종목 | `[instrument]` | 매도금액 · 취득원가 · 실현손익(률) | 계좌 · 기간 | `NONE` | 거래 |
 | `asset-change` | 기간 × 유형 | `[cashflow_type]` | 금액 | 계좌 · 기간 | `NONE` | 스냅샷 + 현금흐름 |
 
-`lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다. `OPTIONAL`인 뷰에서 렌즈를 켜면 `lens_safe = ✕`인 지표가 응답에서 빠진다.
+`lens_policy`가 렌즈 노출을 한 곳에서 통제한다. 뷰 컴포넌트가 각자 판단하지 않는다. `OPTIONAL`인 뷰에서 렌즈를 켜면 `lens_safe`가 `TOTAL_ONLY`·`NEVER`인 지표가 행에서 빠진다.
+
+요약은 `total`(렌즈 무관)과 자산구성 미니차트(렌즈 적용)를 함께 담으므로 뷰 전체가 아니라 미니차트 블록에만 렌즈가 붙는다. 총합이 보존되므로 렌즈를 켜도 `total`은 변하지 않는다.
 
 ### 6.4 서빙 계약
 
@@ -1027,8 +1056,8 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 {
   "group_by": ["sector"],
   "lens": "look_through",
-  "total": { "total_assets_krw": 58000000, "market_value_krw": 54300000,
-             "cost_amount_krw": 49200000,
+  "total": { "total_assets_krw": 58000000, "securities_value_krw": 54300000,
+             "deposit_krw": 3700000, "cost_amount_krw": 49200000,
              "unrealized_pnl_krw": 5100000, "unrealized_pnl_pct": 10.4,
              "cash_ratio_pct": 6.4 },
   "rows": [
@@ -1042,9 +1071,17 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 
 - **파생 지표를 서버가 계산해 포함한다.** 가산성 규칙(§1.5)이 서버 안에 갇혀 클라이언트가 비율을 잘못 평균낼 여지가 없다.
 - `group_by`가 2단계면 `rows[].rows`로 중첩된다. 계좌별이 `["account_type","account"]`이며 **소계는 항상 서버가 계산한다.**
-- 요약은 `group_by`가 비어 `total`만 채워진다.
+- 요약은 `group_by`가 비어 `total`만 채워지고, 미니차트는 하위 블록으로 실린다.
+
+```json
+{ "total": { "total_assets_krw": 58000000, "daily_change_krw": 1240000,
+             "daily_change_pct": 2.1, "cash_ratio_pct": 6.4 },
+  "mini_chart": { "group_by": ["asset_class"], "lens": "look_through",
+                  "rows": [ { "key": "kr_stock", "label": "국내주식",
+                              "market_value_krw": 25520000, "weight_pct": 44.0 } ] } }
+```
 - 단일 통화 행에는 현지 통화 값을 함께 싣는다(§3.7).
-- `total_assets_krw`는 예수금을 포함하고 손익 계열은 제외하므로 `market_value_krw − cost_amount_krw`가 `total_assets_krw`와 맞아떨어지지 않는다(§6.2).
+- `Σ rows.market_value_krw = total.total_assets_krw`가 항상 성립한다. 손익 계열은 `securities_value_krw`를 기준으로 하므로 `securities_value_krw − cost_amount_krw = unrealized_pnl_krw`도 성립한다.
 - `lens = look_through`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 빠지고 `total`에만 남는다.
 - CASH 행의 원가·손익은 `null`로 내린다.
 
@@ -1181,7 +1218,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 규칙 |
 |---|
 | 등급 판정은 `corporate_action` 반영 **후**의 수량으로 계산 |
-| `realized_pnl_line.grade`는 `position_basis.grade`와 항상 일치 |
+| `realized_pnl_line.grade`는 **산출 시점의 스냅샷**이며 이후 갱신하지 않는다 |
 | `SEEDED`이면 `seed_avg_price` 필수 |
 | `UNAVAILABLE`·`CONFLICT` 종목은 실현손익 합계에서 제외하되 제외 건수를 노출 |
 | 보유수량이 0이 되면 `position_basis` 리셋 |
