@@ -672,15 +672,7 @@ View    { view_key, question, grain, group_by[], metrics[], filters[],
 
 **서빙 계약**
 
-뷰 사양은 서버가 보유한다. 클라이언트는 `view_key`와 카탈로그에 정의된 파라미터만 보낸다.
-
-```
-GET /portfolio/views/allocation?axis=sector&lens=look_through
-GET /portfolio/views/positions?lens=direct
-GET /portfolio/views/realized-pnl?period=2026&account=pension
-```
-
-`Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 검증은 카탈로그 대조로 끝난다. 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다.
+뷰 사양은 서버가 보유한다. 클라이언트는 `view_key`와 카탈로그에 정의된 파라미터만 보내며, 임의 조합을 받는 범용 쿼리 엔드포인트는 두지 않는다. `Axis.applicable_views`와 `View.lens_policy`가 곧 허용 파라미터 목록이므로 요청 검증은 카탈로그 대조로 끝난다. 엔드포인트와 응답 스키마는 §8.
 
 ---
 
@@ -761,35 +753,141 @@ GET /portfolio/views/realized-pnl?period=2026&account=pension
 
 ---
 
-## 8. UI ↔ 모델 매핑 (추적성)
+## 8. API 계약
 
-### 8.1 전역
+### 8.1 엔드포인트
 
-| UI 요소 | 모델 경로 | 비고 |
-|---|---|---|
-| as-of 배너 | 배치 실행 기준시각 | 모든 뷰 공통 |
-| 통화 토글 | `market_value_local` ⇄ `market_value_krw` | 전역 상태 유지 |
-| 적용 환율 표기 | `fx_rate` · `fx_as_of` | 원화 모드에서만 |
-| 지연 배너 | `is_carried_forward` 集計 | 이월 계좌 존재 시 |
-| 새로고침 | `sync_run` 생성 | `202` 비동기 |
+| 구분 | 경로 |
+|---|---|
+| 뷰 | `GET /portfolio/views/summary` |
+| | `GET /portfolio/views/positions?lens=&account=` |
+| | `GET /portfolio/views/allocation?axis=&lens=` |
+| | `GET /portfolio/views/accounts` |
+| | `GET /portfolio/views/realized-pnl?period=&account=` |
+| | `GET /portfolio/views/asset-change?period=&account=` |
+| 하위 화면 | `GET /portfolio/instruments/{id}` |
+| 계좌 | `GET /accounts` · `POST /accounts` · `POST /accounts/{id}/reauth` · `DELETE /accounts/{id}` |
+| 동기화 | `POST /sync` → `202` · `GET /sync/{run_id}` |
+| 카탈로그 | `GET /portfolio/catalog` |
 
-### 8.2 뷰
+카탈로그 엔드포인트는 뷰별 허용 축·렌즈·필터 옵션과 연동 계좌 목록을 내린다. 클라이언트가 이 목록을 하드코딩하면 축 하나를 늘릴 때 앱 배포가 필요해져 서버가 뷰 사양을 갖는 의미가 사라진다.
+
+### 8.2 응답 봉투
+
+모든 뷰 응답이 같은 봉투를 쓴다.
+
+```json
+{
+  "as_of": "2026-07-27T15:30:00+09:00",
+  "data": { },
+  "notices": [
+    { "code": "STALE_ACCOUNTS",
+      "severity": "warn",
+      "message": "1개 계좌가 07-26 기준입니다",
+      "params": { "count": 1, "oldest": "2026-07-26" } }
+  ]
+}
+```
+
+`message`는 서버가 완성해 내리고 `code`를 함께 준다. 클라이언트는 `message`를 그대로 출력하고 `code`로 아이콘·색·후속 동작을 분기한다. 문구 수정에 앱 배포가 필요 없다.
+
+`severity`는 `info | warn | error`.
+
+| code | 발생 조건 |
+|---|---|
+| `FX_APPLIED` | 원화 환산에 적용한 환율과 기준시점 (§2.3) |
+| `STALE_ACCOUNTS` | 캐리포워드된 계좌 존재 (§7.3) |
+| `CONSTITUENT_AS_OF` | 렌즈 적용 시 구성비중 기준일 (§3.4) |
+| `EXCLUDED_ACCOUNTS` | 실현손익 합계에서 빠진 계좌 (§2.8) |
+| `CASHFLOW_UNCOVERED` | 현금흐름 미확보 계좌 (§4.6) |
+| `PERIOD_TRUNCATED` | 기초 스냅샷 대체와 실제 시작일 (§2.9) |
+| `REAUTH_REQUIRED` | 재인증 대기 계좌 존재 (§7.2) |
+
+### 8.3 스냅샷 뷰 응답
+
+요약·종목별·비중 분석·계좌별은 같은 팩트에 `group_by`만 다른 것이므로 응답 스키마도 하나다.
+
+```json
+{
+  "group_by": ["sector"],
+  "lens": "look_through",
+  "total": { "market_value_krw": 58000000, "cost_amount_krw": 52900000,
+             "unrealized_pnl_krw": 5100000, "unrealized_pnl_pct": 9.6 },
+  "rows": [
+    { "key": "semiconductor", "label": "반도체",
+      "market_value_krw": 14268000, "cost_amount_krw": 13100000,
+      "unrealized_pnl_krw": 1168000, "unrealized_pnl_pct": 8.9,
+      "weight_pct": 24.6, "instrument_count": 4 }
+  ]
+}
+```
+
+- **파생 지표를 서버가 계산해 포함한다.** 가산성 규칙(§1.5)이 서버 안에 갇혀 클라이언트가 비율을 잘못 평균낼 여지가 없다.
+- `group_by`가 2단계면 `rows[].rows`로 중첩된다. 계좌별이 `["account_type","account"]`이며 **소계는 항상 서버가 계산한다.**
+- 요약은 `group_by`가 비어 `total`만 채워진다.
+- 단일 통화 행에는 현지 통화 값을 함께 싣는다(§3.7).
+
+### 8.4 실현손익 · 자산 변화 응답
+
+원장이 달라 스키마가 다르다.
+
+```json
+// realized-pnl
+{ "period": { "from": "2026-01-01", "to": "2026-12-31" },
+  "total": { "realized_pnl_krw": 2140000 },
+  "rows": [
+    { "instrument_id": "...", "label": "삼성전자", "sold_at": "2026-05-12",
+      "sell_amount_krw": 3560000, "cost_basis_krw": 2740000,
+      "realized_pnl_krw": 820000, "realized_pnl_pct": 29.9,
+      "grade": "VERIFIED" } ] }
+```
+
+```json
+// asset-change
+{ "period": { "from": "2026-07-01", "to": "2026-07-31" },
+  "opening": 50000000, "closing": 58000000,
+  "deposited": 6000000,
+  "earned": 2000000,
+  "account_scope_change": 0,
+  "breakdown": [ { "type": "DEPOSIT", "amount": 6000000 },
+                 { "type": "DIVIDEND", "amount": 120000 },
+                 { "type": "FEE_TAX", "amount": -30000 },
+                 { "type": "INVESTMENT_PNL", "amount": 1910000 } ],
+  "investment_pnl": { "total": 1910000, "realized": 850000,
+                      "unrealized_change": 1060000, "split_available": true } }
+```
+
+`split_available`이 `false`이면 거래 원장이 없어 실현/미실현 분해를 생략한 것이다. `total`은 항상 정확하다(§2.9).
+
+### 8.5 오류와 빈 상태
+
+- **빈 상태는 오류가 아니다.** `rows: []`와 해당 `notices`로 표현하며 상태 코드는 `200`이다. §10의 빈 상태가 모두 여기 해당한다.
+- 동기화 중이거나 스냅샷이 아직 없어도 `200`과 `notices`로 알린다.
+- 재인증 필요는 오류가 아니라 계좌 상태다. `GET /accounts` 응답의 상태 필드와 `REAUTH_REQUIRED` notice로 표현한다.
+- 오류는 `{ "error": { "code", "message" } }` 형태로 내리고 `code`를 클라이언트 분기용으로 쓴다.
+
+### 8.6 UI ↔ 모델 매핑
 
 | UI 요소 | 모델 경로 |
 |---|---|
+| as-of 배너 | 응답 봉투 `as_of` |
+| 적용 환율 표기 | `FX_APPLIED` notice (`fx_rate` · `fx_as_of`) |
+| 지연 배너 | `STALE_ACCOUNTS` notice (`is_carried_forward` 집계) |
+| 새로고침 | `POST /sync` → `sync_run` |
 | 총자산 | `Σ market_value_krw` (CASH 포함) |
 | 총평가손익 | `Σ market_value − Σ cost_amount` |
 | 일간 변화 | 당일 `as_of` 총자산 − 전일 `as_of` 총자산 |
-| 종목 비중 | `Σ market_value_krw ÷ 전체 Σ` (group_by instrument) |
-| 섹터 비중 | 동일, `group_by sector` + `instrument` 조인 |
+| 비중 | `Σ market_value_krw ÷ 전체 Σ` |
+| 현지 통화 병기 | 단일 통화 행의 `*_local` |
 | 렌즈 토글 | `View.lens_policy = OPTIONAL` 인 뷰에서만 노출 |
-| 구성비중 기준일 | `etf_constituent.as_of` |
-| 계좌유형 소계 | `group_by account_type` |
+| 구성비중 기준일 | `CONSTITUENT_AS_OF` notice |
+| 계좌유형 소계 | `group_by = ["account_type","account"]`의 상위 노드 |
 | 실현손익 행 | `realized_pnl_line` |
 | 신뢰도 배지 | `position_basis.grade` → `realized_pnl_line.grade` |
-| 워터폴 막대 | `cashflow.type` 별 합계 |
-| 투자손익 | `Δ총자산 − 순입금 − 배당 + 수수료` |
-| 설명되지 않는 변화 | 항등식 잔차 |
+| 미포함 계좌 N개 | `EXCLUDED_ACCOUNTS` notice |
+| 워터폴 막대 | `breakdown[]` |
+| 투자손익 | `Δ총자산 − 넣은 돈 − 배당 + 수수료 − 계좌 편입·제외` |
+| 커버리지 경고 | `CASHFLOW_UNCOVERED` notice |
 
 ---
 
