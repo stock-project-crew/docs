@@ -71,8 +71,8 @@ position_line  ── 그레인: (as_of, 계좌, 종목)
 | 원장 | 그레인 | 축 | 답하는 것 | 확보 |
 |---|---|---|---|---|
 | 보유 스냅샷 `position_line` | as_of × 계좌 × 종목 | §1.2의 8개, **확장됨** | 현재 상태 전부 | 항상 — 잔고가 진실 |
-| 현금흐름 `cashflow` | 계좌 × 유형 × 일시 | 기간 × 유형, 고정 | 자산 변화의 원인 | 입출금내역 |
-| 거래 `trade` | 체결 1건 | 기간 × 종목, 고정 | 실현/미실현 분해 | 구간별 불완전 |
+| 현금흐름 `cln_cashflow` | 계좌 × 유형 × 일시 | 기간 × 유형, 고정 | 자산 변화의 원인 | 입출금내역 |
+| 거래 `cln_trade` | 체결 1건 | 기간 × 종목, 고정 | 실현/미실현 분해 | 구간별 불완전 |
 
 축이 늘어나는 원장은 보유 스냅샷뿐이다. **앞의 축(§1.2~1.3)과 뒤의 저장 규칙(§1.5)은 이 원장에 적용된다.** 나머지 두 원장은 축 조합이 고정이라 그레인 정의로 끝난다.
 
@@ -439,7 +439,7 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 
 - `DIRECT` 렌즈는 2단계를 건너뛰고 `position_line`이 그대로 3단계로 간다.
 - 같은 종목의 직접보유분과 ETF 경유분은 4단계에서 합쳐진다.
-- 실현손익 뷰는 `realized_pnl_line`을, 자산 변화 뷰는 `position_line` 두 시점과 `cashflow`를 읽으므로 2~3단계를 거치지 않는다.
+- 실현손익 뷰는 `realized_pnl_line`을, 자산 변화 뷰는 `position_line` 두 시점과 `cln_cashflow`를 읽으므로 2~3단계를 거치지 않는다.
 
 ### 3.7 통화 표시
 
@@ -464,8 +464,8 @@ LOOK_THROUGH : [AAPL 45만] [MSFT 40만] ... [기타 15만]
 | 원장 | 그레인 | 답하는 것 | 확보 |
 |---|---|---|---|
 | **보유 스냅샷** `position_line` | (as_of, 계좌, 종목) | 현재 상태 전부 | 항상 확보 — 잔고가 진실 |
-| **현금흐름** `cashflow` | (계좌, 유형, 일시) | 자산 변화의 원인 | KIS·CODEF 입출금내역 |
-| **거래** `trade` | 체결 1건 | 실현/미실현 **분해** | 구간별 불완전 |
+| **현금흐름** `cln_cashflow` | (계좌, 유형, 일시) | 자산 변화의 원인 | KIS·CODEF 입출금내역 |
+| **거래** `cln_trade` | 체결 1건 | 실현/미실현 **분해** | 구간별 불완전 |
 
 현재 보유 상태는 **증권사 잔고 조회가 유일한 진실의 원천**이며 거래내역에서 역산하지 않는다. 액면분할·증자·배당재투자에서 오차가 누적되고, 거래가 하나라도 누락되면 전체가 틀어지기 때문이다.
 
@@ -568,52 +568,126 @@ opening_qty = 현재 보유수량 − Σ(확보구간 매수) + Σ(확보구간 
 
 ## 5. 데이터 모델
 
-### 5.1 엔티티
+### 5.1 테이블
 
-```
-── 마스터 ──────────────────────────────────────
-account          기관 · 계좌유형(GENERAL|PENSION) · 기준통화
-                 · source(KIS|CODEF) · 연동상태 · connected_id_ref
-instrument       ISIN · 종목코드/ticker · 이름
-                 · asset_class(STOCK|ETF|CASH) · market · currency
-                 · sector · is_leveraged
-etf_constituent  etf_instrument → underlying_instrument
-                 · weight · shares_per_unit · as_of        (자기참조·재귀)
-fx_rate          currency_pair · rate · as_of        일별 보관 (실현손익의 매입일·매도일 환율)
+소유는 **기관 고유성이 사라지는 지점**을 경계로 나눈다. 기관마다 다른 응답을 흡수해 공통 모양으로 만드는 것까지가 데이터, 거기에 도메인 규칙(평단·기업행위 보정·캐리포워드·등급 판정)을 얹는 것이 백엔드다. 물리 테이블명은 팀 규약을 따른다.
 
-── 원장 1: 보유 스냅샷 ─────────────────────────
-position_line    PK(as_of, account_id, instrument_id)       ★ append-only
-                 quantity
-                 cost_amount_local   · market_value_local
-                 cost_amount_krw     · market_value_krw
-                 fx_rate · fx_as_of
-                 source_as_of · is_carried_forward
+#### 참조 데이터 — 데이터 소유
 
-── 원장 2: 거래 ────────────────────────────────
-trade             account · instrument · type(BUY|SELL)
-                  · quantity · price · fee · executed_at
-corporate_action  instrument · type(SPLIT|RIGHTS|MERGER) · ratio · ex_date
-position_basis    PK(account_id, instrument_id)             ★ 등급의 집
-                  coverage_start_at · opening_qty · seed_avg_price
-                  · grade · ca_unknown
-realized_pnl_line 매도 체결 1건 · account · instrument · sold_at · quantity
-                  · sell_amount · cost_basis_amount · fee_tax
-                  · realized_pnl_local · realized_pnl_krw
-                  · fx_rate · fx_as_of · grade
+**`instrument`** 종목 마스터
 
-── 원장 3: 현금흐름 ────────────────────────────
-cashflow          account · type(DEPOSIT|WITHDRAW|DIVIDEND|FEE|TAX)
-                  · amount · currency · at
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `instrument_id` | uuid PK | |
+| `isin` | text | 국내·미국 공통 키 |
+| `symbol` | text | 종목코드 / ticker |
+| `name` | text | |
+| `asset_class` | enum | `STOCK` · `ETF` · `CASH` |
+| `market` | enum | `KR` · `US` |
+| `currency` | enum | `KRW` · `USD` |
+| `sector` | text null | 분류 미확정 시 null |
+| `is_leveraged` | bool null | 원천 확보 전 null |
 
-── 운영 ────────────────────────────────────────
-sync_run          account · 시작·종료 · 상태 · 실패사유 · 재인증 요구
-```
+**`etf_constituent`** 구성비중 — 중첩이 이미 펼쳐진 한 겹
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `as_of` | date | 구성비중 파일 기준일 |
+| `etf_instrument_id` | uuid | |
+| `underlying_instrument_id` | uuid | 최종 종목 |
+| `weight` | decimal(9,6) | 합이 100% 미만일 수 있음 → 기타 버킷 |
+
+PK `(as_of, etf_instrument_id, underlying_instrument_id)`
+
+**`fx_rate`** 일별 환율 · **`corporate_action`** 기업행위
+
+| 테이블 | 컬럼 |
+|---|---|
+| `fx_rate` | `as_of` date · `currency_pair` text · `rate` decimal(18,6) — PK `(as_of, currency_pair)` |
+| `corporate_action` | `instrument_id` · `type` enum(`SPLIT`·`RIGHTS`·`MERGER`) · `ratio` decimal · `ex_date` date |
+
+#### 정규화 원본 — 데이터 소유
+
+기관별 응답 차이를 흡수한 결과이며 백엔드는 읽기만 한다.
+
+| 테이블 | 컬럼 |
+|---|---|
+| `cln_balance` | `account_ref` · `isin` · `quantity` decimal(20,8) · `avg_price` decimal · `market_value` decimal · `currency` · `source_as_of` timestamptz |
+| `cln_deposit` | `account_ref` · `currency` · `amount` decimal · `source_as_of` |
+| `cln_trade` | `trade_id` · `account_ref` · `isin` · `side` enum(`BUY`·`SELL`) · `quantity` · `price` · `fee` · `tax` · `currency` · `executed_at` timestamptz |
+| `cln_cashflow` | `account_ref` · `type` enum(`DEPOSIT`·`WITHDRAW`·`DIVIDEND`·`FEE`·`TAX`) · `amount` · `currency` · `occurred_at` timestamptz |
+
+#### 도메인 — 백엔드 소유
+
+**`account`** 계좌
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `account_id` | uuid PK | |
+| `broker` | text | |
+| `account_type` | enum | `GENERAL` · `PENSION` |
+| `base_currency` | enum | |
+| `source` | enum | `KIS` · `CODEF` |
+| `connected_id_ref` | text null | CODEF 계좌만. 인증정보는 저장하지 않음 |
+| `state` | enum | §7.2 상태 기계 |
+| `last_synced_at` | timestamptz null | |
+
+**`position_line`** 보유 스냅샷 — 하루 한 벌
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `as_of` | date | 일자 단위. 당일 upsert, 과거 불변 |
+| `account_id` · `instrument_id` | uuid | |
+| `quantity` | decimal(20,8) | 소수 허용 |
+| `cost_amount_local` · `market_value_local` | decimal(20,4) | |
+| `cost_amount_krw` · `market_value_krw` | decimal(20,2) | |
+| `fx_rate` | decimal(18,6) | `market_value_krw`가 있으면 필수 |
+| `fx_as_of` | date | |
+| `source_as_of` | timestamptz | 계좌별 실제 데이터 시각 |
+| `is_carried_forward` | bool | |
+
+PK `(as_of, account_id, instrument_id)`
+
+**`position_basis`** 평단·등급 상태
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `account_id` · `instrument_id` | uuid | PK |
+| `quantity` | decimal(20,8) | 재구성된 보유수량 |
+| `avg_cost_local` · `avg_cost_krw` | decimal(20,4) | 매수 시점 환율로 누적 |
+| `coverage_start_at` | date null | 거래내역 확보 시작일 |
+| `opening_qty` | decimal(20,8) | 역산 결과 (§4.4) |
+| `seed_avg_price` | decimal null | `SEEDED`일 때 필수 |
+| `grade` | enum | `VERIFIED`·`SEEDED`·`UNAVAILABLE`·`CONFLICT` |
+| `ca_unknown` | bool | 등급과 직교 |
+
+청산 시 리셋한다(§4.3).
+
+**`realized_pnl_line`** 실현손익 — 매도 체결 1건
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `trade_id` | text PK | `cln_trade` 참조 |
+| `account_id` · `instrument_id` | uuid | |
+| `sold_at` | timestamptz | 기간 귀속은 체결일 |
+| `quantity` | decimal(20,8) | |
+| `sell_amount_local` · `cost_basis_local` | decimal(20,4) | |
+| `sell_amount_krw` · `cost_basis_krw` | decimal(20,2) | 각각 매도일·매입 시점 환율 적용 |
+| `fee_tax` | decimal(20,4) | |
+| `realized_pnl_local` · `realized_pnl_krw` | decimal(20,2) | |
+| `grade` | enum | `position_basis`에서 상속 |
+
+**`sync_run`** 동기화 실행
+
+| 컬럼 | 타입 |
+|---|---|
+| `run_id` uuid PK · `account_id` · `started_at` · `finished_at` null · `state` enum · `failure_reason` text null · `reauth_required` bool |
 
 > `Portfolio`는 테이블이 아니라 `position_line` 집계에서 파생된다.
 
 ### 5.2 예수금을 종목으로 취급한다
 
-`instrument.asset_class = CASH`인 통화별 의사종목(`KRW 예수금`, `USD 예수금`)을 두고, 예수금도 `position_line`에 넣는다.
+`instrument.asset_class = CASH`인 통화별 의사종목(`KRW 예수금`, `USD 예수금`)을 두고, 예수금도 `position_line`에 넣는다. `cln_deposit`을 이 의사종목 행으로 바꾸는 것은 백엔드가 한다.
 
 이렇게 하면 **총자산·현금비중·자산군 축이 모두 같은 팩트 하나에서 나온다.** 예수금을 별도 테이블로 분리하면 "총자산 = 평가 + 예수금"을 화면마다 다시 조립해야 하고, 자산군 비중 차트에서 현금만 특수 처리하게 된다.
 
@@ -1036,6 +1110,8 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 환율(일별) | 데이터 → 백엔드 | 통화쌍 · 소수 자릿수 · 결측 처리 |
 | 원본 잔고·거래·입출금 | 데이터 → 백엔드 | 정규화 수준 · 중복 처리 · 조회 기간 한계 |
 
+테이블 소유는 §5.1을 따른다. 데이터는 `raw_*` · `cln_*` · `instrument` · `etf_constituent` · `fx_rate` · `corporate_action`을, 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`을 소유한다.
+
 ---
 
 ## 12. 미결 / 향후 확장 (YAGNI 경계)
@@ -1075,4 +1151,4 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 3. **구현 계획** — 스키마·마이그레이션 → 동기화·캐리포워드 → 집계 레이어 → 렌즈 → 등급 판정 → 6개 뷰 API → UI → 상태 화면
 4. **데이터 수집 설계** — 별도 스펙
 
-구현 계획 단계에서 확정하는 것: DDL 상세(인덱스·제약조건), 스냅샷 보관 기간과 파티셔닝 시점, API 인증 방식.
+구현 계획 단계에서 확정하는 것: 인덱스와 제약조건, 마이그레이션 순서, 스냅샷 보관 기간과 파티셔닝 시점, API 인증 방식.
