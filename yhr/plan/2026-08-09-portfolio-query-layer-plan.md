@@ -25,6 +25,7 @@
 - **금액 반올림은 라인 단위에서 한 번만.** 집계는 저장값을 그대로 더하고 집계 후 재반올림하지 않는다(§5.5).
 - **비율은 응답 직전에 소수 1자리, `RoundingMode.HALF_UP`**. 분모가 0 또는 null이면 값은 `null`(0이 아니다).
 - **모든 금액 계산은 `BigDecimal`.** `double`/`float`를 금액·수량·환율·비율에 쓰지 않는다. ArchUnit으로 강제한다(Task 3).
+- **참조 테이블의 스키마는 SQL에 박지 않는다.** 팀은 단일 PostgreSQL 인스턴스를 `raw`·`cln`·`mart` 스키마로 나눠 쓰므로 데이터팀 소유 `instrument`가 `public`에 있다고 가정할 수 없다. SQL은 스키마 무자격 이름으로 쓰고, 해석은 JDBC URL의 `currentSchema`가 정한다 — 로컬·테스트는 `public`, 운영은 인프라가 지정한다. 코드 변경 없이 배치가 바뀐다.
 - **데이터팀 소유 테이블을 백엔드 마이그레이션이 만들지 않는다.** 소유 경계는 스펙 §11.2 — 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`만 소유한다. 조인에 필요한 `instrument`는 로컬·테스트 전용 미러로만 만든다(§A.2.3).
 - **이번 범위에 인증을 넣지 않는다.** 근거는 §A.9.
 - **한국어 라벨·메시지는 서버가 완성해 내린다**(§8.2). 클라이언트는 `message`를 그대로 출력하고 `code`로 분기한다.
@@ -116,6 +117,8 @@ Liquibase를 기각한 이유가 두 가지다.
 | 보관 기간 | **무제한 삭제 없음** | 자산 변화 뷰가 과거 스냅샷을 읽고(§5.4), 지우면 과거 기간 계산이 불가능해진다(§7.5) |
 | 파티셔닝 | **하지 않는다** | 연 증가량이 영업일 250 × 라인 수십 = 만 행 규모. 트리거를 미리 정해둔다: `position_line`이 1,000만 행을 넘거나 단일 `as_of` 조회 p95가 200ms를 넘으면 `as_of` RANGE 파티셔닝을 검토한다 |
 | enum 표현 | **`text` + `CHECK`** (PostgreSQL ENUM 타입 아님) | ENUM 타입은 값 추가·삭제 마이그레이션이 번거롭고 `JdbcClient` 매핑에서 이득이 없다 |
+| health 엔드포인트 | `spring-boot-starter-actuator`의 `/actuator/health` | 배포 대상이 k8s라 liveness·readiness probe가 필요하다. 앱이 제공해야 인프라가 붙일 수 있다 |
+| 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | 팀이 `raw`·`cln`·`mart`를 스키마로 나눈다. 스키마명을 SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
 ## A.3 반드시 지켜야 할 불변식 네 가지와 강제 방법
@@ -973,6 +976,7 @@ notices: SEEDED_ROWS { count: 1 }
 3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 20행(`as_of` 2개 × 10행), `realized_pnl_line` 3행, `manual_cashflow` 1행, `account` 4행, `instrument` 8행이 들어간다.
 4. `MigrationLintTest`가 통과한다 — 마이그레이션에 비율 컬럼이 없다.
 5. `db/external`은 `local`·`test` 프로필에서만 적용되고 기본(운영) 프로필에서는 적용되지 않는다.
+6. `GET /actuator/health`가 `{"status":"UP"}`을 낸다 — 인프라가 probe로 쓴다.
 
 **검증 방법**
 ```bash
@@ -1017,6 +1021,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
@@ -1057,7 +1062,8 @@ spring:
   application:
     name: portfolio-api
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/portfolio}
+    # currentSchema가 참조 테이블(instrument) 해석을 정한다. 운영에서는 인프라가 지정한다.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/portfolio?currentSchema=public}
     username: ${DB_USER:portfolio}
     password: ${DB_PASSWORD:portfolio}
   flyway:
@@ -1069,6 +1075,15 @@ spring:
       write-dates-as-timestamps: false
 server:
   port: 8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true          # k8s liveness·readiness probe
 portfolio:
   zone: Asia/Seoul
 ```
