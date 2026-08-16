@@ -534,7 +534,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 |---|---|---|
 | `account_id` | `uuid` PK | |
 | `broker` | `text` | 기관명 (`한국투자증권`) |
-| `label` | `text` | **스펙 §5.1 표에 없는 추가 컬럼.** §8.5의 `by_account[].label`과 §2.7의 계좌 표시명이 `broker`와 다르다(같은 기관에 위탁·IRP 두 계좌). 표시명을 저장한다 |
+| `label` | `text` | 표시명. §8.5의 `by_account[].label`과 §2.7의 계좌 컬럼이 쓴다. 같은 기관에 계좌가 여럿이라(위탁·IRP) `broker`로는 구분되지 않는다 |
 | `account_type` | `text` CHECK | `GENERAL` · `PENSION` |
 | `source` | `text` CHECK | `KIS` · `CODEF` |
 | `credential_ref` | `text` null | 시크릿 매니저 키. **값 자체는 저장하지 않음** |

@@ -699,7 +699,8 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
 | `account_id` | uuid PK | |
-| `broker` | text | |
+| `broker` | text | 기관명 |
+| `label` | text | 표시명. 같은 기관에 계좌가 여럿일 수 있어 `broker`와 별개로 둔다 |
 | `account_type` | enum | `GENERAL` · `PENSION` |
 | `source` | enum | `KIS` · `CODEF` |
 | `credential_ref` | text null | 시크릿 매니저 키. KIS 앱키·CODEF Connected ID 공용. 값 자체는 저장하지 않음 |
