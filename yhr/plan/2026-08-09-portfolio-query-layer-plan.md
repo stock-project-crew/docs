@@ -157,6 +157,7 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | 파티셔닝 | **하지 않는다** | 연 증가량이 영업일 250 × 라인 수십 = 만 행 규모. 트리거를 미리 정해둔다: `position_line`이 1,000만 행을 넘거나 단일 `as_of` 조회 p95가 200ms를 넘으면 `as_of` RANGE 파티셔닝을 검토한다 |
 | enum 표현 | **`text` + `CHECK`** (PostgreSQL ENUM 타입 아님) | ENUM 타입은 값 추가·삭제 마이그레이션이 번거롭고 매핑에서 이득이 없다 |
 | 테스트 DB | compose의 **`portfolio_test`** 데이터베이스. 개발용 `portfolio`와 같은 인스턴스, 다른 DB | 테스트가 개발 데이터를 지우지 않는다. 시드 스크립트가 매 테스트 `TRUNCATE` 후 채우므로 격리는 그것으로 충분하고, Java에서 Docker API를 부르지 않아 도구 버전에 묶이지 않는다 |
+| 마이그레이션 순서 | 백엔드 1번대 · 데이터팀 미러 900번대. 두 위치를 함께 적용하는 로컬·테스트만 `out-of-order` 허용 | 번호 공간을 나눠 두 팀의 마이그레이션이 서로의 번호를 잠식하지 않는다. 운영은 `db/migration`만 적용해 엄격한 순서 검증이 그대로 산다 |
 | 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | `instrument`는 데이터팀 소유라(§11.2) 스키마 배치를 이쪽이 정하지 않는다. SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
@@ -1324,8 +1325,14 @@ portfolio:
 ```yaml
 spring:
   flyway:
+    # 데이터팀 소유 테이블 미러를 함께 적용한다 — 로컬 전용
     locations: classpath:db/migration,classpath:db/external
+    # 미러가 900번대를 차지하므로 백엔드 마이그레이션이 늘 때마다 낮은 번호가 뒤에 온다.
+    # 두 위치를 함께 적용하는 프로필에서만 필요하다 — 운영은 db/migration만 적용해 순서가 어긋나지 않는다.
+    out-of-order: true
 ```
+
+**두 위치를 함께 적용하면 순서가 어긋난다.** 백엔드 마이그레이션은 1번부터 올라가고 데이터팀 미러는 900번대를 쓰는데, 미러가 이미 적용된 데이터베이스에 백엔드 마이그레이션을 하나 더하면 그것이 900보다 낮은 번호로 뒤늦게 들어온다. 기본 설정의 Flyway는 이를 거부한다. 번호 공간을 나눈 대가이며, 운영은 `db/migration`만 적용하므로 이 완화가 필요 없다 — **엄격한 검증이 살아 있어야 할 곳에서는 그대로 살아 있다.**
 
 - [ ] **Step 3: 마이그레이션 SQL 작성**
 
@@ -1605,7 +1612,7 @@ class SchemaSmokeTest {
 }
 ```
 
-`src/test/resources/application-test.yaml`:
+`src/test/resources/application-test.yaml` — 로컬 프로필과 같은 이유로 두 위치를 함께 적용한다:
 ```yaml
 spring:
   datasource:
@@ -1613,8 +1620,8 @@ spring:
     username: ${DB_USER:portfolio}
     password: ${DB_PASSWORD:portfolio}
   flyway:
-    # 데이터팀 소유 테이블 미러를 함께 적용한다
     locations: classpath:db/migration,classpath:db/external
+    out-of-order: true
 ```
 
 Run: `docker compose up -d db && ./gradlew test --tests '*SchemaSmokeTest'` → PASS.
