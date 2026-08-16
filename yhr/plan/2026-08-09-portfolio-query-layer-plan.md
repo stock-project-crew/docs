@@ -277,6 +277,8 @@ Axis { key, label, source, applicableViews[], lensSensitive, enabled }
 | `instrument` | 종목 | 종목 마스터 | `positions` · `allocation` | **true** | true |
 | `sector` | 섹터 | 종목 마스터 | `allocation` | **true** | true |
 | `market` | 시장 | 종목 마스터 | `allocation` · `summary` 미니차트 | **true** | true |
+
+**시장 축은 CASH 폴백을 쓰지 않는다.** 예수금도 그 통화가 속한 시장에 넣는다 — 원화 예수금은 국내 자산의 일부이지 시장이 없는 무언가가 아니다. §C.5의 미니차트 `KR = 46,800,000`이 KRW 예수금 4,560,000을 포함한 값이다.
 | `currency` | 통화 | 종목 마스터 | `allocation` | **true** | true |
 | `asset_class` | 자산군 | 종목 마스터 | `allocation` · `summary` 미니차트 | **true** | true |
 | `is_leveraged` | 레버리지 | 종목 속성 | `allocation` | **true** | **false** — 원천 미확보, 요청 시 거부(§9.3) |
@@ -339,7 +341,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | `summary` | 전체 1행 | `[]` | `total_assets_krw` · `securities_value_krw` · `deposit_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `cash_ratio_pct` · `daily_change_krw` · `daily_change_pct` · `account_count` · `instrument_count` | — / — | `NONE` (미니차트 `subBlock`에 `OPTIONAL`) | 스냅샷 |
 | `positions` | 종목 1행(계좌 합산) | `[instrument]` | `quantity` · `avg_cost` · `cost_amount_krw` · `market_value_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` | `account`·`market`·`asset_class` / **`account`만** | `OPTIONAL` | 스냅샷 |
 | `allocation` | 축 값 1행 | 축 1개 택일: `instrument`·`sector`·`market`·`currency`·`asset_class`(·`is_leveraged` 비활성) | `market_value_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` · `instrument_count` | `account`·`account_type` / `account`·`account_type` | `OPTIONAL` | 스냅샷 |
-| `accounts` | 계좌 1행 | `[account_type, account]` | `market_value_krw` · `deposit_krw`\* · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` | — / — | `NONE` | 스냅샷 |
+| `accounts` | 계좌 1행 | `[account_type, account]` | `market_value_krw` · `deposit_krw`\* · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` | `account` / `account` | `NONE` | 스냅샷 |
 | `realized-pnl` | 기간 × 종목 × 체결 | `[instrument, trade]` | `sell_amount_krw` · `cost_basis_krw` · `realized_pnl_krw` · `realized_pnl_pct` | `account`·`period` | `NONE` | 거래 |
 | `asset-change` | 기간 × 현금흐름 유형 | — | — (§A.6.3 전용 스키마) | `account`·`period` | `NONE` | 스냅샷 + 현금흐름 |
 
@@ -379,7 +381,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 | # | code | severity | 발생 조건 | params | 이번 범위 |
 |---|---|---|---|---|---|
-| 1 | `FX_APPLIED` | info | 원화 환산에 적용한 환율 (§2.3) | 통화쌍별 배열 `[{pair, rate, fx_as_of}]` + 최고령 `oldest_fx_as_of`. 라인마다 환율이 달라 단일 값으로 표기할 수 없다 | **발화** |
+| 1 | `FX_APPLIED` | info | 원화 환산에 적용한 환율 (§2.3) | 통화쌍별 배열 `[{pair, rate, fx_as_of}]` + 최고령 `oldest_fx_as_of`. **통화쌍마다 한 항목**이며 기준일이 여럿이면 가장 오래된 것을 싣는다 — 화면이 "언제 환율인가"에 답할 때 가장 뒤처진 값을 말하는 편이 정직하다 | **발화** |
 | 2 | `STALE_ACCOUNTS` | warn | 캐리포워드된 계좌 존재 (§7.3) | `count` · 최고령 `source_as_of` | **발화** |
 | 3 | `CONSTITUENT_AS_OF` | info | 렌즈 적용 시 구성비중 기준일 (§3.4) | 최고령 기준일 `oldest` + 대상 ETF 수 `count` | 미발화 — 전개된 ETF가 0이면 생략(§A.9) |
 | 4 | `CONSTITUENT_UNAVAILABLE` | warn | 구성종목 미확보 ETF 존재 (§3.4) | `count` · 미분해 평가금액 `undecomposed_krw` | **발화** |
@@ -456,6 +458,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 - **`Σ rows.market_value_krw = total.total_assets_krw`가 항상 성립한다.** 손익 계열은 `securities_value_krw`를 기준으로 하므로 `securities_value_krw − cost_amount_krw = unrealized_pnl_krw`도 성립한다.
 - `lens = LOOK_THROUGH`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 **빠지고**(`null`이 아니라 **키 자체가 없다**) `total`에만 남으며 `LENS_METRICS_OMITTED` notice가 붙는다. 위 예시 `rows[]`에서 `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` 세 개가 사라진다. `NEVER`인 `avg_cost`는 아예 제공하지 않는다.
 - **CASH 행의 원가·손익은 `null`로 내린다**(키는 있고 값이 `null`). 저장값은 원가 = 평가금액이지만 노출값이 다르다(§5.2).
+- **CASH 행에서 `null`로 내리는 것은 금액 계열뿐이다** — `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `avg_cost`. 예수금은 사고판 것이 아니라 원가도 손익도 평단도 없다. 종목수는 세는 값이라 `0`이 사실이다.
 - **CASH 행의 `instrument_count`는 `0`이다.** 지표 정의가 CASH를 제외하므로(§A.4.2) 자연히 0이 되며, 뷰별 예외를 두지 않는다. 화면은 CASH 행에서 종목수를 표시하지 않으면 된다.
 - **현재가는 지표가 아니다.** `market_value_local ÷ quantity`로 얻을 수 있고 §2.5가 현재가를 종목 상세로 미루므로, 카탈로그 지표에 두지 않는다.
 
@@ -771,6 +774,7 @@ back-end/
     │   │   │   ├── AggregateQueryRepository.java  트리 조립·정렬
     │   │   │   └── EtfCoverageMapper.java · UndecomposedEtf.java
     │   │   ├── SnapshotCalendarRepository.java   as_of 목록·직전·기간 경계
+    │   │   ├── SnapshotFactsMapper.java      배너 시각·이월 계좌·적용 환율·시장 배지
     │   │   ├── AccountRepository.java
     │   │   ├── RealizedPnlMapper.java
     │   │   ├── ManualCashflowRepository.java      넣은 돈 — 백엔드 소유, 실제 값
@@ -778,6 +782,8 @@ back-end/
     │   │   ├── EarningsCashflowType.java          DIVIDEND·FEE·TAX — 입출금이 없다(§9.1 타입 강제)
     │   │   └── CollectionStatusPort.java · NoCollectionStatusPort.java
     │   ├── view/
+    │   │   ├── BannerAsOf.java               모든 화면이 같은 "언제 기준"을 쓴다
+    │   │   ├── CatalogService.java           카탈로그 + 그 사용자의 계좌
     │   │   ├── SnapshotViewService.java · RealizedPnlViewService.java
     │   │   ├── AssetChangeViewService.java
     │   │   ├── PeriodResolver.java
