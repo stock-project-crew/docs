@@ -2461,11 +2461,13 @@ Run: `./gradlew test --tests '*DerivedTest'` → PASS. `11.8`과 `10.0`(예수�
 
 - [ ] **Step 8: `TotalAssetsKrw` 봉인을 컴파일로 확인한다**
 
-테스트 파일에 아래 주석을 남기고, 한 번 주석을 풀어 **컴파일 실패**를 확인한 뒤 되돌린다.
+**`domain.group` 밖의 패키지에서** 확인해야 한다. `DerivedTest`는 같은 패키지라 소스 루트가 달라도 접근이 열려 있어 봉인이 드러나지 않는다. 임시 파일을 다른 패키지에 두고 컴파일해 두 줄이 모두 막히는지 보고 지운다.
 
 ```java
-    // 불변식 2 — 아래 줄은 컴파일되지 않아야 한다(생성자·팩터리가 package-private).
-    // TotalAssetsKrw wrong = TotalAssetsKrw.of(someGroupBundle);
+package com.stockproject.portfolio.domain.measure;   // domain.group이 아니다
+
+TotalAssetsKrw byFactory     = TotalAssetsKrw.of(MeasureBundle.EMPTY);   // 팩터리 package-private
+TotalAssetsKrw byConstructor = new TotalAssetsKrw(BigDecimal.ZERO);      // 생성자 private
 ```
 
 - [ ] **Step 9: ArchUnit 규칙**
