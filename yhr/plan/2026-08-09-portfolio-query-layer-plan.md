@@ -233,8 +233,9 @@ array_agg(DISTINCT i.currency) AS currencies
 | 키 | 등장 위치 |
 |---|---|
 | `market_value_krw` | **행 전용** — `total`에 넣지 않는다 |
-| `total_assets_krw` · `securities_value_krw` · `deposit_krw` · `cash_ratio_pct` · `daily_change_krw` · `daily_change_pct` · `account_count` | **합계 전용** — `rows[]`에 넣지 않는다 |
+| `total_assets_krw` · `securities_value_krw` · `cash_ratio_pct` · `daily_change_krw` · `daily_change_pct` · `account_count` | **합계 전용** — `rows[]`에 넣지 않는다 |
 | `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `instrument_count` | 행·합계 양쪽 (양쪽 모두 CASH 제외 의미로 동일) |
+| `deposit_krw` | 행·합계 양쪽 (양쪽 모두 그 묶음의 CASH 평가금액 합 — §A.4.3 각주) |
 | `quantity` · `avg_cost` · `weight_pct` | 행 전용 |
 
 **구조로 강제하는 방법.** 카탈로그 `Metric`에 `scope: ROW | TOTAL | BOTH`를 두고, 응답 조립기가 `scope`를 보고 목적지를 정한다. 그리고 `Σ rows.market_value_krw == total.total_assets_krw`를 **모든 스냅샷 뷰 응답에서 검사하는 테스트**를 둔다(Task 6·9).
@@ -306,7 +307,7 @@ Metric { key, label, additive, cashIncluded, lensSafe, scope, formula }
 | `total_assets_krw` | 총자산 | ○ | **포함** | `ROW_AND_TOTAL` | TOTAL | `Σ 평가금액` (securities+cash) |
 | `securities_value_krw` | 유가증권 평가금액 | ○ | **제외** | `ROW_AND_TOTAL` | TOTAL | `Σ 평가금액` (securities만) |
 | `market_value_krw` | 평가금액 | ○ | 행 기준 | `ROW_AND_TOTAL` | ROW | 그 행의 평가금액 (securities+cash) |
-| `deposit_krw` | 예수금 | ○ | 포함 | `ROW_AND_TOTAL` | TOTAL | `Σ CASH 평가금액` |
+| `deposit_krw` | 예수금 | ○ | 포함 | `ROW_AND_TOTAL` | BOTH | `Σ CASH 평가금액` |
 | `daily_change_krw` | 일간 변화 | ○ | 포함 | — | TOTAL | 당일 − **직전 `as_of`**의 `total_assets_krw` |
 | `daily_change_pct` | 일간 변화율 | ✕ | 포함 | — | TOTAL | `daily_change_krw ÷ 직전 as_of의 total_assets_krw` |
 | `cost_amount_krw` | 매입금액 | ○ | **제외** | `TOTAL_ONLY` | BOTH | `Σ 매입금액` (securities만) |
@@ -335,15 +336,17 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 | viewKey | 그레인 | `groupBy` | 지표 | 필터 (DIRECT / LOOK_THROUGH) | `lensPolicy` | 원장 |
 |---|---|---|---|---|---|---|
-| `summary` | 전체 1행 | `[]` | `total_assets_krw` · `securities_value_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `cash_ratio_pct` · `daily_change_krw` · `daily_change_pct` · `account_count` · `instrument_count` | — / — | `NONE` (미니차트 `subBlock`에 `OPTIONAL`) | 스냅샷 |
+| `summary` | 전체 1행 | `[]` | `total_assets_krw` · `securities_value_krw` · `deposit_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `cash_ratio_pct` · `daily_change_krw` · `daily_change_pct` · `account_count` · `instrument_count` | — / — | `NONE` (미니차트 `subBlock`에 `OPTIONAL`) | 스냅샷 |
 | `positions` | 종목 1행(계좌 합산) | `[instrument]` | `quantity` · `avg_cost` · `cost_amount_krw` · `market_value_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` | `account`·`market`·`asset_class` / **`account`만** | `OPTIONAL` | 스냅샷 |
-| `allocation` | 축 값 1행 | 축 1개 택일: `instrument`·`sector`·`market`·`currency`·`asset_class`(·`is_leveraged` 비활성) | `market_value_krw` · `weight_pct` · `instrument_count` | `account`·`account_type` / `account`·`account_type` | `OPTIONAL` | 스냅샷 |
+| `allocation` | 축 값 1행 | 축 1개 택일: `instrument`·`sector`·`market`·`currency`·`asset_class`(·`is_leveraged` 비활성) | `market_value_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` · `instrument_count` | `account`·`account_type` / `account`·`account_type` | `OPTIONAL` | 스냅샷 |
 | `accounts` | 계좌 1행 | `[account_type, account]` | `market_value_krw` · `deposit_krw`\* · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `weight_pct` | — / — | `NONE` | 스냅샷 |
 | `realized-pnl` | 기간 × 종목 × 체결 | `[instrument, trade]` | `sell_amount_krw` · `cost_basis_krw` · `realized_pnl_krw` · `realized_pnl_pct` | `account`·`period` | `NONE` | 거래 |
 | `asset-change` | 기간 × 현금흐름 유형 | — | — (§A.6.3 전용 스키마) | `account`·`period` | `NONE` | 스냅샷 + 현금흐름 |
 
 \* `accounts` 뷰의 `deposit_krw`는 **행에도 실린다.** §2.7이 계좌 행 컬럼으로 예수금을 요구하고 응답 키를 `market_value_krw`(계좌 총자산) · `deposit_krw`로 못 박았다. 유가증권 평가금액은 클라이언트가 차감해 표시한다. 불변식 4와 충돌하지 않는다 — `deposit_krw`의 의미가 행·합계에서 같기 때문이다(그 묶음의 CASH 평가금액 합).
 
+- **스냅샷 4개 뷰는 합계 블록을 공유한다**(§A.6.1). `total_assets_krw` · `securities_value_krw` · `deposit_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `cash_ratio_pct` · `instrument_count` · `account_count` 아홉 개가 `group_by`와 무관하게 같은 묶음의 값이라 뷰가 달라도 키가 같고, 요약만 `daily_change_krw` · `daily_change_pct`를 더한다. 위 표의 지표 열은 그 뷰가 **행에** 싣는 것이며, 목적지 판정은 `Metric.scope`가 한다(불변식 4).
+- `realized-pnl`의 `sell_amount_krw` · `cost_basis_krw`는 카탈로그 지표 17개에 없다. 축으로 묶는 값이 아니라 체결 노드의 값이라 §A.6.2의 전용 스키마가 정의한다.
 - `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다. 둘 다 축이 아니라 표시용이며 집계에 참여하지 않는다.
 - `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서 `lensSensitive` 축이 빠진다. `positions`에서 `market`·`asset_class`가 사라지는 게 이 규칙의 실체다 — 전개 후 ETF가 존재하지 않아 `자산군=ETF` 필터는 항상 빈 목록이 된다(§3.6).
 - `subBlocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. **요약만 해당**하며 미니차트 블록은 `groupBy: [market]` 또는 `[asset_class]`, `lensPolicy: OPTIONAL`, 지표 `market_value_krw` · `weight_pct`.
