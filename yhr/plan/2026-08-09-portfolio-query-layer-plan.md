@@ -9,7 +9,7 @@
 
 **Goal:** `position_line`에 손으로 넣은 샘플 행만으로 6개 뷰의 REST 응답이 전부 나오는, 실행 가능한 조회 계층 뼈대를 만든다.
 
-**Architecture:** 저장은 `position_line` 한 종류이고, 화면은 `group_by`만 바꾼다. 조회 요청은 `라인 적재 → 렌즈 변환 → 축 부여 → 필터 → GROUP BY+SUM → 파생 지표 → 응답 조립` 한 파이프라인을 지나며(스펙 §3.6의 2~6단계), 가산 가능한 측정값과 가산 불가능한 비율이 **서로 다른 타입**으로 분리되어 있어 비율을 더하는 코드는 컴파일되지 않는다. 집계는 SQL이 아니라 Java에서 수행한다 — 렌즈가 라인 집합을 라인 집합으로 바꾸는 순수 함수여야 하고, 그래야 `DIRECT`와 `LOOK_THROUGH`가 같은 집계 코드를 지나기 때문이다(근거는 §A.2.4).
+**Architecture:** 저장은 `position_line` 한 종류이고, 화면은 `group_by`만 바꾼다. 조회 요청은 한 개의 집계 쿼리로 처리한다 — 렌즈 CTE가 대상 행 집합을 만들고, 마스터를 조인해 축을 붙이고, 필터를 걸고, 요청 축으로 `GROUP BY`하며 측정값을 `SUM`한다(스펙 §3.6의 2~4단계). 파생 지표와 응답 조립만 Java가 맡는다(5~6단계). 가산 가능한 측정값과 가산 불가능한 비율이 **서로 다른 타입**으로 분리되어 있어 비율을 더하는 코드는 컴파일되지 않는다.
 
 **Tech Stack:** Java 21 · Spring Boot 3.4.5 · Gradle (Kotlin DSL) · PostgreSQL 16 · Flyway · Spring JDBC `JdbcClient` (ORM 없음) · Docker Compose · JUnit 5 + AssertJ + Testcontainers + ArchUnit
 
@@ -86,26 +86,44 @@ Liquibase를 기각한 이유가 두 가지다.
 | 후보 | 기각 사유 |
 |---|---|
 | **Spring Data JPA / Hibernate** | 이 서비스의 조회는 엔티티 그래프 순회가 아니라 `GROUP BY` 집계다. 더 나쁜 것은 JPA가 **엔티티에 파생 필드를 두도록 유혹한다**는 점이다 — `@Transient BigDecimal weightPct` 하나가 스펙 §1.5의 "비율은 저장하지 않는다"를 사실상 무너뜨린다. 동적 `group_by`를 Criteria API로 쓰면 읽을 수 없다. |
-| **MyBatis** | XML 매퍼가 간접층을 하나 더 만들고, `<if>` 기반 동적 SQL이 Java 코드보다 리뷰하기 어렵다. 질의가 6개뿐인 규모에서 값을 하지 않는다. |
-| **jOOQ** (차선) | 강점(타입 안전한 동적 질의 조합, 스키마 대조 컴파일 검증)은 실재한다. 그런데 **집계를 Java에서 하기로 정한 뒤 동적 질의가 사실상 사라졌고**(§A.2.4), 더 큰 문제는 코드 생성이다. 조인 대상인 `instrument`는 **데이터팀 소유**라 우리 마이그레이션에 없다. jOOQ 클래스를 생성하려면 소유하지 않은 테이블의 DDL 미러를 빌드 입력으로 유지해야 하고, 그 미러는 조용히 드리프트하는 **두 번째 진실의 출처**가 된다. |
+| **MyBatis** | XML 매퍼가 간접층을 하나 더 만든다. `<if>`·`<foreach>` 기반 동적 SQL은 축 조합을 표현할 수 있지만, 조각이 XML에 흩어져 "이 축이 어느 컬럼으로 가는가"를 한눈에 볼 수 없다. 같은 일을 Java 상수 맵으로 하면 카탈로그(§A.4.1)와 나란히 놓고 대조할 수 있다. |
+| **jOOQ** (차선) | 강점 — 타입 안전한 동적 질의 조합과 스키마 대조 컴파일 검증 — 이 이 설계에 정확히 들어맞는다. 기각 사유는 **코드 생성 하나**다. 조인 대상 `instrument`는 데이터팀 소유라 우리 마이그레이션에 없다. jOOQ 클래스를 만들려면 소유하지 않은 테이블의 DDL 미러를 빌드 입력으로 유지해야 하고, 그 미러는 조용히 드리프트하는 **두 번째 진실의 출처**가 된다. 소유 경계(§11.2)를 지키는 비용이 타입 안전성보다 크다고 봤다. |
 
 **채택 근거.**
 
-1. 집계를 Java에서 하기로 정하면 SQL 표면은 **6개 질의**로 고정된다 — 라인 적재(필터만 동적), 직전 `as_of` 총자산, `as_of` 목록, 계좌 목록, 실현손익 기간 조회, 기간 경계 스냅샷. 동적인 부분은 `WHERE` 절의 필터 조합 하나뿐이고, 필터 값은 카탈로그 대조를 통과한 enum이라 문자열 조립 위험이 없다.
-2. SQL이 상수·리소스로 남아 **스펙 문장과 1:1로 대조**된다. 리뷰어가 "§6.2의 `cash_included = 제외`가 이 SQL에 반영됐는가"를 눈으로 확인할 수 있다.
+1. **동적인 부분이 닫힌 집합에서만 나온다.** 조립 대상은 `GROUP BY` 컬럼 목록(축 8개) · `SELECT` 측정값 목록(지표 17개) · `WHERE` 필터 · 렌즈 CTE 선택 넷뿐이고, 넷 다 카탈로그 대조(§9.3)를 통과한 enum이 고른다. **사용자 문자열이 SQL에 닿는 경로가 없다.** 축 → 컬럼 매핑을 `Map<AxisKey, String>` 상수 하나로 두면 카탈로그 표와 나란히 검토된다.
+2. SQL이 상수·리소스로 남아 **스펙 문장과 1:1로 대조**된다. 리뷰어가 "§6.2의 `cash_included = 제외`가 이 `FILTER (WHERE asset_class <> 'CASH')`인가"를 눈으로 확인할 수 있다.
 3. 코드 생성 단계가 없어 데이터팀 소유 테이블의 DDL 미러를 **빌드가 아니라 로컬·테스트 프로필에만** 둘 수 있다.
 
-**감수하는 것과 완화.** 컬럼명 오타를 컴파일이 잡지 못한다. → 질의마다 Testcontainers 저장소 테스트를 붙여(Task 4·9·10) 첫 실행에 전부 드러나게 하고, 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
+**감수하는 것과 완화.** 컬럼명 오타와 조각 조합 실수를 컴파일이 잡지 못한다. → (a) 축 × 렌즈 조합마다 Testcontainers 테스트를 돌려 실제로 실행되는지 확인하고(Task 6), (b) 모든 스냅샷 뷰에서 `Σ rows = total`을 검사해 조합이 틀리면 수치로 드러나게 하며(Task 11), (c) 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
 
-**되돌리는 조건.** (a) §3.6 4단계를 SQL로 밀어야 할 성능 요구가 생기거나, (b) 질의 수가 15개를 넘으면 jOOQ로 옮긴다. 그때 바뀌는 것은 `query` 패키지 하나이고 나머지 계층은 인터페이스로 격리돼 있다.
+**되돌리는 조건.** 축이나 지표가 늘어 조각 조합이 사람 눈으로 검토되지 않는 수준이 되면 jOOQ로 옮긴다. 그때 바뀌는 것은 `query` 패키지 하나이고 나머지 계층은 인터페이스로 격리돼 있다.
 
-### A.2.4 집계 위치 — **Java (SQL은 투영·조인·필터까지)**
+### A.2.4 집계 위치 — **SQL (Java는 파생 지표와 조립만)**
 
-렌즈는 스펙 §1.5·§3.4가 정의하듯 **라인 집합을 라인 집합으로 바꾸는 함수**다. `GROUP BY`를 SQL로 밀면 그 함수를 SQL 앞뒤 어디에도 끼울 수 없어 `DIRECT`는 SQL 집계, `LOOK_THROUGH`는 Java 집계로 **코드 경로가 갈린다.** 그러면 가산성·총합 보존·분모 규칙이 두 곳에 살고, "저장은 한 종류, 화면은 묶는 기준만 바꾼다"는 이 설계의 핵심 주장이 구현에서 깨진다.
+`GROUP BY`와 `SUM`은 DB가 한다. 스펙 §3.6의 2~4단계가 한 쿼리 안에서 끝나고, Java는 5단계(파생 지표)와 6단계(정렬·통화·조립)만 맡는다.
 
-데이터 규모가 이 선택을 공짜로 만든다. 스펙 §3.3이 "보유 규모상 조회 시 집계로 충분하므로 별도 집계 캐시는 두지 않는다"고 못 박았고, 단일 사용자 × 영업일 1벌 × 계좌×종목 수십 행이면 요청당 적재 행은 100행 이하다.
+**렌즈도 SQL로 표현된다.** 스펙 §3.4가 렌즈를 "입력도 라인 집합, 출력도 라인 집합인 변환 함수"로 정의하는데, CTE가 정확히 그것이다. 렌즈 선택은 쿼리의 `WITH` 절 하나를 바꾸는 일이고, 그 아래 조인·필터·집계·파생은 렌즈와 무관하게 같은 모양으로 남는다 — §1.5가 요구하는 "하위 로직은 렌즈 적용 여부와 무관"이 쿼리 구조로 성립한다.
 
-**감수하는 것.** 라인 수가 커지면 요청마다 전량 적재가 부담이 된다. → `AggregationEngine`이 인터페이스이므로 `DIRECT` 전용 SQL 구현을 뒤에 끼울 수 있다. 단 그때는 **두 구현이 같은 결과를 내는지 대조하는 테스트를 함께 넣는다**는 조건을 이 계획에 남긴다.
+```sql
+WITH target_line AS ( <DIRECT: position_line 그대로  |  LOOK_THROUGH: 안분 전개> )
+SELECT <축 컬럼>, <측정값 SUM>
+  FROM target_line t JOIN account a … JOIN instrument i …
+ WHERE <필터>
+ GROUP BY GROUPING SETS (<축 조합>, ())
+```
+
+**합계와 소계를 같은 스캔에서 얻는다.** `GROUPING SETS`가 행·소계·전체 합계를 한 결과로 내므로 `Σ rows = total`이 두 번 세는 것이 아니라 같은 집계에서 나온다. 계좌별 뷰의 2단계 중첩(§8.3)도 `GROUPING SETS ((account_type, account), (account_type), ())` 하나로 해결된다.
+
+**CASH 분리는 `FILTER` 절이 한다.** 스펙 §6.2가 지표마다 정한 CASH 포함 여부가 SQL에 그대로 나타난다.
+
+```sql
+sum(t.market_value_krw)                                          AS total_assets_krw,
+sum(t.market_value_krw) FILTER (WHERE i.asset_class <> 'CASH')   AS securities_value_krw,
+sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_krw
+```
+
+**감수하는 것.** 불변식이 타입만으로 강제되지 않고 쿼리 조립에도 걸린다. → 집계 결과를 받는 타입(`MeasureBundle`)이 여전히 CASH를 두 슬롯으로 나눠 담고 비율을 담지 못하므로, **쿼리가 틀리면 매핑이 깨지거나 `Σ rows ≠ total` 테스트가 잡는다**(§A.3). 축 × 렌즈 조합마다 실제 실행 테스트를 둔다(Task 6).
 
 ### A.2.5 인덱스 · 보관 기간 · 파티셔닝 (스펙 §13이 구현 계획에서 확정하라고 한 것)
 
@@ -133,27 +151,44 @@ SK하이닉스  매입   100만  평가   130만  → +30%
 집계 후 계산 = (1,230−1,100)/1,100 = +11.8%   ← 맞음
 ```
 
-**구조로 강제하는 방법 세 겹.**
+**구조로 강제하는 방법 네 겹.**
 
 1. 스키마에 비율 컬럼이 없다 → 마이그레이션 SQL 정적 검사 테스트(Task 1).
-2. 집계 누산기 타입 `Measures`에 비율 필드가 없다. `plus()`만 있고 나눗셈이 없다 → ArchUnit이 `Measures`·`MeasureBundle`의 필드명에 `Pct`/`Ratio`/`Rate`가 등장하면 실패시킨다(Task 3).
-3. 비율은 `Derived`의 static 메서드만 만들 수 있고, 입력이 **집계된 번들**이라 라인 하나로는 호출 자체가 성립하지 않는다(Task 3).
+2. **집계 쿼리가 비율을 뽑지 못한다.** `SELECT` 목록을 만드는 빌더가 `Additivity.ADDITIVE`인 지표만 받는다. `weight_pct`를 넘기면 조립 단계에서 거부된다(Task 6).
+3. 집계 결과를 받는 타입 `Measures`에 비율 필드가 없다 → ArchUnit이 `Measures`·`MeasureBundle`의 필드명에 `Pct`/`Ratio`/`Rate`가 등장하면 실패시킨다(Task 3).
+4. 비율은 `Derived`의 static 메서드만 만들 수 있고, 입력이 **집계된 번들**이라 라인 하나로는 호출 자체가 성립하지 않는다(Task 3).
 
 ### 불변식 2 — 비중의 분모는 총자산(예수금 포함), 손익률의 분모는 매입금액(예수금 제외) (§6.2 · §9.3)
 
-**구조로 강제하는 방법.** 집계 결과 `MeasureBundle`이 CASH를 **두 슬롯으로 물리적으로 갈라** 담는다.
+**구조로 강제하는 방법.** CASH 분리가 쿼리와 타입 양쪽에 나타난다.
+
+쿼리에서는 `FILTER` 절이 슬롯을 가른다. 스펙 §6.2의 CASH 열이 SQL에 그대로 보인다.
+
+```sql
+sum(t.market_value_krw)                                        AS all_market_value_krw,
+sum(t.market_value_krw) FILTER (WHERE i.asset_class <> 'CASH') AS sec_market_value_krw,
+sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH') AS sec_cost_amount_krw
+```
+
+결과를 받는 타입은 그 둘을 **물리적으로 갈라** 담는다.
 
 ```java
-record MeasureBundle(Measures securities /* asset_class != CASH */,
-                     Measures cash      /* asset_class == CASH  */, ...)
+record MeasureBundle(Measures securities /* asset_class <> CASH */,
+                     Measures cash      /* asset_class =  CASH */, ...)
 ```
 
 - 손익 계열(`cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct`)을 만드는 함수는 `securities` 슬롯만 읽는다. CASH를 섞을 코드 경로가 없다.
-- 비중의 분모는 **`TotalAssetsKrw`라는 별개 타입**만 받는다. 이 타입의 유일한 생성 경로는 집계 산출물 `Aggregation`의 `weightDenominator()`이고, 그 값은 필터·렌즈 적용 후 **응답 전체 합계**의 `securities + cash`다. 그룹 자신의 합계로 비중을 계산하는 실수는 타입이 막는다.
+- 비중의 분모는 **`TotalAssetsKrw`라는 별개 타입**만 받는다. 이 타입의 유일한 생성 경로는 집계 산출물 `Aggregation`의 `weightDenominator()`이고, 그 값은 `GROUPING SETS`의 **전체 합계 행**에서 온다. 그룹 자신의 합계로 비중을 계산하는 실수는 타입이 막는다.
 
 ### 불변식 3 — 집계 값은 항상 원화, 묶음이 단일 통화일 때만 현지 통화 병기 (§3.7 · §9.3)
 
-**구조로 강제하는 방법.** `MeasureBundle`이 통화 집합 `CurrencySet`을 함께 누산하고, 현지 통화 금액은 `Optional<LocalMoney>`로만 꺼낼 수 있다. 집합 크기가 1이 아니면 `Optional.empty()`다 — 응답 조립기가 섞인 그룹에 현지 통화를 실을 방법이 없다.
+**구조로 강제하는 방법.** 집계 쿼리가 그룹마다 통화 집합을 함께 낸다.
+
+```sql
+array_agg(DISTINCT i.currency) AS currencies
+```
+
+`MeasureBundle`이 그것을 `CurrencySet`으로 담고, 현지 통화 금액은 `Optional<LocalMoney>`로만 꺼낼 수 있다. 집합 크기가 1이 아니면 `Optional.empty()`다 — 응답 조립기가 섞인 그룹에 현지 통화를 실을 방법이 없다.
 
 **판정자는 `CurrencySet.single()` 하나다. 축 이름을 보지 않는다.** 스펙 §3.7이 "판정은 조회 시점에 이 묶음이 단일 통화인가로 한다"고 정한다 — 축 이름을 하드코딩하면 축이 늘 때마다 목록을 고쳐야 한다. 카탈로그에 축별 병기 허용 플래그를 두지 않는 이유가 이것이다.
 
@@ -554,8 +589,8 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 | 검증기 — `account` 목록과 대조. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다 |
 | `is_carried_forward = true`이면 `source_as_of < as_of` | **검증기 전용.** `timestamptz AT TIME ZONE`이 immutable이 아니라 CHECK 제약으로 표현할 수 없다 |
 | CASH 행은 원가 = 평가금액 (§5.2) | 검증기 — `asset_class`가 다른 테이블에 있어 CHECK로 표현 불가 |
-| look-through 전개 후 `Σ market_value_krw`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) | `LensOutputInvariants` — 렌즈 적용 직후 |
-| `etf_coverage.state = UNAVAILABLE`인 ETF는 전개하지 않고 ETF 행을 남긴다 | `LookThroughLens`의 분기 (§A.9) |
+| look-through 전개 후 `Σ market_value_krw`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) | 렌즈 CTE의 총합을 `position_line`의 총합과 대조하는 테스트 (Task 5) |
+| `etf_coverage.state = UNAVAILABLE`인 ETF는 전개하지 않고 ETF 행을 남긴다 | `LensSql`의 `LOOK_THROUGH` CTE 조건 (§A.9) |
 | **`넣은 돈`은 `manual_cashflow`에서만 온다. `cln_cashflow`에 `DEPOSIT`·`WITHDRAW`가 있으면 거부** (§9.1 자산 변화) | **타입으로 강제** — `cln_cashflow`를 읽는 포트의 유형 enum이 `EarningsCashflowType { DIVIDEND, FEE, TAX }`라 두 값을 표현할 방법이 없다 |
 | 기간 양 끝의 `position_line` 필요. 기초가 없으면 가장 이른 스냅샷으로 대체하고 실제 시작일 표시 (§9.1 자산 변화) | `AssetChangeViewService` (§A.6.3) |
 
@@ -567,7 +602,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 |---|---|---|
 | `position_line` 생성 (1단계) | 입력이 될 `cln_*` 테이블 스키마가 팀 미합의 (설계 공유 문서 안건 5) | `position_line` 테이블 + 샘플 SQL. `cln_balance`/`cln_deposit` 미러는 만들지 않는다 |
 | 등급 판정 (1.5) · 실현손익 산출 (1.6) | 영구 `SEEDED` 판정 사유(확보 구간 부족 / 비체결 입고)를 담을 컬럼과 확보 구간 중간의 미설명 변동 대조 방식이 미정이다(§4.4) | `realized_pnl_line` 테이블과 **읽기** 경로는 만든다. `grade`는 샘플에 직접 넣는다. `position_basis` 테이블은 만들지 않는다. `SEEDED_ROWS` notice는 사유를 구분하지 않으며, 1.5단계에서 사유를 params에 실을 자리를 남긴다 |
-| ETF 분해 안분 (2단계) | 구성비중 제공 형태 미합의 (안건 3·8) | `LensTransform` 인터페이스 · `DirectLens` 완성 · `LookThroughLens`는 **미확보 분기만** 구현. `ConstituentPort`(커버리지 조회)와 `ConstituentExpander`(안분) 두 인터페이스를 갈라, 이번 범위에서 후자가 **호출 불가능**함을 테스트로 고정한다 |
+| ETF 분해 안분 (2단계) | 구성비중 제공 형태 미합의 (안건 3·8) | 렌즈 CTE(`LensSql`)와 `DIRECT` 경로는 완성한다. `LOOK_THROUGH` CTE는 **미확보 분기만** 담아 ETF 행을 그대로 남기고, 전개 분기(`etf_constituent` 조인 · 기타 버킷 · 잔차 흡수)를 `UNION ALL`로 붙일 자리를 남긴다 |
 | 계좌 연동 · 동기화 | `collection_run` 계약·시크릿 관리 미합의 (안건 6·7) | `sync_run` 테이블을 만들지 않는다. `accounts` 뷰 행의 `last_collection`은 `CollectionStatusPort` 스텁이 `null`을 낸다. `link_state`는 `account` 테이블에서 실제로 내린다 |
 | 손익성 현금흐름 (`cln_cashflow` — `DIVIDEND`·`FEE`·`TAX`) | 매매대금 배제 규칙과 `FEE`·`TAX` 원천이 팀 미합의 (안건 1) | `EarningsCashflowPort` 인터페이스 + `EmptyEarningsCashflowPort`. 빈 결과가 곧 "미확보"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
 | 입출금 **입력 화면·`POST` 엔드포인트** | 조회 계층이 범위다. 읽기 경로와 테이블은 만든다 | `manual_cashflow` 테이블 + 샘플 행 + `ManualCashflowRepository`(읽기). **`DEPOSIT`·`WITHDRAW`는 스텁이 아니라 실제 값이다** |
@@ -575,7 +610,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | API 인증 | 자격증명 보관 방식이 안건 7에 걸려 있고, 단일 사용자 전제라 인증 모델이 계좌 연동과 함께 결정된다 | Spring Security를 넣지 않는다. 로컬 전용임을 README에 명시 |
 | 프론트엔드 | 담당자 미정 | — |
 
-**`LOOK_THROUGH` 스텁이 가짜가 아닌 이유.** `etf_coverage`에 행이 없으면 모든 ETF가 미확보이고, 스펙 §3.4는 그 경우 "**전개하지 않고 ETF 행을 그대로 남긴다**"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 **스펙이 정의한 정상 경로**를 타며, 미분해 평가금액을 `CONSTITUENT_UNAVAILABLE`에 실어 사용자에게 알린다. 구현하지 않는 것은 안분 산술 하나다.
+**`LOOK_THROUGH` 스텁이 가짜가 아닌 이유.** `etf_coverage`에 행이 없으면 모든 ETF가 미확보이고, 스펙 §3.4는 그 경우 "**전개하지 않고 ETF 행을 그대로 남긴다**"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 **스펙이 정의한 정상 경로**를 타며, 미분해 평가금액을 `CONSTITUENT_UNAVAILABLE`에 실어 사용자에게 알린다. 구현하지 않는 것은 안분 산술 하나이고, 그것이 붙을 자리는 CTE의 `UNION ALL` 한 곳이다.
 
 ## A.10 열린 판단 — `PRICE_LAG_MARKET`
 
@@ -618,14 +653,13 @@ back-end/
     ├── main/java/com/stockproject/portfolio/
     │   ├── PortfolioApplication.java
     │   ├── catalog/                      코드 상수. DB 아님 (§6)
-    │   │   ├── AxisKey.java              enum 8개 + keyOf(Line) 폴백 규칙
+    │   │   ├── AxisKey.java              enum 8개
     │   │   ├── MetricKey.java            enum 17개
     │   │   ├── Metric.java               record + Additivity·CashScope·LensSafety·MetricScope
     │   │   ├── Lens.java · LensPolicy.java
     │   │   ├── ViewKey.java · ViewSpec.java · SubBlockSpec.java
     │   │   └── Catalog.java              축·지표·뷰 테이블 + 조회 + 요청 대조
     │   ├── domain/
-    │   │   ├── Line.java                 축이 붙은 조회 라인 (§3.6 3단계 산출물)
     │   │   ├── AssetClass · Market · CurrencyCode · AccountType · LinkState · Grade
     │   │   ├── measure/
     │   │   │   ├── Measures.java         가산 측정값만. 비율 필드 없음 (불변식 1)
@@ -633,23 +667,22 @@ back-end/
     │   │   │   ├── CurrencySet.java
     │   │   │   └── LocalMoney.java
     │   │   ├── group/
-    │   │   │   ├── AggregationEngine.java
     │   │   │   ├── Aggregation.java      + weightDenominator() — TotalAssetsKrw 유일 생성처
     │   │   │   ├── TotalAssetsKrw.java   package-private 생성자
     │   │   │   ├── GroupKey.java · GroupNode.java
     │   │   │   └── Derived.java          파생 지표 계산 유일 지점
-    │   │   └── lens/
-    │   │       ├── LensTransform.java · DirectLens.java · LookThroughLens.java
-    │   │       ├── ConstituentPort.java · ConstituentCoverage.java
-    │   │       ├── ConstituentExpander.java   2단계 자리 — 이번 범위에서 호출 불가
-    │   │       ├── NoConstituentDataPort.java
-    │   │       └── LensResult.java        전개 라인 + 미분해 ETF 집계
     │   ├── validation/
-    │   │   ├── PositionLineInvariants.java · LensOutputInvariants.java
+    │   │   ├── PositionLineInvariants.java
     │   │   ├── FactInvariantViolation.java
     │   │   └── RequestValidator.java     카탈로그 대조 (§9.3)
     │   ├── query/
-    │   │   ├── PositionLineRepository.java · LineFilter.java
+    │   │   ├── LineFilter.java
+    │   │   ├── aggregate/
+    │   │   │   ├── LensSql.java              렌즈 = CTE (§3.4)
+    │   │   │   ├── AxisSql.java · MetricSql.java
+    │   │   │   ├── AggregateSqlBuilder.java  GROUPING SETS 조립
+    │   │   │   ├── AggregateQueryRepository.java
+    │   │   │   └── EtfCoverageRepository.java · UndecomposedEtf.java
     │   │   ├── SnapshotCalendarRepository.java   as_of 목록·직전·기간 경계
     │   │   ├── AccountRepository.java
     │   │   ├── RealizedPnlRepository.java
@@ -676,7 +709,8 @@ back-end/
         ├── application.yaml · application-local.yaml
         ├── db/migration/     V1__account.sql · V2__position_line.sql · V3__realized_pnl_line.sql
         │                     V4__manual_cashflow.sql
-        ├── db/external/      V900__instrument_mirror.sql   데이터팀 소유 미러 — local/test 전용
+        ├── db/external/      V900__instrument_mirror.sql · V901__etf_coverage_mirror.sql
+        │                     데이터팀 소유 미러 — local·test 전용
         └── db/sample/        sample_portfolio.sql
     └── test/java/com/stockproject/portfolio/
         ├── ArchitectureRulesTest.java     불변식 1·BigDecimal·계층 접근
@@ -809,13 +843,15 @@ USD 라인의 `fx_rate = 1400.000000`.
 
 `total`은 §C.5의 `total`에서 `daily_change_*`를 뺀 것과 같다(일간 변화는 요약 전용 지표).
 
-| 순서 | key / label | market_value_krw | cost_amount_krw | unrealized_pnl_krw | unrealized_pnl_pct | weight_pct | instrument_count |
-|---|---|---|---|---|---|---|---|
-| 1 | `반도체` | 23,240,000 | 20,000,000 | 3,240,000 | 16.2 | 40.1 | 2 |
-| 2 | `소프트웨어` | 12,900,000 | 13,200,000 | −300,000 | −2.3 | 22.2 | 2 |
-| 3 | `미분류` | 11,000,000 | 10,000,000 | 1,000,000 | 10.0 | 19.0 | 1 |
-| 4 | `IT서비스` | 6,160,000 | 5,600,000 | 560,000 | 10.0 | 10.6 | 1 | ← 현지 통화 병기
-| 5 | `현금` | 4,700,000 | **null** | **null** | **null** | 8.1 | 0 |
+| 순서 | key | label | market_value_krw | cost_amount_krw | unrealized_pnl_krw | unrealized_pnl_pct | weight_pct | instrument_count |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `반도체` | 반도체 | 23,240,000 | 20,000,000 | 3,240,000 | 16.2 | 40.1 | 2 |
+| 2 | `소프트웨어` | 소프트웨어 | 12,900,000 | 13,200,000 | −300,000 | −2.3 | 22.2 | 2 |
+| 3 | `UNCLASSIFIED` | 미분류 | 11,000,000 | 10,000,000 | 1,000,000 | 10.0 | 19.0 | 1 |
+| 4 | `IT서비스` | IT서비스 | 6,160,000 | 5,600,000 | 560,000 | 10.0 | 10.6 | 1 |
+| 5 | `CASH` | 현금 | 4,700,000 | **null** | **null** | **null** | 8.1 | 0 |
+
+분류 축의 폴백은 `key`가 `UNCLASSIFIED`·`CASH`이고 `label`이 한국어다(§A.4.1).
 
 `Σ market_value_krw = 58,000,000 = total.total_assets_krw` ✔ · `Σ weight_pct = 100.0` ✔ · `Σ cost = 48,800,000` ✔
 
@@ -1484,7 +1520,7 @@ git commit -m "feat: 조회 계층 스캐폴딩 · 마이그레이션 · 샘플 
 
 **Interfaces:**
 - Produces: `Catalog.axes()` · `Catalog.metrics()` · `Catalog.views()` · `Catalog.view(ViewKey)` · `Catalog.axis(String)` · `Catalog.allowedFilters(ViewKey, Lens)` · `Catalog.rowMetrics(ViewKey, Lens)` · `Catalog.totalMetrics(ViewKey)`. Task 3 이후 모든 태스크가 여기서 규칙을 읽는다.
-- `AxisKey.keyOf(Line)`는 Task 3에서 `Line`이 생긴 뒤 채운다. 이 태스크에서는 `AxisKey`에 `label`·`lensSensitive`·`enabled`·`applicableViews`만 둔다. 현지 통화 병기 플래그는 두지 않는다(불변식 3).
+- `AxisKey`는 `label`·`lensSensitive`·`enabled`·`applicableViews`를 갖는다. 축 → SQL 식 매핑은 Task 6의 `AxisSql`이 별도로 들고, 현지 통화 병기 플래그는 두지 않는다(불변식 3).
 
 **완료 조건**
 1. §A.4의 세 표가 코드 상수로 1:1 존재한다 — 축 8개, 지표 17개, 뷰 6개.
@@ -1723,55 +1759,50 @@ git add -A && git commit -m "feat: 카탈로그 상수 — 축 8 · 지표 17 ·
 
 ---
 
-### Task 3: 도메인 측정값 타입 — 가산성을 구조로 강제한다
+### Task 3: 도메인 타입 — 가산성과 분모 규칙을 타입으로 강제한다
 
-이 태스크가 계획의 중심이다. 여기서 만든 타입이 "비율을 더한다"를 **컴파일 불가**로 만든다.
+집계는 SQL이 하고, 이 태스크는 **그 결과를 받는 타입**과 **파생 지표 계산**을 만든다. 비율을 담을 자리가 없고 분모를 바꿔 낄 방법이 없는 것이 이 타입들의 목적이다.
 
 **Files:**
-- Create: `domain/Line.java` · `AssetClass.java` · `Market.java` · `CurrencyCode.java` · `AccountType.java` · `LinkState.java` · `Grade.java`
+- Create: `domain/AssetClass.java` · `Market.java` · `CurrencyCode.java` · `AccountType.java` · `LinkState.java` · `Grade.java`
 - Create: `domain/measure/Measures.java` · `MeasureBundle.java` · `CurrencySet.java` · `LocalMoney.java`
-- Create: `domain/group/TotalAssetsKrw.java` · `Derived.java`
-- Test: `test/.../domain/measure/MeasuresTest.java` · `MeasureBundleTest.java`
-- Test: `test/.../domain/group/DerivedTest.java`
-- Test: `test/.../ArchitectureRulesTest.java`
+- Create: `domain/group/GroupKey.java` · `GroupNode.java` · `Aggregation.java` · `TotalAssetsKrw.java` · `Derived.java`
+- Test: `test/.../domain/group/DerivedTest.java` · `test/.../ArchitectureRulesTest.java`
 
 **Interfaces:**
 - Produces:
-  - `Measures.plus(Measures)` · `Measures.ZERO` · `Measures.ofSecurities(Line)` · `Measures.ofCash(Line)`
-  - `MeasureBundle.of(Line)` · `MeasureBundle.EMPTY` · `plus(MeasureBundle)` · `securities()` · `cash()` · `total()` · `currencies()` · `securityInstrumentIds()` · `accountIds()`
+  - `Measures(BigDecimal quantity, costAmountLocal, marketValueLocal, costAmountKrw, marketValueKrw)` · `Measures.ZERO`
+  - `MeasureBundle(Measures securities, Measures cash, CurrencySet currencies, int instrumentCount, int accountCount)` · `MeasureBundle.EMPTY` · `total()`
   - `CurrencySet.single()` → `Optional<CurrencyCode>`
-  - `TotalAssetsKrw.value()` — 생성자는 package-private, `domain.group` 밖에서 만들 수 없다
-  - `Derived.totalAssetsKrw/securitiesValueKrw/depositKrw/costAmountKrw/unrealizedPnlKrw/unrealizedPnlPct/avgCost/instrumentCount(MeasureBundle)`, `Derived.weightPct(MeasureBundle, TotalAssetsKrw)`, `Derived.cashRatioPct(MeasureBundle, TotalAssetsKrw)`, `Derived.changePct(BigDecimal, TotalAssetsKrw)`
-- Consumes: Task 2의 `AxisKey`(이 태스크에서 `keyOf(Line)`을 채운다)
+  - `GroupKey(String key, String label, boolean other)` · `GroupKey.CASH` · `UNCLASSIFIED` · `OTHER`
+  - `GroupNode(GroupKey key, MeasureBundle measures, List<GroupNode> children)`
+  - `Aggregation(MeasureBundle responseTotal, List<GroupNode> rows)` · `weightDenominator()` → `TotalAssetsKrw`
+  - `Derived.totalAssetsKrw/securitiesValueKrw/depositKrw/costAmountKrw/unrealizedPnlKrw/unrealizedPnlPct/avgCost(MeasureBundle)`, `Derived.weightPct(MeasureBundle, TotalAssetsKrw)`, `cashRatioPct(MeasureBundle, TotalAssetsKrw)`, `changePct(BigDecimal, TotalAssetsKrw)`
+- Consumes: Task 2의 `MetricKey`
 
 **완료 조건**
 1. `Measures`·`MeasureBundle`에 비율 필드가 없고 나눗셈 메서드가 없다.
-2. 손익 계열 파생값이 `securities` 슬롯만 읽는다 — CASH 라인만 있는 번들의 `unrealizedPnlKrw`가 `0`이고 `unrealizedPnlPct`가 `null`이다.
+2. 손익 계열 파생값이 `securities` 슬롯만 읽는다 — CASH만 담긴 번들의 `unrealizedPnlKrw`가 `0`이고 `unrealizedPnlPct`가 `null`이다.
 3. `TotalAssetsKrw`를 `domain.group` 밖에서 `new`로 만들 수 없다(컴파일 불가).
 4. 가산성 반례 테스트(§A.3 불변식 1의 삼성전자/하이닉스 예시)가 `+11.8%`를 낸다.
 5. `ArchitectureRulesTest`가 통과한다.
 
 **검증 방법**
 ```bash
-./gradlew test --tests '*MeasuresTest' --tests '*MeasureBundleTest' \
-               --tests '*DerivedTest' --tests '*ArchitectureRulesTest'
+./gradlew test --tests '*DerivedTest' --tests '*ArchitectureRulesTest'
 ```
 
 - [ ] **Step 1: 실패하는 가산성 테스트를 먼저 쓴다**
 
-`DerivedTest.java`:
 ```java
 package com.stockproject.portfolio.domain.group;
 
-import com.stockproject.portfolio.domain.*;
-import com.stockproject.portfolio.domain.measure.MeasureBundle;
+import com.stockproject.portfolio.domain.CurrencyCode;
+import com.stockproject.portfolio.domain.measure.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1779,84 +1810,71 @@ class DerivedTest {
 
     /** 스펙 §3.2 — 라인별 수익률 평균은 틀리고, 집계 후 계산이 맞다. */
     @Test
-    void 손익률은_라인_평균이_아니라_집계_후_계산이다() {
-        MeasureBundle samsung  = bundleOf(stock("KRW", "10000000", "11000000"));
-        MeasureBundle hynix    = bundleOf(stock("KRW", "1000000",  "1300000"));
-        MeasureBundle combined = samsung.plus(hynix);
+    void 손익률은_그룹_평균이_아니라_집계값에서_계산된다() {
+        MeasureBundle samsung  = securities("10000000", "11000000");
+        MeasureBundle hynix    = securities("1000000",  "1300000");
+        MeasureBundle combined = securities("11000000", "12300000");   // SQL이 낸 합계
 
-        // 틀린 방법: (10% + 30%) / 2 = 20%
         assertThat(Derived.unrealizedPnlPct(samsung)).isEqualByComparingTo("10.0");
         assertThat(Derived.unrealizedPnlPct(hynix)).isEqualByComparingTo("30.0");
-
-        // 맞는 방법: (12,300,000 − 11,000,000) ÷ 11,000,000 = 11.8%
-        assertThat(Derived.unrealizedPnlKrw(combined)).isEqualByComparingTo("1300000");
+        // (10 + 30) / 2 = 20.0 이 아니다
         assertThat(Derived.unrealizedPnlPct(combined)).isEqualByComparingTo("11.8");
+        assertThat(Derived.unrealizedPnlKrw(combined)).isEqualByComparingTo("1300000");
     }
 
     /** 불변식 2 — 손익률 분모는 매입금액(CASH 제외). 예수금이 섞이면 값이 희석된다. */
     @Test
     void 예수금은_손익_분모에_섞이지_않는다() {
-        MeasureBundle withCash = bundleOf(stock("KRW", "10000000", "11000000"))
-                .plus(bundleOf(cash("KRW", "5000000")));
+        MeasureBundle b = bundle(measures("10000000", "11000000"), measures("5000000", "5000000"));
 
-        assertThat(Derived.costAmountKrw(withCash)).isEqualByComparingTo("10000000");
-        assertThat(Derived.unrealizedPnlKrw(withCash)).isEqualByComparingTo("1000000");
-        assertThat(Derived.unrealizedPnlPct(withCash)).isEqualByComparingTo("10.0");   // 6.7이 아니다
-        assertThat(Derived.totalAssetsKrw(withCash)).isEqualByComparingTo("16000000");
-        assertThat(Derived.securitiesValueKrw(withCash)).isEqualByComparingTo("11000000");
-        assertThat(Derived.depositKrw(withCash)).isEqualByComparingTo("5000000");
+        assertThat(Derived.costAmountKrw(b)).isEqualByComparingTo("10000000");
+        assertThat(Derived.unrealizedPnlKrw(b)).isEqualByComparingTo("1000000");
+        assertThat(Derived.unrealizedPnlPct(b)).isEqualByComparingTo("10.0");   // 6.7이 아니다
+        assertThat(Derived.totalAssetsKrw(b)).isEqualByComparingTo("16000000");
+        assertThat(Derived.securitiesValueKrw(b)).isEqualByComparingTo("11000000");
+        assertThat(Derived.depositKrw(b)).isEqualByComparingTo("5000000");
     }
 
-    /** 불변식 2 — 비중의 분모는 총자산(CASH 포함)이며 그룹 자신의 합계가 아니다. */
+    /** 불변식 2 — 비중의 분모는 응답 전체 총자산이며 그룹 자신의 합계가 아니다. */
     @Test
     void 비중의_분모는_응답_전체_총자산이다() {
-        MeasureBundle row   = bundleOf(stock("KRW", "10000000", "11000000"));
-        MeasureBundle whole = row.plus(bundleOf(cash("KRW", "5000000")));
+        MeasureBundle row   = securities("10000000", "11000000");
+        MeasureBundle whole = bundle(measures("10000000", "11000000"), measures("5000000", "5000000"));
         Aggregation agg = new Aggregation(whole, List.of());
 
-        assertThat(Derived.weightPct(row, agg.weightDenominator()))
-                .isEqualByComparingTo("68.8");   // 11,000,000 ÷ 16,000,000
-        assertThat(Derived.cashRatioPct(whole, agg.weightDenominator()))
-                .isEqualByComparingTo("31.3");
+        assertThat(Derived.weightPct(row, agg.weightDenominator())).isEqualByComparingTo("68.8");
+        assertThat(Derived.cashRatioPct(whole, agg.weightDenominator())).isEqualByComparingTo("31.3");
     }
 
     @Test
     void 분모가_영이면_비율은_null이다() {
-        MeasureBundle onlyCash = bundleOf(cash("KRW", "5000000"));
+        MeasureBundle onlyCash = bundle(Measures.ZERO, measures("5000000", "5000000"));
         assertThat(Derived.unrealizedPnlPct(onlyCash)).isNull();
         assertThat(Derived.unrealizedPnlKrw(onlyCash)).isEqualByComparingTo("0");
     }
 
     // --- 픽스처 -------------------------------------------------------------
-    private static MeasureBundle bundleOf(Line line) { return MeasureBundle.of(line); }
-
-    private static Line stock(String currency, String costKrw, String marketKrw) {
-        return line(AssetClass.STOCK, currency, costKrw, marketKrw);
+    private static Measures measures(String costKrw, String marketKrw) {
+        return new Measures(BigDecimal.ONE, new BigDecimal(costKrw), new BigDecimal(marketKrw),
+                new BigDecimal(costKrw), new BigDecimal(marketKrw));
     }
 
-    private static Line cash(String currency, String amountKrw) {
-        return line(AssetClass.CASH, currency, amountKrw, amountKrw);
+    private static MeasureBundle bundle(Measures securities, Measures cash) {
+        return new MeasureBundle(securities, cash, CurrencySet.of(CurrencyCode.KRW), 1, 1);
     }
 
-    private static Line line(AssetClass assetClass, String currency, String costKrw, String marketKrw) {
-        return new Line(LocalDate.of(2026, 7, 27),
-                UUID.randomUUID(), "계좌", AccountType.GENERAL, LinkState.CONNECTED,
-                UUID.randomUUID(), "SYM", "종목", assetClass, Market.KR,
-                CurrencyCode.valueOf(currency), "반도체", false,
-                new BigDecimal("1"), new BigDecimal(costKrw), new BigDecimal(marketKrw),
-                new BigDecimal(costKrw), new BigDecimal(marketKrw),
-                BigDecimal.ONE, LocalDate.of(2026, 7, 27),
-                OffsetDateTime.parse("2026-07-27T15:30:00+09:00"), false, false);
+    private static MeasureBundle securities(String costKrw, String marketKrw) {
+        return bundle(measures(costKrw, marketKrw), Measures.ZERO);
     }
 }
 ```
 
-- [ ] **Step 2: 테스트를 실행해 컴파일 실패를 확인한다**
+- [ ] **Step 2: 실행해 컴파일 실패를 확인한다**
 
 Run: `./gradlew test --tests '*DerivedTest'`
-Expected: 컴파일 실패 — `Line`, `Measures`, `MeasureBundle`, `Derived`, `Aggregation`, `TotalAssetsKrw`가 없다.
+Expected: 컴파일 실패 — `Measures` · `MeasureBundle` · `Derived` · `Aggregation` · `TotalAssetsKrw`가 없다.
 
-- [ ] **Step 3: `Line`과 열거 타입**
+- [ ] **Step 3: 열거 타입**
 
 ```java
 package com.stockproject.portfolio.domain;
@@ -1875,47 +1893,15 @@ public enum LinkState { CONNECTING, CONNECTED, REAUTH_REQUIRED, DISCONNECTED }
 public enum Grade { VERIFIED, SEEDED, UNAVAILABLE, CONFLICT }
 ```
 
-```java
-package com.stockproject.portfolio.domain;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
-/**
- * 축이 붙은 조회 라인 — 스펙 §3.6 3단계의 산출물.
- * position_line + account 마스터 + instrument 마스터를 조인한 결과이며,
- * 렌즈(§3.4)의 입력이자 출력 타입이다. 비율 필드를 두지 않는다(§1.5).
- */
-public record Line(
-        LocalDate asOf,
-        UUID accountId, String accountLabel, AccountType accountType, LinkState linkState,
-        UUID instrumentId, String instrumentKey, String instrumentLabel,
-        AssetClass assetClass, Market market, CurrencyCode currency,
-        String sector, Boolean leveraged,
-        BigDecimal quantity,
-        BigDecimal costAmountLocal, BigDecimal marketValueLocal,
-        BigDecimal costAmountKrw, BigDecimal marketValueKrw,
-        BigDecimal fxRate, LocalDate fxAsOf,
-        OffsetDateTime sourceAsOf, boolean carriedForward, boolean isFinal) {
-
-    public boolean isCash() { return assetClass == AssetClass.CASH; }
-    public boolean isEtf() { return assetClass == AssetClass.ETF; }
-}
-```
-
 - [ ] **Step 4: `Measures` — 가산 측정값만 담는다**
 
 ```java
 package com.stockproject.portfolio.domain.measure;
 
-import com.stockproject.portfolio.domain.Line;
-
 import java.math.BigDecimal;
 
 /**
- * 가산 가능한 측정값만 담는다 — 스펙 §1.5 · §3.2.
+ * 집계 쿼리가 낸 SUM 값을 받는 타입 — 스펙 §1.5 · §3.2.
  * 비율 필드가 없고 나눗셈 연산이 없다. 자리가 없으면 잘못 더할 방법도 없다.
  * 비율은 Derived만 만들 수 있으며 입력이 집계된 MeasureBundle이다.
  */
@@ -1925,25 +1911,10 @@ public record Measures(BigDecimal quantity,
 
     public static final Measures ZERO = new Measures(
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
-
-    public static Measures of(Line line) {
-        return new Measures(line.quantity(),
-                line.costAmountLocal(), line.marketValueLocal(),
-                line.costAmountKrw(), line.marketValueKrw());
-    }
-
-    public Measures plus(Measures o) {
-        return new Measures(
-                quantity.add(o.quantity),
-                costAmountLocal.add(o.costAmountLocal),
-                marketValueLocal.add(o.marketValueLocal),
-                costAmountKrw.add(o.costAmountKrw),
-                marketValueKrw.add(o.marketValueKrw));
-    }
 }
 ```
 
-- [ ] **Step 5: `CurrencySet`과 `MeasureBundle`**
+- [ ] **Step 5: `CurrencySet` · `LocalMoney` · `MeasureBundle`**
 
 ```java
 package com.stockproject.portfolio.domain.measure;
@@ -1952,19 +1923,13 @@ import com.stockproject.portfolio.domain.CurrencyCode;
 
 import java.util.*;
 
-/** 불변식 3 — 묶음의 통화 집합. 크기가 1일 때만 현지 통화 병기가 성립한다(스펙 §3.7). */
+/** 불변식 3 — 묶음의 통화 집합. 집계 쿼리의 array_agg(DISTINCT currency)를 받는다. */
 public record CurrencySet(Set<CurrencyCode> values) {
 
     public static final CurrencySet EMPTY = new CurrencySet(Set.of());
 
-    public static CurrencySet of(CurrencyCode c) { return new CurrencySet(EnumSet.of(c)); }
-
-    public CurrencySet plus(CurrencySet o) {
-        if (values.isEmpty()) return o;
-        if (o.values.isEmpty()) return this;
-        EnumSet<CurrencyCode> merged = EnumSet.copyOf(values);
-        merged.addAll(o.values);
-        return new CurrencySet(merged);
+    public static CurrencySet of(CurrencyCode... codes) {
+        return codes.length == 0 ? EMPTY : new CurrencySet(EnumSet.copyOf(List.of(codes)));
     }
 
     /** 통화가 하나뿐일 때만 값이 있다. 섞인 묶음에는 현지 통화를 실을 방법이 없다. */
@@ -1977,58 +1942,90 @@ public record CurrencySet(Set<CurrencyCode> values) {
 ```java
 package com.stockproject.portfolio.domain.measure;
 
-import com.stockproject.portfolio.domain.Line;
+import com.stockproject.portfolio.domain.CurrencyCode;
+import java.math.BigDecimal;
 
-import java.util.*;
+public record LocalMoney(CurrencyCode currency, BigDecimal marketValue, BigDecimal costAmount) { }
+```
+
+```java
+package com.stockproject.portfolio.domain.measure;
 
 /**
- * 집계 누산기 — 불변식 2를 물리적으로 강제한다.
+ * 집계 쿼리 한 행의 측정값 — 불변식 2를 타입으로 굳힌다.
  * CASH(예수금 의사종목)를 별도 슬롯에 담아, 손익 계열 파생값이 예수금을 섞을 코드 경로가 없다.
- * 스펙 §5.2 · §6.2.
+ * 두 슬롯은 SQL의 FILTER (WHERE asset_class <> 'CASH') 절이 갈라 준다. 스펙 §5.2 · §6.2.
  */
 public record MeasureBundle(Measures securities, Measures cash, CurrencySet currencies,
-                            Set<UUID> securityInstrumentIds, Set<UUID> accountIds) {
+                            int instrumentCount, int accountCount) {
 
     public static final MeasureBundle EMPTY =
-            new MeasureBundle(Measures.ZERO, Measures.ZERO, CurrencySet.EMPTY, Set.of(), Set.of());
-
-    public static MeasureBundle of(Line line) {
-        Measures m = Measures.of(line);
-        return new MeasureBundle(
-                line.isCash() ? Measures.ZERO : m,
-                line.isCash() ? m : Measures.ZERO,
-                CurrencySet.of(line.currency()),
-                line.isCash() ? Set.of() : Set.of(line.instrumentId()),
-                Set.of(line.accountId()));
-    }
-
-    public MeasureBundle plus(MeasureBundle o) {
-        Set<UUID> instruments = new HashSet<>(securityInstrumentIds);
-        instruments.addAll(o.securityInstrumentIds);
-        Set<UUID> accounts = new HashSet<>(accountIds);
-        accounts.addAll(o.accountIds);
-        return new MeasureBundle(
-                securities.plus(o.securities), cash.plus(o.cash),
-                currencies.plus(o.currencies), instruments, accounts);
-    }
+            new MeasureBundle(Measures.ZERO, Measures.ZERO, CurrencySet.EMPTY, 0, 0);
 
     /** 예수금 포함 합계. total_assets_krw · market_value_krw · weight_pct 분모의 원천. */
-    public Measures total() { return securities.plus(cash); }
+    public Measures total() {
+        return new Measures(
+                securities.quantity().add(cash.quantity()),
+                securities.costAmountLocal().add(cash.costAmountLocal()),
+                securities.marketValueLocal().add(cash.marketValueLocal()),
+                securities.costAmountKrw().add(cash.costAmountKrw()),
+                securities.marketValueKrw().add(cash.marketValueKrw()));
+    }
 }
 ```
 
-- [ ] **Step 6: `TotalAssetsKrw`와 `Aggregation`, `Derived`**
+`total()`이 유일한 덧셈이며 **같은 그룹 안의 두 슬롯을 합치는 것**이다. 그룹끼리 더하는 연산은 두지 않는다 — 그것은 SQL이 한다.
+
+- [ ] **Step 6: `GroupKey` · `GroupNode` · `Aggregation` · `TotalAssetsKrw` · `Derived`**
+
+```java
+package com.stockproject.portfolio.domain.group;
+
+/** 축 값 하나. 기타 버킷은 other=true이며 정렬 시 항상 맨 끝으로 간다(스펙 §3.6 6단계). */
+public record GroupKey(String key, String label, boolean other) {
+
+    public static final GroupKey CASH         = new GroupKey("CASH", "현금", false);
+    public static final GroupKey UNCLASSIFIED = new GroupKey("UNCLASSIFIED", "미분류", false);
+    public static final GroupKey OTHER        = new GroupKey("OTHER", "기타(ETF 내 비주식·미매칭)", true);
+
+    public static GroupKey of(String key, String label) {
+        return new GroupKey(key, label, "OTHER".equals(key));
+    }
+}
+```
 
 ```java
 package com.stockproject.portfolio.domain.group;
 
 import com.stockproject.portfolio.domain.measure.MeasureBundle;
+import java.util.List;
 
+public record GroupNode(GroupKey key, MeasureBundle measures, List<GroupNode> children) { }
+```
+
+```java
+package com.stockproject.portfolio.domain.group;
+
+import com.stockproject.portfolio.domain.measure.MeasureBundle;
+import java.util.List;
+
+/** 집계 쿼리 산출물 — GROUPING SETS의 전체 합계 행과 축 값 행들. */
+public record Aggregation(MeasureBundle responseTotal, List<GroupNode> rows) {
+
+    /** 비중의 분모. 전체 합계 행에서 오며 Σ rows와 같은 스캔에서 나온다(§8.3). */
+    public TotalAssetsKrw weightDenominator() { return TotalAssetsKrw.of(responseTotal); }
+}
+```
+
+```java
+package com.stockproject.portfolio.domain.group;
+
+import com.stockproject.portfolio.domain.measure.MeasureBundle;
 import java.math.BigDecimal;
 
 /**
  * 비중의 분모 — 불변식 2.
- * 생성자와 팩터리가 package-private이므로 domain.group 밖에서 만들 수 없고,
+ * 생성자와 팩터리가 package-private이라 domain.group 밖에서 만들 수 없고,
  * 실질적 유일 생성 경로는 Aggregation.weightDenominator()다.
  * 그룹 자신의 합계를 비중 분모로 쓰는 실수를 타입이 막는다.
  */
@@ -2045,20 +2042,7 @@ public final class TotalAssetsKrw {
 }
 ```
 
-```java
-package com.stockproject.portfolio.domain.group;
-
-import com.stockproject.portfolio.domain.measure.MeasureBundle;
-
-import java.util.List;
-
-/** 집계 산출물 — 스펙 §3.6 4단계. 응답 전체 합계와 축 값별 노드를 함께 담는다. */
-public record Aggregation(MeasureBundle responseTotal, List<GroupNode> rows) {
-
-    /** 비중의 분모. 필터·렌즈 적용 후 응답 전체 총자산이며 Σ rows와 일치한다(§8.3). */
-    public TotalAssetsKrw weightDenominator() { return TotalAssetsKrw.of(responseTotal); }
-}
-```
+`Derived`는 이전 설계와 같다 — 파생 지표를 만드는 유일한 지점이고, 비율은 소수 1자리 `HALF_UP`, 분모가 0이면 `null`이다.
 
 ```java
 package com.stockproject.portfolio.domain.group;
@@ -2069,11 +2053,7 @@ import com.stockproject.portfolio.domain.measure.MeasureBundle;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/**
- * 파생 지표를 만드는 유일한 지점 — 스펙 §1.5 · §3.6 5단계.
- * 입력이 집계된 MeasureBundle이라 라인 하나로는 비율 호출이 성립하지 않는다.
- * 비율은 소수 1자리 HALF_UP, 분모가 0이면 null(0이 아니다).
- */
+/** 파생 지표를 만드는 유일한 지점 — 스펙 §3.6 5단계. */
 public final class Derived {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
@@ -2081,13 +2061,10 @@ public final class Derived {
 
     private Derived() { }
 
-    // --- 합계 전용 (CASH 포함/제외가 슬롯으로 갈려 있다) --------------------
     public static BigDecimal totalAssetsKrw(MeasureBundle b)     { return b.total().marketValueKrw(); }
     public static BigDecimal securitiesValueKrw(MeasureBundle b) { return b.securities().marketValueKrw(); }
     public static BigDecimal depositKrw(MeasureBundle b)         { return b.cash().marketValueKrw(); }
-
-    // --- 손익 계열: securities 슬롯만 읽는다 (CASH 제외) ------------------
-    public static BigDecimal costAmountKrw(MeasureBundle b)     { return b.securities().costAmountKrw(); }
+    public static BigDecimal costAmountKrw(MeasureBundle b)      { return b.securities().costAmountKrw(); }
 
     public static BigDecimal unrealizedPnlKrw(MeasureBundle b) {
         return b.securities().marketValueKrw().subtract(b.securities().costAmountKrw());
@@ -2097,17 +2074,16 @@ public final class Derived {
         return pct(unrealizedPnlKrw(b), b.securities().costAmountKrw());
     }
 
-    /** 평단 = Σ매입 ÷ Σ수량. 통화 소수 자릿수로 반올림한다. CASH·수량 0이면 null. */
+    /** 평단 = Σ매입 ÷ Σ수량. 통화 소수 자릿수로 반올림. 수량이 0이면 null. */
     public static BigDecimal avgCost(MeasureBundle b, CurrencyCode currency) {
         BigDecimal qty = b.securities().quantity();
         if (qty.signum() == 0) return null;
         return b.securities().costAmountLocal().divide(qty, currency.scale(), RoundingMode.HALF_UP);
     }
 
-    public static int instrumentCount(MeasureBundle b) { return b.securityInstrumentIds().size(); }
-    public static int accountCount(MeasureBundle b)    { return b.accountIds().size(); }
+    public static int instrumentCount(MeasureBundle b) { return b.instrumentCount(); }
+    public static int accountCount(MeasureBundle b)    { return b.accountCount(); }
 
-    // --- 외부 분모를 요구하는 비율 (타입이 분모를 고정한다) -----------------
     public static BigDecimal weightPct(MeasureBundle row, TotalAssetsKrw denominator) {
         return pct(row.total().marketValueKrw(), denominator.value());
     }
@@ -2127,85 +2103,21 @@ public final class Derived {
 }
 ```
 
-`GroupNode`는 Task 6에서 쓰지만 `Aggregation`이 참조하므로 여기서 만든다:
-```java
-package com.stockproject.portfolio.domain.group;
+- [ ] **Step 7: 테스트 통과 확인**
 
-import com.stockproject.portfolio.domain.measure.MeasureBundle;
-import java.util.List;
+Run: `./gradlew test --tests '*DerivedTest'` → PASS. `11.8`과 `10.0`(예수금 희석 없음)이 나와야 한다.
 
-public record GroupNode(GroupKey key, MeasureBundle measures, List<GroupNode> children) { }
-```
+- [ ] **Step 8: `TotalAssetsKrw` 봉인을 컴파일로 확인한다**
 
-`GroupKey`도 함께:
-```java
-package com.stockproject.portfolio.domain.group;
-
-/** 축 값 하나. 기타 버킷은 other=true이며 정렬 시 항상 맨 끝으로 간다(스펙 §3.6 6단계). */
-public record GroupKey(String key, String label, boolean other) {
-
-    public static final GroupKey CASH         = new GroupKey("CASH", "현금", false);
-    public static final GroupKey UNCLASSIFIED = new GroupKey("UNCLASSIFIED", "미분류", false);
-    public static final GroupKey OTHER        = new GroupKey("OTHER", "기타(ETF 내 비주식·미매칭)", true);
-
-    public static GroupKey of(String key, String label) { return new GroupKey(key, label, false); }
-
-    /** 분류가 null인 종목은 미분류로 모인다 — 스펙 §6.1. */
-    public static GroupKey ofNullable(String value) {
-        return value == null || value.isBlank() ? UNCLASSIFIED : of(value, value);
-    }
-}
-```
-
-- [ ] **Step 7: `AxisKey.keyOf(Line)`을 채운다** (§A.4.1 폴백 규칙)
-
-`AxisKey`에 추상 메서드를 추가하고 상수별 본문을 준다:
-```java
-    public abstract GroupKey keyOf(Line line);
-```
-
-| 축 | 구현 |
-|---|---|
-| `ACCOUNT` | `GroupKey.of(line.accountId().toString(), line.accountLabel())` |
-| `ACCOUNT_TYPE` | `GroupKey.of(line.accountType().name(), line.accountType() == GENERAL ? "일반" : "연금")` |
-| `INSTRUMENT` | `GroupKey.of(line.instrumentKey(), line.instrumentLabel())` |
-| `SECTOR` | `line.isCash() ? GroupKey.CASH : GroupKey.ofNullable(line.sector())` |
-| `MARKET` | `line.isCash() ? GroupKey.CASH : GroupKey.of(line.market().name(), line.market() == KR ? "국내" : "미국")` |
-| `CURRENCY` | `GroupKey.of(line.currency().name(), line.currency().name())` — CASH도 통화가 있으므로 폴백 없음 |
-| `ASSET_CLASS` | `line.isCash() ? GroupKey.CASH : GroupKey.of(line.assetClass().name(), line.assetClass() == STOCK ? "주식" : "ETF")` |
-| `IS_LEVERAGED` | `line.isCash() ? GroupKey.CASH : line.leveraged() == null ? GroupKey.UNCLASSIFIED : GroupKey.of(...)` |
-
-`CASH` 의사종목이 모든 분류 축에서 `현금`으로 모이는 것이 §6.1의 폴백 규칙이다. `instrument`·`currency` 축에서는 CASH가 자기 값을 갖는다(`CASH-KRW` · `KRW`) — 예수금을 종목으로 취급하기 때문이다(§5.2).
-
-- [ ] **Step 8: 테스트를 실행해 통과를 확인한다**
-
-Run: `./gradlew test --tests '*DerivedTest'`
-Expected: PASS. 특히 `11.8`과 `10.0`(예수금 희석 없음)이 나와야 한다.
-
-- [ ] **Step 9: `TotalAssetsKrw` 봉인을 컴파일로 확인한다**
-
-`src/test/java/.../domain/measure/MeasureBundleTest.java`에 아래 주석을 남기고, 실제로 한 번 주석을 풀어 **컴파일 실패**를 확인한 뒤 되돌린다.
+테스트 파일에 아래 주석을 남기고, 한 번 주석을 풀어 **컴파일 실패**를 확인한 뒤 되돌린다.
 
 ```java
-    // 불변식 2 — 아래 줄은 컴파일되지 않아야 한다(TotalAssetsKrw 생성자·팩터리가 package-private).
+    // 불변식 2 — 아래 줄은 컴파일되지 않아야 한다(생성자·팩터리가 package-private).
     // TotalAssetsKrw wrong = TotalAssetsKrw.of(someGroupBundle);
 ```
 
-그리고 통화 게이트 테스트를 추가한다:
-```java
-    @Test
-    void 통화가_섞이면_현지_통화를_꺼낼_수_없다() {
-        MeasureBundle mixed = MeasureBundle.of(krwLine()).plus(MeasureBundle.of(usdLine()));
-        assertThat(mixed.currencies().single()).isEmpty();
+- [ ] **Step 9: ArchUnit 규칙**
 
-        MeasureBundle usdOnly = MeasureBundle.of(usdLine());
-        assertThat(usdOnly.currencies().single()).contains(CurrencyCode.USD);
-    }
-```
-
-- [ ] **Step 10: ArchUnit 규칙**
-
-`ArchitectureRulesTest.java`:
 ```java
 package com.stockproject.portfolio;
 
@@ -2230,19 +2142,17 @@ class ArchitectureRulesTest {
                 .importPackages("com.stockproject.portfolio");
     }
 
-    /** 불변식 1 — 집계 누산기에 비율 필드를 둘 수 없다(스펙 §1.5 · §9.2). */
+    /** 불변식 1 — 집계 결과 타입에 비율 필드를 둘 수 없다(스펙 §1.5 · §9.2). */
     @Test
     void 측정값_타입에_비율_필드가_없다() {
         ArchRule rule = fields()
-                .that().areDeclaredInClassesThat()
-                .haveSimpleNameEndingWith("Measures")
+                .that().areDeclaredInClassesThat().haveSimpleNameEndingWith("Measures")
                 .or().areDeclaredInClassesThat().haveSimpleName("MeasureBundle")
                 .should().haveNameNotMatching(".*(Pct|Ratio|Rate|Percent|Yield|Weight)$")
-                .because("비율은 가산 불가라 누산기에 자리를 두지 않는다 (스펙 §1.5)");
+                .because("비율은 가산 불가라 집계 결과 타입에 자리를 두지 않는다 (스펙 §1.5)");
         rule.check(classes);
     }
 
-    /** 금액·수량·환율·비율에 부동소수점을 쓰지 않는다. */
     @Test
     void 도메인에_double과_float가_없다() {
         ArchRule rule = fields()
@@ -2250,21 +2160,6 @@ class ArchitectureRulesTest {
                 .should().notHaveRawType(double.class)
                 .andShould().notHaveRawType(float.class)
                 .because("금액 계산은 BigDecimal로만 한다");
-        rule.check(classes);
-    }
-
-    /** 파생 지표는 Derived만 만든다 — 계산이 흩어지면 분모 규칙이 갈린다. */
-    @Test
-    void 파생_지표는_Derived만_만든다() {
-        ArchRule rule = noClasses()
-                .that().resideOutsideOfPackages("..domain.group..", "..view..")
-                .should().callMethodWhere(
-                        com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
-                                com.tngtech.archunit.core.domain.properties.HasOwner.Predicates
-                                        .With.owner(
-                                        com.tngtech.archunit.core.domain.JavaClass.Predicates
-                                                .simpleName("Derived"))))
-                .because("파생 지표 계산은 Derived 한 곳에 모은다 (스펙 §3.6 5단계)");
         rule.check(classes);
     }
 
@@ -2280,164 +2175,45 @@ class ArchitectureRulesTest {
 }
 ```
 
-- [ ] **Step 11: 전체 테스트 → 커밋**
+- [ ] **Step 10: 전체 테스트 → 커밋**
 
 ```bash
-./gradlew test
-git add -A && git commit -m "feat: 측정값·파생 지표 타입 — 가산성과 분모 규칙을 타입으로 강제"
+./gradlew test --tests '*DerivedTest' --tests '*ArchitectureRulesTest' --tests '*MigrationLintTest'
+git add -A && git commit -m "feat: 집계 결과 타입과 파생 지표 — 가산성과 분모 규칙을 타입으로 강제"
 ```
 
 ---
 
-### Task 4: 조회 계층과 런타임 검증 (§3.6 3~3.5단계 · §9.1)
+### Task 4: 계좌·달력 조회와 런타임 검증 (§9.1)
 
 **Files:**
-- Create: `query/PositionLineRepository.java` · `LineFilter.java` · `AccountRepository.java` · `SnapshotCalendarRepository.java`
+- Create: `query/AccountRepository.java` · `SnapshotCalendarRepository.java` · `LineFilter.java`
 - Create: `query/CollectionStatusPort.java` · `NoCollectionStatusPort.java`
 - Create: `validation/PositionLineInvariants.java` · `FactInvariantViolation.java`
-- Test: `test/.../query/PositionLineRepositoryTest.java` (Testcontainers)
-- Test: `test/.../query/SchemaContractTest.java`
-- Test: `test/.../validation/PositionLineInvariantsTest.java`
+- Test: `test/.../query/AccountRepositoryTest.java` · `SchemaContractTest.java` · `test/.../validation/PositionLineInvariantsTest.java`
 
 **Interfaces:**
-- Consumes: Task 3의 `Line`, Task 2의 `AxisKey`
 - Produces:
-  - `List<Line> PositionLineRepository.findLines(LocalDate asOf, LineFilter filter)`
-  - `record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes, Set<Market> markets, Set<AssetClass> assetClasses)` + `LineFilter.NONE`
-  - `Optional<LocalDate> SnapshotCalendarRepository.latestAsOf()` · `Optional<LocalDate> previousAsOf(LocalDate)` · `Optional<LocalDate> latestOnOrBefore(LocalDate)` · `Optional<LocalDate> earliestOnOrAfter(LocalDate)` · `Optional<LocalDate> latestBefore(LocalDate)`
+  - `record AccountRow(UUID id, String broker, String label, AccountType type, LinkState linkState, OffsetDateTime lastSyncedAt)`
+  - `List<AccountRow> AccountRepository.findAll()`
+  - `record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes, Set<Market> markets, Set<AssetClass> assetClasses)` · `LineFilter.NONE` · `isEmpty()`
+  - `Optional<LocalDate> SnapshotCalendarRepository.latestAsOf()` · `previousAsOf(LocalDate)` · `latestOnOrBefore(LocalDate)` · `latestBefore(LocalDate)` · `earliestOnOrAfter(LocalDate)`
   - `BigDecimal SnapshotCalendarRepository.totalAssetsKrwAt(LocalDate, LineFilter)`
-  - `List<AccountRow> AccountRepository.findAll()` — `record AccountRow(UUID id, String broker, String label, AccountType type, LinkState linkState, OffsetDateTime lastSyncedAt)`
-  - `void PositionLineInvariants.validate(LocalDate asOf, List<Line> lines, List<AccountRow> accounts)`
+  - `void PositionLineInvariants.validate(LocalDate asOf)`
 
 **완료 조건**
-1. 샘플 데이터에서 `findLines(2026-07-27, NONE)`이 10행을 내고, 각 행의 축 값(계좌유형·섹터·시장·통화·자산군)이 마스터 조인으로 채워진다.
-2. 필터가 §3.6 3.5단계대로 **마스터 조인 뒤** 적용된다 — `LineFilter(markets = {US})`가 3행(AAPL·MSFT·CASH-USD)을 낸다.
-3. `PositionLineInvariants`가 §A.8의 5개 규칙을 검사하고 위반 시 `FactInvariantViolation`을 던진다.
+1. 샘플 데이터에서 `latestAsOf()`가 `2026-07-27`, `previousAsOf`가 `2026-07-24`, `totalAssetsKrwAt(2026-07-24)`가 `56800000`이다.
+2. `PositionLineInvariants.validate`가 §A.8의 5개 규칙을 **SQL 검사 쿼리**로 확인하고 위반 시 `FactInvariantViolation`을 던진다.
+3. 위반 데이터를 넣으면 실제로 실패한다 — 규칙마다 테스트가 있다.
 4. `SchemaContractTest`가 데이터팀 소유 `instrument`의 컬럼 계약을 `information_schema`로 확인한다.
-5. `totalAssetsKrwAt(2026-07-24, NONE)`이 `56800000`을 낸다.
 
 **검증 방법**
 ```bash
-./gradlew test --tests '*PositionLineRepositoryTest' --tests '*SchemaContractTest' \
+./gradlew test --tests '*AccountRepositoryTest' --tests '*SchemaContractTest' \
                --tests '*PositionLineInvariantsTest'
 ```
 
-- [ ] **Step 1: 저장소 테스트를 먼저 쓴다**
-
-`PositionLineRepositoryTest.java`:
-```java
-package com.stockproject.portfolio.query;
-
-import com.stockproject.portfolio.domain.*;
-import org.junit.jupiter.api.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
-import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-
-import javax.sql.DataSource;
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Set;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-@SpringBootTest
-@ActiveProfiles("test")
-@Testcontainers
-class PositionLineRepositoryTest {
-
-    @Container @ServiceConnection
-    static PostgreSQLContainer<?> db = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @Autowired DataSource dataSource;
-    @Autowired PositionLineRepository repository;
-    @Autowired SnapshotCalendarRepository calendar;
-
-    private static final LocalDate AS_OF = LocalDate.of(2026, 7, 27);
-
-    @BeforeEach
-    void seed() throws Exception {
-        try (var conn = dataSource.getConnection()) {
-            ScriptUtils.executeSqlScript(conn, new ClassPathResource("db/sample/sample_portfolio.sql"));
-        }
-    }
-
-    @Test
-    void 마스터_조인으로_축_값이_채워진다() {
-        List<Line> lines = repository.findLines(AS_OF, LineFilter.NONE);
-
-        assertThat(lines).hasSize(10);
-        Line samsung = lines.stream().filter(l -> l.instrumentKey().equals("005930")).findFirst().orElseThrow();
-        assertThat(samsung.sector()).isEqualTo("반도체");
-        assertThat(samsung.market()).isEqualTo(Market.KR);
-        assertThat(samsung.currency()).isEqualTo(CurrencyCode.KRW);
-        assertThat(samsung.assetClass()).isEqualTo(AssetClass.STOCK);
-        assertThat(samsung.accountType()).isEqualTo(AccountType.GENERAL);
-        assertThat(samsung.accountLabel()).isEqualTo("한국투자 위탁");
-
-        Line etf = lines.stream().filter(l -> l.instrumentKey().equals("133690")).findFirst().orElseThrow();
-        assertThat(etf.sector()).isNull();                 // 폴백은 축이 담당한다
-        assertThat(etf.assetClass()).isEqualTo(AssetClass.ETF);
-    }
-
-    @Test
-    void 라인_합이_총자산과_같다() {
-        BigDecimal sum = repository.findLines(AS_OF, LineFilter.NONE).stream()
-                .map(Line::marketValueKrw).reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertThat(sum).isEqualByComparingTo("58000000");
-    }
-
-    /** 스펙 §3.6 3.5단계 — 필터는 마스터 조인 뒤에 적용한다. */
-    @Test
-    void 시장_필터는_마스터_조인_값으로_동작한다() {
-        List<Line> us = repository.findLines(AS_OF,
-                new LineFilter(Set.of(), Set.of(), Set.of(Market.US), Set.of()));
-
-        assertThat(us).extracting(Line::instrumentKey)
-                .containsExactlyInAnyOrder("AAPL", "MSFT", "CASH-USD");
-    }
-
-    @Test
-    void 계좌유형_필터가_동작한다() {
-        List<Line> pension = repository.findLines(AS_OF,
-                new LineFilter(Set.of(), Set.of(AccountType.PENSION), Set.of(), Set.of()));
-
-        assertThat(pension).hasSize(4);
-        assertThat(pension).extracting(Line::marketValueKrw)
-                .extracting(BigDecimal::longValue)
-                .containsExactlyInAnyOrder(11_000_000L, 1_000_000L, 4_900_000L, 140_000L);
-    }
-
-    @Test
-    void 직전_스냅샷과_총자산을_읽는다() {
-        assertThat(calendar.latestAsOf()).contains(AS_OF);
-        assertThat(calendar.previousAsOf(AS_OF)).contains(LocalDate.of(2026, 7, 24));
-        assertThat(calendar.totalAssetsKrwAt(LocalDate.of(2026, 7, 24), LineFilter.NONE))
-                .isEqualByComparingTo("56800000");
-    }
-
-    @Test
-    void 캐리포워드_라인이_표시된다() {
-        List<Line> lines = repository.findLines(AS_OF, LineFilter.NONE);
-        assertThat(lines).filteredOn(Line::carriedForward).hasSize(2)
-                .allSatisfy(l -> assertThat(l.fxAsOf()).isEqualTo(LocalDate.of(2026, 7, 24)));
-    }
-}
-```
-
-- [ ] **Step 2: 실행해 실패를 확인한다**
-
-Run: `./gradlew test --tests '*PositionLineRepositoryTest'`
-Expected: 컴파일 실패 — `PositionLineRepository`·`LineFilter`·`SnapshotCalendarRepository`가 없다.
-
-- [ ] **Step 3: `LineFilter`**
+- [ ] **Step 1: `LineFilter`**
 
 ```java
 package com.stockproject.portfolio.query;
@@ -2449,7 +2225,7 @@ import java.util.UUID;
 
 /**
  * 요청 필터 — 스펙 §3.3. 필터는 그레인을 바꾸지 않고 대상 행만 고른다.
- * 값은 카탈로그 대조(§9.3)를 통과한 enum·계좌 ID이므로 SQL 조립 위험이 없다.
+ * 값은 카탈로그 대조(§9.3)를 통과한 enum·계좌 ID이므로 SQL에 사용자 문자열이 닿지 않는다.
  */
 public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
                          Set<Market> markets, Set<AssetClass> assetClasses) {
@@ -2463,255 +2239,150 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
 }
 ```
 
-- [ ] **Step 4: `PositionLineRepository`**
+- [ ] **Step 2: 런타임 검증 테스트를 먼저 쓴다**
 
-```java
-package com.stockproject.portfolio.query;
+`PositionLineInvariantsTest` — 규칙마다 위반 데이터를 넣고 실패를 확인한다. 샘플 적재 후 각 테스트가 한 규칙만 깨뜨린다.
 
-import com.stockproject.portfolio.domain.*;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-
-import java.time.LocalDate;
-import java.util.*;
-
-/**
- * 스펙 §3.6 3단계(마스터 조인)와 3.5단계(필터)를 SQL로 수행한다.
- * 2·4·5·6단계는 Java가 맡는다 — 렌즈를 라인 집합 → 라인 집합 순수 함수로 유지하기 위해(계획 §A.2.4).
- */
-@Repository
-public class PositionLineRepository {
-
-    private static final String BASE_SQL = """
-            SELECT pl.as_of, pl.account_id, a.label AS account_label, a.account_type, a.link_state,
-                   pl.instrument_id, i.symbol, i.name, i.asset_class, i.market, i.currency,
-                   i.sector, i.is_leveraged,
-                   pl.quantity, pl.cost_amount_local, pl.market_value_local,
-                   pl.cost_amount_krw, pl.market_value_krw,
-                   pl.fx_rate, pl.fx_as_of, pl.source_as_of, pl.is_carried_forward, pl.is_final
-              FROM position_line pl
-              JOIN account    a ON a.account_id    = pl.account_id
-              JOIN instrument i ON i.instrument_id = pl.instrument_id
-             WHERE pl.as_of = :asOf
-            """;
-
-    private final JdbcClient jdbc;
-
-    public PositionLineRepository(JdbcClient jdbc) { this.jdbc = jdbc; }
-
-    public List<Line> findLines(LocalDate asOf, LineFilter filter) {
-        StringBuilder sql = new StringBuilder(BASE_SQL);
-        Map<String, Object> params = new HashMap<>();
-        params.put("asOf", asOf);
-
-        if (!filter.accountIds().isEmpty()) {
-            sql.append(" AND pl.account_id = ANY (:accountIds)");
-            params.put("accountIds", filter.accountIds().toArray(UUID[]::new));
-        }
-        if (!filter.accountTypes().isEmpty()) {
-            sql.append(" AND a.account_type = ANY (:accountTypes)");
-            params.put("accountTypes", names(filter.accountTypes()));
-        }
-        if (!filter.markets().isEmpty()) {
-            sql.append(" AND i.market = ANY (:markets)");
-            params.put("markets", names(filter.markets()));
-        }
-        if (!filter.assetClasses().isEmpty()) {
-            sql.append(" AND i.asset_class = ANY (:assetClasses)");
-            params.put("assetClasses", names(filter.assetClasses()));
-        }
-
-        return jdbc.sql(sql.toString()).params(params)
-                .query((rs, n) -> new Line(
-                        rs.getObject("as_of", LocalDate.class),
-                        rs.getObject("account_id", UUID.class), rs.getString("account_label"),
-                        AccountType.valueOf(rs.getString("account_type")),
-                        LinkState.valueOf(rs.getString("link_state")),
-                        rs.getObject("instrument_id", UUID.class),
-                        rs.getString("symbol"), rs.getString("name"),
-                        AssetClass.valueOf(rs.getString("asset_class")),
-                        Market.valueOf(rs.getString("market")),
-                        CurrencyCode.valueOf(rs.getString("currency")),
-                        rs.getString("sector"), (Boolean) rs.getObject("is_leveraged"),
-                        rs.getBigDecimal("quantity"),
-                        rs.getBigDecimal("cost_amount_local"), rs.getBigDecimal("market_value_local"),
-                        rs.getBigDecimal("cost_amount_krw"), rs.getBigDecimal("market_value_krw"),
-                        rs.getBigDecimal("fx_rate"), rs.getObject("fx_as_of", LocalDate.class),
-                        rs.getObject("source_as_of", java.time.OffsetDateTime.class),
-                        rs.getBoolean("is_carried_forward"), rs.getBoolean("is_final")))
-                .list();
-    }
-
-    private static String[] names(Set<? extends Enum<?>> values) {
-        return values.stream().map(Enum::name).toArray(String[]::new);
-    }
-}
-```
-
-`= ANY (:param)`에 배열을 넘기는 방식이라 `IN (...)` 문자열 조립이 없다.
-
-- [ ] **Step 5: `SnapshotCalendarRepository`와 `AccountRepository`**
-
-`SnapshotCalendarRepository`는 `position_line`의 `as_of` 축만 다룬다.
-```java
-    public Optional<LocalDate> latestAsOf() {
-        return jdbc.sql("SELECT max(as_of) FROM position_line").query(LocalDate.class).optional();
-    }
-
-    public Optional<LocalDate> previousAsOf(LocalDate asOf) {
-        return jdbc.sql("SELECT max(as_of) FROM position_line WHERE as_of < :asOf")
-                .param("asOf", asOf).query(LocalDate.class).optional();
-    }
-
-    public Optional<LocalDate> latestOnOrBefore(LocalDate date) { /* as_of <= :date */ }
-    public Optional<LocalDate> latestBefore(LocalDate date)     { /* as_of <  :date */ }
-    public Optional<LocalDate> earliestOnOrAfter(LocalDate date) { /* min(as_of) WHERE as_of >= :date */ }
-```
-
-`totalAssetsKrwAt`은 `LineFilter`의 계좌 조건만 반영한다(자산 변화·일간 변화가 쓰는 값이고 두 뷰의 필터는 계좌·기간뿐이다):
-```java
-    public BigDecimal totalAssetsKrwAt(LocalDate asOf, LineFilter filter) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT coalesce(sum(pl.market_value_krw), 0)
-                  FROM position_line pl JOIN account a ON a.account_id = pl.account_id
-                 WHERE pl.as_of = :asOf
-                """);
-        // accountIds · accountTypes 조건만 append (findLines와 동일 방식)
-    }
-```
-
-`AccountRepository.findAll()`은 `account` 전체를 `AccountRow`로 읽는다. `DISCONNECTED` 계좌도 함께 읽고 필터링은 호출자가 한다 — §7.5의 "연동 해제는 제외"와 §9.1의 "연동이 유효한 계좌"를 각각 판단해야 하기 때문이다.
-
-`CollectionStatusPort` (스텁 자리):
-```java
-package com.stockproject.portfolio.query;
-
-import java.util.Map;
-import java.util.UUID;
-
-/**
- * 최신 collection_run 상태 — 데이터팀 소유 테이블(스펙 §7.7).
- * 계약이 미합의라 이번 범위에서는 NoCollectionStatusPort가 빈 맵을 낸다.
- */
-public interface CollectionStatusPort {
-    /** accountId → { state, as_of, failure_reason }. 없는 계좌는 키가 없다. */
-    Map<UUID, Map<String, Object>> latestByAccount();
-}
-```
-`NoCollectionStatusPort`는 `Map.of()`를 낸다(`@Component`).
-
-- [ ] **Step 6: 검증기 테스트를 쓴다**
-
-`PositionLineInvariantsTest.java` — 5개 규칙마다 한 개씩:
 ```java
     @Test
-    void 그레인이_중복되면_거부한다() {
-        Line dup = line(ACC_1, INST_1);
-        assertThatThrownBy(() -> invariants.validate(AS_OF, List.of(dup, dup), accounts()))
-                .isInstanceOf(FactInvariantViolation.class)
-                .hasMessageContaining("그레인 유일성");
+    void 정상_샘플은_통과한다() {
+        invariants.validate(LocalDate.of(2026, 7, 27));      // 예외 없음
     }
 
-    @Test
-    void 환율이_없으면_거부한다() {
-        Line noFx = lineWithFx(null, LocalDate.of(2026, 7, 27));
-        assertThatThrownBy(() -> invariants.validate(AS_OF, List.of(noFx), accounts()))
-                .hasMessageContaining("fx_rate");
-    }
-
-    @Test
-    void CASH_행의_원가가_평가금액과_다르면_거부한다() {
-        Line badCash = cashLine("1000000", "900000");
-        assertThatThrownBy(() -> invariants.validate(AS_OF, List.of(badCash), accounts()))
-                .hasMessageContaining("CASH");
-    }
-
+    /** 스펙 §9.1 — 연동이 유효한 모든 계좌는 해당 as_of에 라인이 있어야 한다. */
     @Test
     void 연동된_계좌에_라인이_없으면_거부한다() {
-        // 계좌 2개 중 1개만 라인이 있다 → 그날만 총자산이 급락해 손실처럼 보인다(스펙 §7.3)
-        assertThatThrownBy(() -> invariants.validate(AS_OF, List.of(line(ACC_1, INST_1)),
-                        List.of(account(ACC_1, LinkState.CONNECTED), account(ACC_2, LinkState.CONNECTED))))
+        jdbc.sql("DELETE FROM position_line WHERE as_of = :d AND account_id = :a")
+                .param("d", LocalDate.of(2026, 7, 27)).param("a", MIRAE).update();
+
+        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
+                .isInstanceOf(FactInvariantViolation.class)
                 .hasMessageContaining("라인 없음");
     }
 
+    /** 스펙 §7.5 — 연동 해제 계좌는 대상이 아니다. */
     @Test
     void 해제된_계좌는_라인이_없어도_통과한다() {
-        invariants.validate(AS_OF, List.of(line(ACC_1, INST_1)),
-                List.of(account(ACC_1, LinkState.CONNECTED),
-                        account(ACC_2, LinkState.DISCONNECTED)));   // 예외 없음
+        jdbc.sql("DELETE FROM position_line WHERE as_of = :d AND account_id = :a")
+                .param("d", LocalDate.of(2026, 7, 27)).param("a", MIRAE).update();
+        jdbc.sql("UPDATE account SET link_state = 'DISCONNECTED' WHERE account_id = :a")
+                .param("a", MIRAE).update();
+
+        invariants.validate(LocalDate.of(2026, 7, 27));      // 예외 없음
     }
 
+    /** 스펙 §5.2 — CASH 행은 원가 = 평가금액. */
     @Test
-    void 이월_라인의_source_as_of가_as_of보다_늦으면_거부한다() {
-        Line bad = carriedForwardLine(OffsetDateTime.parse("2026-07-28T15:30:00+09:00"));
-        assertThatThrownBy(() -> invariants.validate(AS_OF, List.of(bad), accounts()))
+    void CASH_행의_원가가_평가금액과_다르면_거부한다() {
+        jdbc.sql("""
+                UPDATE position_line SET cost_amount_krw = market_value_krw - 1
+                 WHERE as_of = :d AND instrument_id = :i
+                """).param("d", LocalDate.of(2026, 7, 27)).param("i", CASH_KRW).update();
+
+        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
+                .hasMessageContaining("CASH");
+    }
+
+    /** 스펙 §9.1 — is_carried_forward = true이면 source_as_of < as_of. */
+    @Test
+    void 이월_라인의_source_as_of가_as_of_이후면_거부한다() {
+        jdbc.sql("""
+                UPDATE position_line SET source_as_of = '2026-07-28T15:30:00+09'
+                 WHERE as_of = :d AND is_carried_forward
+                """).param("d", LocalDate.of(2026, 7, 27)).update();
+
+        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
                 .hasMessageContaining("is_carried_forward");
     }
 ```
 
-- [ ] **Step 7: 검증기 구현**
+그레인 유일성은 PK가 막아 데이터로 재현할 수 없다. 대신 **검사 쿼리가 존재하고 0을 낸다**는 것을 확인한다.
+
+```java
+    @Test
+    void 그레인_유일성_검사가_수행된다() {
+        assertThatThrownBy(() -> jdbc.sql("""
+                INSERT INTO position_line
+                SELECT * FROM position_line WHERE as_of = :d LIMIT 1
+                """).param("d", LocalDate.of(2026, 7, 27)).update())
+                .isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+    }
+```
+
+- [ ] **Step 3: 검증기 구현 — 검사를 SQL로 한다**
 
 ```java
 package com.stockproject.portfolio.validation;
 
-import com.stockproject.portfolio.domain.*;
-import com.stockproject.portfolio.query.AccountRepository.AccountRow;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * 스펙 §9.1 팩트 정합성 — 저장·집계 전에 통과해야 한다.
- * 위반은 조용히 넘기지 않는다. 손으로 넣은 샘플이 틀렸다는 뜻이므로 크게 터뜨린다.
+ * 스펙 §9.1 팩트 정합성 — 집계 전에 통과해야 한다.
+ * 집계를 SQL이 하므로 검증도 SQL로 한다. 적재된 행 일부가 아니라 그 as_of 전체를 본다.
+ * 위반은 조용히 넘기지 않는다 — 손으로 넣은 샘플이 틀렸다는 뜻이므로 크게 터뜨린다.
  */
 @Component
 public class PositionLineInvariants {
 
-    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private final JdbcClient jdbc;
 
-    public void validate(LocalDate asOf, List<Line> lines, List<AccountRow> accounts) {
+    public PositionLineInvariants(JdbcClient jdbc) { this.jdbc = jdbc; }
+
+    public void validate(LocalDate asOf) {
         List<String> violations = new ArrayList<>();
 
-        // 1. 그레인 유일성 — (as_of, account, instrument)마다 정확히 1행
-        Set<List<Object>> seen = new HashSet<>();
-        for (Line l : lines) {
-            if (!seen.add(List.of(l.asOf(), l.accountId(), l.instrumentId()))) {
-                violations.add("그레인 유일성 위반: %s / %s / %s"
-                        .formatted(l.asOf(), l.accountId(), l.instrumentId()));
-            }
-        }
+        // 1. 그레인 유일성 — PK가 1차 보증. 검사를 남겨 의도를 드러낸다.
+        check(violations, asOf, """
+                SELECT count(*) FROM (
+                  SELECT 1 FROM position_line WHERE as_of = :asOf
+                   GROUP BY as_of, account_id, instrument_id HAVING count(*) > 1) d
+                """, "그레인 유일성 위반");
 
-        for (Line l : lines) {
-            // 2. market_value_krw가 있으면 fx_rate·fx_as_of 필수
-            if (l.marketValueKrw() != null && (l.fxRate() == null || l.fxAsOf() == null)) {
-                violations.add("fx_rate·fx_as_of 누락: " + l.instrumentKey());
-            }
-            // 3. CASH 행은 원가 = 평가금액 (스펙 §5.2)
-            if (l.isCash() && l.costAmountKrw().compareTo(l.marketValueKrw()) != 0) {
-                violations.add("CASH 행의 원가 ≠ 평가금액: " + l.instrumentKey());
-            }
-            // 4. is_carried_forward = true이면 source_as_of < as_of
-            //    (timestamptz AT TIME ZONE이 immutable이 아니라 CHECK 제약으로 표현할 수 없다)
-            if (l.carriedForward()
-                    && !l.sourceAsOf().atZoneSameInstant(KST).toLocalDate().isBefore(l.asOf())) {
-                violations.add("is_carried_forward인데 source_as_of >= as_of: " + l.instrumentKey());
-            }
-        }
+        // 2. market_value_krw가 있으면 fx_rate·fx_as_of 필수 (NOT NULL이 1차 보증)
+        check(violations, asOf, """
+                SELECT count(*) FROM position_line
+                 WHERE as_of = :asOf AND market_value_krw IS NOT NULL
+                   AND (fx_rate IS NULL OR fx_as_of IS NULL)
+                """, "fx_rate·fx_as_of 누락");
+
+        // 3. CASH 행은 원가 = 평가금액 (스펙 §5.2)
+        check(violations, asOf, """
+                SELECT count(*) FROM position_line pl JOIN instrument i USING (instrument_id)
+                 WHERE pl.as_of = :asOf AND i.asset_class = 'CASH'
+                   AND pl.cost_amount_krw <> pl.market_value_krw
+                """, "CASH 행의 원가 ≠ 평가금액");
+
+        // 4. is_carried_forward = true이면 source_as_of < as_of
+        check(violations, asOf, """
+                SELECT count(*) FROM position_line
+                 WHERE as_of = :asOf AND is_carried_forward
+                   AND (source_as_of AT TIME ZONE 'Asia/Seoul')::date >= as_of
+                """, "is_carried_forward인데 source_as_of >= as_of");
 
         // 5. 연동이 유효한 모든 계좌는 해당 as_of에 라인 존재 (스펙 §7.3 · §9.1)
-        Set<UUID> withLines = lines.stream().map(Line::accountId).collect(java.util.stream.Collectors.toSet());
-        for (AccountRow a : accounts) {
-            if (a.linkState() != LinkState.DISCONNECTED && !withLines.contains(a.id())) {
-                violations.add("연동된 계좌에 %s 라인 없음: %s".formatted(asOf, a.label()));
-            }
-        }
+        check(violations, asOf, """
+                SELECT count(*) FROM account a
+                 WHERE a.link_state <> 'DISCONNECTED'
+                   AND NOT EXISTS (SELECT 1 FROM position_line pl
+                                    WHERE pl.as_of = :asOf AND pl.account_id = a.account_id)
+                """, "연동된 계좌에 라인 없음");
 
         if (!violations.isEmpty()) throw new FactInvariantViolation(violations);
     }
+
+    private void check(List<String> violations, LocalDate asOf, String sql, String message) {
+        Integer count = jdbc.sql(sql).param("asOf", asOf).query(Integer.class).single();
+        if (count != null && count > 0) violations.add("%s (%d건)".formatted(message, count));
+    }
 }
 ```
+
+`AT TIME ZONE`이 immutable이 아니라 CHECK 제약으로 표현할 수 없어 규칙 4는 검사 쿼리 전용이다.
 
 ```java
 package com.stockproject.portfolio.validation;
@@ -2730,9 +2401,29 @@ public class FactInvariantViolation extends RuntimeException {
 }
 ```
 
-**주의**: 규칙 5는 **필터를 적용하지 않은** 라인 집합에 대해서만 검사한다. 계좌 필터를 걸면 당연히 일부 계좌의 라인이 없으므로, 검증은 필터 전에 수행한다(Task 8의 서비스가 순서를 지킨다).
+- [ ] **Step 4: `AccountRepository` · `SnapshotCalendarRepository` · `CollectionStatusPort`**
 
-- [ ] **Step 8: 스키마 계약 테스트**
+`AccountRepository.findAll()`은 `account` 전체를 읽는다. `DISCONNECTED`도 함께 읽고 필터링은 호출자가 한다 — §7.5의 "연동 해제는 제외"와 §9.1의 "연동이 유효한 계좌"를 각각 판단해야 하기 때문이다.
+
+`SnapshotCalendarRepository`는 `as_of` 축만 다룬다.
+
+```java
+    public Optional<LocalDate> latestAsOf() {
+        return jdbc.sql("SELECT max(as_of) FROM position_line").query(LocalDate.class).optional();
+    }
+
+    public Optional<LocalDate> previousAsOf(LocalDate asOf) {
+        return jdbc.sql("SELECT max(as_of) FROM position_line WHERE as_of < :asOf")
+                .param("asOf", asOf).query(LocalDate.class).optional();
+    }
+    // latestOnOrBefore(as_of <= :d) · latestBefore(as_of < :d) · earliestOnOrAfter(min, as_of >= :d)
+```
+
+`totalAssetsKrwAt`은 `LineFilter`의 계좌 조건만 반영한다 — 이 값을 쓰는 두 뷰(요약의 일간 변화, 자산 변화)의 필터가 계좌·기간뿐이다.
+
+`CollectionStatusPort`는 데이터팀 소유 `collection_run`을 읽는 자리이며(스펙 §7.7), 계약이 미합의라 `NoCollectionStatusPort`가 빈 맵을 낸다.
+
+- [ ] **Step 5: 스키마 계약 테스트**
 
 ```java
     /** 데이터팀 소유 instrument의 컬럼 계약 — 스펙 §11.2. 드리프트를 조기에 잡는다. */
@@ -2748,414 +2439,256 @@ public class FactInvariantViolation extends RuntimeException {
     }
 ```
 
-- [ ] **Step 9: 테스트 통과 확인 → 커밋**
+- [ ] **Step 6: 테스트 통과 → 커밋**
 
 ```bash
-./gradlew test --tests '*PositionLineRepositoryTest' --tests '*SchemaContractTest' \
-               --tests '*PositionLineInvariantsTest'
-git add -A && git commit -m "feat: 라인 조회 계층과 팩트 정합성 검증"
+./gradlew test --tests '*AccountRepositoryTest' --tests '*SchemaContractTest' --tests '*PositionLineInvariantsTest'
+git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검증"
 ```
 
 ---
 
-### Task 5: 렌즈 — 인터페이스 · DIRECT 완성 · LOOK_THROUGH 미확보 분기
+### Task 5: 렌즈 — CTE로 표현한다 (§3.4 · §3.6 2단계)
 
 **Files:**
-- Create: `domain/lens/LensTransform.java` · `DirectLens.java` · `LookThroughLens.java` · `LensResult.java`
-- Create: `domain/lens/ConstituentPort.java` · `ConstituentCoverage.java` · `ConstituentExpander.java` · `NoConstituentDataPort.java`
-- Create: `validation/LensOutputInvariants.java`
-- Test: `test/.../domain/lens/DirectLensTest.java` · `LookThroughLensTest.java`
+- Create: `query/aggregate/LensSql.java` · `UndecomposedEtf.java` · `EtfCoverageRepository.java`
+- Create: `src/main/resources/db/external/V901__etf_coverage_mirror.sql`
+- Test: `test/.../query/aggregate/LensSqlTest.java`
 
 **Interfaces:**
 - Produces:
-  - `LensResult LensTransform.apply(List<Line> lines)`
-  - `record LensResult(List<Line> lines, int undecomposedEtfCount, BigDecimal undecomposedKrw, List<LocalDate> constituentAsOfs)`
-  - `ConstituentCoverage ConstituentPort.coverageOf(UUID etfInstrumentId)` → `COVERED | UNAVAILABLE`
-  - `List<Line> ConstituentExpander.expand(Line etfLine)` — **2단계 자리. 이번 범위에서 호출 불가**
-  - `void LensOutputInvariants.validateTotalPreserved(List<Line> before, List<Line> after)`
+  - `String LensSql.cte(Lens lens)` — `WITH target_line AS (…)` 의 본문
+  - `record UndecomposedEtf(int count, BigDecimal marketValueKrw)`
+  - `UndecomposedEtf EtfCoverageRepository.undecomposedAt(LocalDate asOf, LineFilter filter)`
 
 **완료 조건**
-1. `DirectLens.apply(lines)`가 입력을 그대로 내고 `undecomposedEtfCount = 0`이다.
-2. `LookThroughLens.apply(lines)`가 `NoConstituentDataPort` 아래에서 **ETF 행을 그대로 남기고** `undecomposedEtfCount = 1`, `undecomposedKrw = 11000000`을 낸다.
-3. 두 렌즈 모두 `Σ market_value_krw`를 보존하고 `LensOutputInvariants`가 그것을 확인한다.
-4. `ConstituentExpander`가 이번 범위에서 **도달 불가능**함을 테스트가 고정한다.
+1. `DIRECT`와 `LOOK_THROUGH` 두 CTE 모두 `Σ market_value_krw`가 `position_line`의 그것과 같다 — 총합 보존(§9.1).
+2. `etf_coverage`가 비어 있으면 `LOOK_THROUGH`가 ETF 행을 그대로 남긴다(§3.4).
+3. `undecomposedAt`이 미분해 ETF 1건 · `11000000`을 낸다.
+4. 두 렌즈의 CTE 아래 쿼리 모양이 같다 — 집계·필터·조인이 렌즈와 무관하다(§1.5).
 
 **검증 방법**
 ```bash
-./gradlew test --tests '*DirectLensTest' --tests '*LookThroughLensTest'
+./gradlew test --tests '*LensSqlTest'
 ```
 
-- [ ] **Step 1: 테스트를 먼저 쓴다**
+- [ ] **Step 1: `etf_coverage` 미러를 추가한다**
 
-`LookThroughLensTest.java`:
+`db/external/V901__etf_coverage_mirror.sql`을 새로 만든다. **이미 적용된 `V900`을 고치지 않는다** — Flyway가 체크섬 불일치로 거부한다. 데이터팀 소유이며 로컬·테스트 전용이라는 성격은 `instrument`와 같다.
+
+```sql
+CREATE TABLE IF NOT EXISTS etf_coverage (
+    etf_instrument_id uuid PRIMARY KEY,
+    state             text NOT NULL CHECK (state IN ('COVERED', 'UNAVAILABLE')),
+    as_of             date
+);
+```
+
+행을 넣지 않는다. **행이 없다는 것이 곧 "구성종목 미확보"이고**, 스펙 §3.4가 그 경우 "전개하지 않고 ETF 행을 그대로 남긴다"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 스펙이 정의한 정상 경로를 탄다.
+
+- [ ] **Step 2: 총합 보존 테스트를 먼저 쓴다**
+
 ```java
-package com.stockproject.portfolio.domain.lens;
+class LensSqlTest {
 
-import com.stockproject.portfolio.domain.Line;
-import org.junit.jupiter.api.Test;
+    private static final LocalDate AS_OF = LocalDate.of(2026, 7, 27);
 
-import java.math.BigDecimal;
-import java.util.List;
+    /** 스펙 §9.1 렌즈 — 전개 후 Σ market_value가 전개 전과 일치한다. */
+    @Test
+    void 두_렌즈_모두_총합을_보존한다() {
+        BigDecimal base = jdbc.sql(
+                "SELECT sum(market_value_krw) FROM position_line WHERE as_of = :d")
+                .param("d", AS_OF).query(BigDecimal.class).single();
 
-import static org.assertj.core.api.Assertions.*;
+        for (Lens lens : Lens.values()) {
+            BigDecimal sum = jdbc.sql("WITH target_line AS (%s) SELECT sum(market_value_krw) FROM target_line"
+                            .formatted(LensSql.cte(lens)))
+                    .param("asOf", AS_OF).query(BigDecimal.class).single();
 
-class LookThroughLensTest {
-
-    private final ConstituentPort noData = new NoConstituentDataPort();
-    private final ConstituentExpander unreachable = new ConstituentExpander() {
-        @Override public List<Line> expand(Line etfLine) {
-            throw new AssertionError("이번 범위에서 호출될 수 없다 — 2단계 자리");
+            assertThat(sum).as("%s 총합 보존", lens).isEqualByComparingTo(base);
         }
-    };
-    private final LookThroughLens lens = new LookThroughLens(noData, unreachable);
-
-    /** 스펙 §3.4 — etf_coverage.state = UNAVAILABLE인 ETF는 전개하지 않고 ETF 행을 그대로 남긴다. */
-    @Test
-    void 구성종목_미확보_ETF는_전개하지_않고_남긴다() {
-        List<Line> input = List.of(stock("005930", "14240000"), etf("133690", "11000000"));
-
-        LensResult result = lens.apply(input);
-
-        assertThat(result.lines()).isEqualTo(input);
-        assertThat(result.undecomposedEtfCount()).isEqualTo(1);
-        assertThat(result.undecomposedKrw()).isEqualByComparingTo("11000000");
-        assertThat(result.constituentAsOfs()).isEmpty();   // 전개된 ETF가 없으면 기준일도 없다
+        assertThat(base).isEqualByComparingTo("58000000");
     }
 
-    /** 스펙 §9.1 렌즈 — 전개 후 Σ market_value가 전개 전과 일치한다(총합 보존). */
+    /** 스펙 §3.4 — 미확보 ETF는 전개하지 않고 ETF 행을 그대로 남긴다. */
     @Test
-    void 총합이_보존된다() {
-        List<Line> input = List.of(stock("005930", "14240000"), etf("133690", "11000000"));
+    void 미확보_ETF는_행이_그대로_남는다() {
+        List<String> instruments = jdbc.sql("""
+                WITH target_line AS (%s)
+                SELECT i.symbol FROM target_line t JOIN instrument i USING (instrument_id)
+                 WHERE i.asset_class = 'ETF'
+                """.formatted(LensSql.cte(Lens.LOOK_THROUGH)))
+                .param("asOf", AS_OF).query(String.class).list();
 
-        LensResult result = lens.apply(input);
-
-        assertThat(sum(result.lines())).isEqualByComparingTo(sum(input));
-        new com.stockproject.portfolio.validation.LensOutputInvariants()
-                .validateTotalPreserved(input, result.lines());   // 예외 없음
+        assertThat(instruments).containsExactly("133690");
     }
 
     @Test
-    void 기타_버킷을_만들지_않는다() {
-        // 미확보 ETF를 기타 버킷에 넣으면 "ETF 내 비주식"과 뭉개진다(스펙 §3.4)
-        LensResult result = lens.apply(List.of(etf("133690", "11000000")));
-        assertThat(result.lines()).allSatisfy(l -> assertThat(l.instrumentKey()).isEqualTo("133690"));
-    }
+    void 미분해_ETF의_건수와_금액을_센다() {
+        UndecomposedEtf u = etfCoverage.undecomposedAt(AS_OF, LineFilter.NONE);
 
-    private static BigDecimal sum(List<Line> lines) {
-        return lines.stream().map(Line::marketValueKrw).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(u.count()).isEqualTo(1);
+        assertThat(u.marketValueKrw()).isEqualByComparingTo("11000000");
     }
-    // stock(), etf() 픽스처는 DerivedTest와 같은 방식으로 만든다 (assetClass만 다르다)
 }
 ```
 
-- [ ] **Step 2: 실행해 실패 확인**
-
-Run: `./gradlew test --tests '*LookThroughLensTest'` → 컴파일 실패.
-
-- [ ] **Step 3: 인터페이스와 결과 타입**
+- [ ] **Step 3: `LensSql` 구현**
 
 ```java
-package com.stockproject.portfolio.domain.lens;
+package com.stockproject.portfolio.query.aggregate;
 
-import com.stockproject.portfolio.domain.Line;
-import java.util.List;
+import com.stockproject.portfolio.catalog.Lens;
 
 /**
- * 렌즈 — 입력도 라인 집합, 출력도 라인 집합인 변환 함수(스펙 §1.5 · §3.4).
- * 출력 스키마가 입력과 같으므로 하위의 집계·비중·환산 로직은 렌즈 적용 여부와 무관하다.
+ * 렌즈를 CTE로 표현한다 — 스펙 §3.4가 정의한 "입력도 라인 집합, 출력도 라인 집합인 변환 함수".
+ * 출력 컬럼이 두 렌즈에서 동일하므로 하위의 조인·필터·집계·파생은 렌즈와 무관하다(§1.5).
  */
-public interface LensTransform {
-    LensResult apply(List<Line> lines);
-}
-```
+public final class LensSql {
 
-```java
-package com.stockproject.portfolio.domain.lens;
+    private static final String COLUMNS = """
+            account_id, instrument_id, quantity,
+            cost_amount_local, market_value_local, cost_amount_krw, market_value_krw
+            """;
 
-import com.stockproject.portfolio.domain.Line;
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
+    private LensSql() { }
 
-/**
- * 렌즈 산출물. 미분해 몫과 구성비중 기준일은 notice 재료다
- * (CONSTITUENT_UNAVAILABLE · CONSTITUENT_AS_OF — 스펙 §8.2).
- */
-public record LensResult(List<Line> lines, int undecomposedEtfCount,
-                         BigDecimal undecomposedKrw, List<LocalDate> constituentAsOfs) {
+    public static String cte(Lens lens) {
+        return switch (lens) {
+            case DIRECT -> direct();
+            case LOOK_THROUGH -> lookThrough();
+        };
+    }
 
-    public static LensResult identity(List<Line> lines) {
-        return new LensResult(lines, 0, BigDecimal.ZERO, List.of());
+    /** DIRECT — 2단계를 건너뛰고 position_line이 그대로 3단계로 간다(§3.6). */
+    private static String direct() {
+        return "SELECT %s FROM position_line WHERE as_of = :asOf".formatted(COLUMNS);
+    }
+
+    /**
+     * LOOK_THROUGH — 구성종목이 확보된 ETF만 전개한다.
+     * etf_coverage에 COVERED 행이 없는 ETF는 전개하지 않고 그대로 남긴다(§3.4).
+     * 기타 버킷에 넣지 않는다 — "ETF 내 비주식"과 뭉개지기 때문이다.
+     *
+     * 전개 분기(ETF 평가금액 × 구성비중 + 기타 버킷 + 잔차 흡수)는 2단계 범위이며
+     * etf_constituent 조인으로 이 CTE에 UNION ALL 된다.
+     */
+    private static String lookThrough() {
+        return """
+               SELECT %s FROM position_line pl
+                WHERE pl.as_of = :asOf
+                  AND NOT EXISTS (SELECT 1 FROM etf_coverage c
+                                   WHERE c.etf_instrument_id = pl.instrument_id
+                                     AND c.state = 'COVERED')
+               """.formatted(COLUMNS);
     }
 }
 ```
 
-```java
-package com.stockproject.portfolio.domain.lens;
+두 CTE의 출력 컬럼이 같다는 것이 §1.5의 "입출력 스키마가 같으므로 하위 로직은 렌즈와 무관"을 구현한다. 2단계가 붙을 때 바뀌는 것은 `lookThrough()` 하나다.
 
-public enum ConstituentCoverage { COVERED, UNAVAILABLE }
-```
+- [ ] **Step 4: `EtfCoverageRepository`**
 
 ```java
-package com.stockproject.portfolio.domain.lens;
-
-import java.util.UUID;
-
-/**
- * etf_coverage 조회 — 데이터팀 소유(스펙 §5.1 · §11.2).
- * "없음"과 "미확보"를 구분하는 것이 이 포트의 존재 이유다.
- */
-public interface ConstituentPort {
-    ConstituentCoverage coverageOf(UUID etfInstrumentId);
-}
-```
-
-```java
-package com.stockproject.portfolio.domain.lens;
-
-import org.springframework.stereotype.Component;
-import java.util.UUID;
-
-/**
- * 구성비중 제공 형태가 팀 미합의라(설계 공유 문서 안건 3·8) 모든 ETF를 미확보로 본다.
- * 이 값이 스펙 §3.4가 정의한 정상 경로를 타게 하며, 사용자는 미분해 몫을 금액과 함께 안내받는다.
- */
-@Component
-public class NoConstituentDataPort implements ConstituentPort {
-    @Override public ConstituentCoverage coverageOf(UUID etfInstrumentId) {
-        return ConstituentCoverage.UNAVAILABLE;
-    }
-}
-```
-
-```java
-package com.stockproject.portfolio.domain.lens;
-
-import com.stockproject.portfolio.domain.Line;
-import java.util.List;
-
-/**
- * 2단계(ETF 안분)의 자리 — 스펙 §3.6 2단계.
- * ETF 평가금액 × 최종 구성비중 한 겹 곱셈으로 N개 라인을 만들고,
- * 반올림 잔차와 비중 미달분을 기타 버킷(GroupKey.OTHER)으로 흡수해 총합을 맞춘다.
- * 이번 범위에서는 구현체를 두지 않는다 — ConstituentPort가 COVERED를 내지 않으므로 도달 불가다.
- */
-public interface ConstituentExpander {
-    List<Line> expand(Line etfLine);
-}
-```
-
-- [ ] **Step 4: 두 렌즈 구현**
-
-```java
-package com.stockproject.portfolio.domain.lens;
-
-import com.stockproject.portfolio.domain.Line;
-import org.springframework.stereotype.Component;
-import java.util.List;
-
-/** DIRECT — ETF를 한 종목으로 집계한다. 스펙 §3.6: 2단계를 건너뛴다. */
-@Component
-public class DirectLens implements LensTransform {
-    @Override public LensResult apply(List<Line> lines) { return LensResult.identity(lines); }
-}
-```
-
-```java
-package com.stockproject.portfolio.domain.lens;
-
-import com.stockproject.portfolio.domain.Line;
-import org.springframework.stereotype.Component;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.*;
-
-/** LOOK_THROUGH — ETF를 구성종목으로 분해한다. 미확보 ETF는 전개하지 않고 남긴다(스펙 §3.4). */
-@Component
-public class LookThroughLens implements LensTransform {
-
-    private final ConstituentPort constituents;
-    private final ConstituentExpander expander;
-
-    public LookThroughLens(ConstituentPort constituents, ConstituentExpander expander) {
-        this.constituents = constituents;
-        this.expander = expander;
-    }
-
-    @Override
-    public LensResult apply(List<Line> lines) {
-        List<Line> out = new ArrayList<>();
-        List<LocalDate> constituentAsOfs = new ArrayList<>();
-        int undecomposedCount = 0;
-        BigDecimal undecomposedKrw = BigDecimal.ZERO;
-        Set<UUID> countedEtfs = new HashSet<>();
-
-        for (Line line : lines) {
-            if (!line.isEtf()) { out.add(line); continue; }
-
-            if (constituents.coverageOf(line.instrumentId()) == ConstituentCoverage.UNAVAILABLE) {
-                // 기타 버킷에 넣지 않는다 — "ETF 내 비주식"과 뭉개지기 때문(스펙 §3.4)
-                out.add(line);
-                if (countedEtfs.add(line.instrumentId())) undecomposedCount++;
-                undecomposedKrw = undecomposedKrw.add(line.marketValueKrw());
-            } else {
-                out.addAll(expander.expand(line));
-            }
-        }
-        return new LensResult(List.copyOf(out), undecomposedCount, undecomposedKrw,
-                List.copyOf(constituentAsOfs));
-    }
-}
-```
-
-`ConstituentExpander` 구현체가 없으므로 스프링 컨텍스트가 뜨지 않는다. **`@ConditionalOnMissingBean`으로 도달 불가 구현을 하나 등록한다** — 이것이 "자리만 남긴다"의 실체다:
-```java
-package com.stockproject.portfolio.domain.lens;
-
-import org.springframework.stereotype.Component;
-import com.stockproject.portfolio.domain.Line;
-import java.util.List;
-
-/** 2단계 미구현 자리. ConstituentPort가 COVERED를 내지 않는 동안 이 메서드는 도달 불가다. */
-@Component
-public class UnreachableConstituentExpander implements ConstituentExpander {
-    @Override public List<Line> expand(Line etfLine) {
-        throw new IllegalStateException(
-                "ETF 안분은 2단계 범위다. 구성비중 제공 형태 합의 후 구현한다 — 스펙 §3.6 2단계");
-    }
-}
-```
-
-- [ ] **Step 5: 총합 보존 검증기**
-
-```java
-package com.stockproject.portfolio.validation;
-
-import com.stockproject.portfolio.domain.Line;
-
-import java.math.BigDecimal;
-import java.util.List;
-
-/** 스펙 §9.1 렌즈 — look-through 전개 후 Σ market_value가 전개 전과 일치한다(기타 버킷 포함). */
-public class LensOutputInvariants {
-
-    public void validateTotalPreserved(List<Line> before, List<Line> after) {
-        BigDecimal b = sum(before);
-        BigDecimal a = sum(after);
-        if (b.compareTo(a) != 0) {
-            throw new FactInvariantViolation(List.of(
-                    "렌즈 총합 보존 위반: 전개 전 %s ≠ 전개 후 %s".formatted(b, a)));
-        }
-    }
-
-    private static BigDecimal sum(List<Line> lines) {
-        return lines.stream().map(Line::marketValueKrw).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-}
-```
-
-- [ ] **Step 6: 도달 불가를 고정하는 테스트**
-
-```java
-    /** 2단계 자리가 실제로 도달 불가임을 고정한다. 구현이 붙는 순간 이 테스트를 지운다. */
-    @Test
-    void 안분_구현은_이번_범위에서_도달_불가다() {
-        assertThat(new NoConstituentDataPort().coverageOf(UUID.randomUUID()))
-                .isEqualTo(ConstituentCoverage.UNAVAILABLE);
-        assertThatThrownBy(() -> new UnreachableConstituentExpander().expand(null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("2단계");
+    /** 전개되지 않은 ETF의 건수와 평가금액 — CONSTITUENT_UNAVAILABLE notice 재료(§8.2). */
+    public UndecomposedEtf undecomposedAt(LocalDate asOf, LineFilter filter) {
+        return jdbc.sql("""
+                SELECT count(DISTINCT pl.instrument_id) AS cnt,
+                       coalesce(sum(pl.market_value_krw), 0) AS krw
+                  FROM position_line pl
+                  JOIN instrument i USING (instrument_id)
+                  JOIN account a ON a.account_id = pl.account_id
+                 WHERE pl.as_of = :asOf AND i.asset_class = 'ETF'
+                   AND NOT EXISTS (SELECT 1 FROM etf_coverage c
+                                    WHERE c.etf_instrument_id = pl.instrument_id
+                                      AND c.state = 'COVERED')
+                """)   // 계좌 필터는 = ANY (:param) 방식으로 append
+                .param("asOf", asOf)
+                .query((rs, n) -> new UndecomposedEtf(rs.getInt("cnt"), rs.getBigDecimal("krw")))
+                .single();
     }
 ```
 
-- [ ] **Step 7: 테스트 통과 → 커밋**
+- [ ] **Step 5: 테스트 통과 → 커밋**
 
 ```bash
-./gradlew test --tests '*Lens*'
-git add -A && git commit -m "feat: 렌즈 인터페이스 · DIRECT 경로 · LOOK_THROUGH 미확보 분기"
+./gradlew test --tests '*LensSqlTest'
+git add -A && git commit -m "feat: 렌즈를 CTE로 — DIRECT 경로와 미확보 ETF 분기"
 ```
 
 ---
 
-### Task 6: 집계 엔진 (§3.6 4~5단계)
+### Task 6: 집계 쿼리 (§3.6 3~4단계)
+
+이 태스크가 계획의 중심이다. **저장은 한 종류, 화면은 묶는 기준만 바꾼다**가 여기서 한 개의 쿼리 빌더로 구현된다.
 
 **Files:**
-- Create: `domain/group/AggregationEngine.java`
-- Test: `test/.../domain/group/AggregationEngineTest.java`
+- Create: `query/aggregate/AxisSql.java` · `MetricSql.java` · `AggregateSqlBuilder.java` · `AggregateQueryRepository.java`
+- Test: `test/.../query/aggregate/AggregateSqlBuilderTest.java` · `AggregateQueryRepositoryTest.java`
 
 **Interfaces:**
-- Consumes: Task 3의 `Line` · `MeasureBundle` · `GroupNode` · `GroupKey` · `Aggregation` · `TotalAssetsKrw`, Task 2의 `AxisKey.keyOf(Line)`
-- Produces: `Aggregation AggregationEngine.aggregate(List<Line> lines, List<AxisKey> groupBy)`
+- Consumes: Task 2 `AxisKey`·`MetricKey`·`Lens`, Task 3 `MeasureBundle`·`Aggregation`·`GroupNode`·`GroupKey`, Task 5 `LensSql`
+- Produces:
+  - `String AxisSql.keyExpr(AxisKey)` · `String AxisSql.labelExpr(AxisKey)`
+  - `String AggregateSqlBuilder.build(List<AxisKey> groupBy, Lens lens, LineFilter filter)`
+  - `Aggregation AggregateQueryRepository.aggregate(LocalDate asOf, List<AxisKey> groupBy, Lens lens, LineFilter filter)`
 
 **완료 조건**
-1. `groupBy = []`이면 `rows`가 비고 `responseTotal`만 채워진다(요약).
-2. `groupBy = [SECTOR]`이면 §C.6의 5행이 **평가금액 내림차순**으로 나오고 `현금`·`미분류` 폴백이 적용된다.
+1. `groupBy = []`이면 전체 합계 1행만 나온다(요약).
+2. `groupBy = [SECTOR]`이면 §C.6의 5행이 평가금액 내림차순으로 나오고 `현금`·`미분류` 폴백이 적용된다.
 3. `groupBy = [ACCOUNT_TYPE, ACCOUNT]`이면 2단계 중첩이 나오고 **자식 합 = 부모**가 성립한다.
-4. `Σ rows.total().marketValueKrw() == responseTotal.total().marketValueKrw()` — 모든 `groupBy`에서 성립한다.
-5. `기타` 버킷(`GroupKey.other = true`)은 금액과 무관하게 항상 맨 끝이다.
+4. **모든 축 × 두 렌즈 조합에서 `Σ rows.market_value_krw = responseTotal`이 성립한다.**
+5. `기타` 버킷은 금액과 무관하게 항상 맨 끝이다.
+6. `AggregateSqlBuilder`가 `Additivity.NON_ADDITIVE` 지표를 넘기면 거부한다(불변식 1).
 
 **검증 방법**
 ```bash
-./gradlew test --tests '*AggregationEngineTest'
+./gradlew test --tests '*AggregateSqlBuilderTest' --tests '*AggregateQueryRepositoryTest'
 ```
 
-- [ ] **Step 1: 총합 보존과 정렬 테스트를 먼저 쓴다**
+- [ ] **Step 1: 총합 보존 테스트를 먼저 쓴다**
 
 ```java
-package com.stockproject.portfolio.domain.group;
+class AggregateQueryRepositoryTest {
 
-import com.stockproject.portfolio.catalog.AxisKey;
-import com.stockproject.portfolio.domain.Line;
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-class AggregationEngineTest {
-
-    private final AggregationEngine engine = new AggregationEngine();
+    private static final LocalDate AS_OF = LocalDate.of(2026, 7, 27);
 
     /** 스펙 §8.3 — Σ rows.market_value_krw = total.total_assets_krw가 항상 성립한다. */
     @Test
-    void 행_합이_전체_합계와_같다() {
-        List<Line> lines = sampleLines();          // §C.3의 10행 (테스트 픽스처로 재현)
+    void 모든_축과_렌즈_조합에서_행_합이_전체_합계와_같다() {
+        for (AxisKey axis : AxisKey.values()) {
+            if (!axis.enabled()) continue;
+            for (Lens lens : Lens.values()) {
+                Aggregation agg = repository.aggregate(AS_OF, List.of(axis), lens, LineFilter.NONE);
 
-        for (List<AxisKey> groupBy : List.of(
-                List.of(AxisKey.SECTOR), List.of(AxisKey.MARKET),
-                List.of(AxisKey.INSTRUMENT), List.of(AxisKey.ASSET_CLASS),
-                List.of(AxisKey.ACCOUNT_TYPE, AxisKey.ACCOUNT))) {
+                BigDecimal rowSum = agg.rows().stream()
+                        .map(n -> n.measures().total().marketValueKrw())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            Aggregation agg = engine.aggregate(lines, groupBy);
-            BigDecimal rowSum = agg.rows().stream()
-                    .map(n -> n.measures().total().marketValueKrw())
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            assertThat(rowSum)
-                    .as("group_by=%s에서 Σ rows ≠ total", groupBy)
-                    .isEqualByComparingTo(agg.responseTotal().total().marketValueKrw());
-            assertThat(rowSum).isEqualByComparingTo("58000000");
+                assertThat(rowSum).as("axis=%s lens=%s", axis.key(), lens)
+                        .isEqualByComparingTo(agg.responseTotal().total().marketValueKrw())
+                        .isEqualByComparingTo("58000000");
+            }
         }
     }
 
     /** 스펙 §6.1 폴백 — CASH는 현금, sector가 null인 종목은 미분류로 모인다. */
     @Test
     void 섹터_축의_폴백과_정렬() {
-        Aggregation agg = engine.aggregate(sampleLines(), List.of(AxisKey.SECTOR));
+        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
 
         assertThat(agg.rows()).extracting(n -> n.key().label())
                 .containsExactly("반도체", "소프트웨어", "미분류", "IT서비스", "현금");
         assertThat(agg.rows()).extracting(n -> n.measures().total().marketValueKrw().longValue())
                 .containsExactly(23_240_000L, 12_900_000L, 11_000_000L, 6_160_000L, 4_700_000L);
+        assertThat(agg.rows().get(4).key().key()).isEqualTo("CASH");
     }
 
-    /** 스펙 §8.3 — group_by가 2단계면 rows[].rows로 중첩되고 소계는 서버가 계산한다. */
+    /** 스펙 §8.3 — group_by가 2단계면 중첩되고 소계는 서버가 계산한다. */
     @Test
     void 계좌유형_소계가_자식_합과_같다() {
-        Aggregation agg = engine.aggregate(sampleLines(),
-                List.of(AxisKey.ACCOUNT_TYPE, AxisKey.ACCOUNT));
+        Aggregation agg = repository.aggregate(AS_OF,
+                List.of(AxisKey.ACCOUNT_TYPE, AxisKey.ACCOUNT), Lens.DIRECT, LineFilter.NONE);
 
         assertThat(agg.rows()).hasSize(2);
         for (GroupNode parent : agg.rows()) {
@@ -3169,120 +2702,252 @@ class AggregationEngineTest {
                 .isEqualByComparingTo("40960000");
     }
 
-    /** 스펙 §3.6 6단계 — 기타 버킷은 금액과 무관하게 항상 맨 끝. */
     @Test
-    void 기타_버킷은_금액이_커도_맨_끝이다() {
-        List<Line> lines = List.of(other("50000000"), stock("반도체", "1000000"));
-        Aggregation agg = engine.aggregate(lines, List.of(AxisKey.SECTOR));
-
-        assertThat(agg.rows()).extracting(n -> n.key().other()).containsExactly(false, true);
-    }
-
-    @Test
-    void group_by가_비면_total만_채워진다() {
-        Aggregation agg = engine.aggregate(sampleLines(), List.of());
+    void group_by가_비면_전체_합계만_나온다() {
+        Aggregation agg = repository.aggregate(AS_OF, List.of(), Lens.DIRECT, LineFilter.NONE);
+        MeasureBundle t = agg.responseTotal();
 
         assertThat(agg.rows()).isEmpty();
-        assertThat(agg.responseTotal().total().marketValueKrw()).isEqualByComparingTo("58000000");
-        assertThat(Derived.securitiesValueKrw(agg.responseTotal())).isEqualByComparingTo("53300000");
-        assertThat(Derived.depositKrw(agg.responseTotal())).isEqualByComparingTo("4700000");
-        assertThat(Derived.costAmountKrw(agg.responseTotal())).isEqualByComparingTo("48800000");
-        assertThat(Derived.unrealizedPnlKrw(agg.responseTotal())).isEqualByComparingTo("4500000");
-        assertThat(Derived.unrealizedPnlPct(agg.responseTotal())).isEqualByComparingTo("9.2");
-        assertThat(Derived.cashRatioPct(agg.responseTotal(), agg.weightDenominator()))
-                .isEqualByComparingTo("8.1");
-        assertThat(Derived.instrumentCount(agg.responseTotal())).isEqualTo(5);
-        assertThat(Derived.accountCount(agg.responseTotal())).isEqualTo(4);
+        assertThat(Derived.totalAssetsKrw(t)).isEqualByComparingTo("58000000");
+        assertThat(Derived.securitiesValueKrw(t)).isEqualByComparingTo("53300000");
+        assertThat(Derived.depositKrw(t)).isEqualByComparingTo("4700000");
+        assertThat(Derived.costAmountKrw(t)).isEqualByComparingTo("48800000");
+        assertThat(Derived.unrealizedPnlKrw(t)).isEqualByComparingTo("4500000");
+        assertThat(Derived.unrealizedPnlPct(t)).isEqualByComparingTo("9.2");
+        assertThat(Derived.cashRatioPct(t, agg.weightDenominator())).isEqualByComparingTo("8.1");
+        assertThat(Derived.instrumentCount(t)).isEqualTo(5);
+        assertThat(Derived.accountCount(t)).isEqualTo(4);
     }
 
-    // sampleLines()는 §C.3 표의 10행을 그대로 만드는 픽스처.
-    // 픽스처는 test/.../fixture/SampleLines.java에 두고 Task 8·11에서 재사용한다.
+    /** 불변식 3 — 통화 집합이 그룹마다 따라온다. */
+    @Test
+    void 그룹의_통화_집합이_함께_나온다() {
+        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
+
+        assertThat(node(agg, "IT서비스").measures().currencies().single()).contains(CurrencyCode.USD);
+        assertThat(node(agg, "소프트웨어").measures().currencies().single()).isEmpty();
+    }
+
+    /** 필터는 마스터 조인 뒤에 적용된다(§3.6 3.5단계). */
+    @Test
+    void 시장_필터가_동작한다() {
+        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.INSTRUMENT), Lens.DIRECT,
+                new LineFilter(Set.of(), Set.of(), Set.of(Market.US), Set.of()));
+
+        assertThat(agg.rows()).extracting(n -> n.key().key())
+                .containsExactlyInAnyOrder("AAPL", "MSFT", "CASH-USD");
+    }
 }
 ```
 
 - [ ] **Step 2: 실행해 실패 확인**
 
-Run: `./gradlew test --tests '*AggregationEngineTest'` → 컴파일 실패(`AggregationEngine` 없음).
+Run: `./gradlew test --tests '*AggregateQueryRepositoryTest'` → 컴파일 실패.
 
-- [ ] **Step 3: 픽스처를 만든다**
+- [ ] **Step 3: `AxisSql` — 축을 SQL 식으로 옮긴다**
 
-`src/test/java/com/stockproject/portfolio/fixture/SampleLines.java` — §C.3 표의 10행을 `List<Line>`으로 만드는 정적 팩터리. Task 8·11이 재사용한다.
-
-```java
-public final class SampleLines {
-    public static final UUID ACC_KIS_GENERAL = UUID.fromString("20000000-0000-0000-0000-000000000001");
-    // … 계좌 4개 · 종목 8개 UUID 상수
-    public static List<Line> asOf20260727() { /* §C.3 표 그대로 10행 */ }
-    public static List<Line> asOf20260724() { /* 삼성전자 평가금액만 13,040,000 */ }
-}
-```
-
-- [ ] **Step 4: 집계 엔진 구현**
+카탈로그(§A.4.1)의 축 표와 나란히 놓고 검토하는 것이 이 클래스의 목적이다. 분류 축의 폴백(§6.1)이 `CASE` 식에 나타난다.
 
 ```java
-package com.stockproject.portfolio.domain.group;
+package com.stockproject.portfolio.query.aggregate;
 
 import com.stockproject.portfolio.catalog.AxisKey;
-import com.stockproject.portfolio.domain.Line;
-import com.stockproject.portfolio.domain.measure.MeasureBundle;
-import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.util.*;
+import java.util.Map;
+
+/** 축 → SQL 식. 스펙 §6.1의 축 표와 폴백 규칙을 그대로 옮긴 것이다. */
+public final class AxisSql {
+
+    private static final Map<AxisKey, String> KEY_EXPR = Map.of(
+        AxisKey.ACCOUNT,      "a.account_id::text",
+        AxisKey.ACCOUNT_TYPE, "a.account_type",
+        AxisKey.INSTRUMENT,   "i.symbol",
+        AxisKey.SECTOR,       "CASE WHEN i.asset_class = 'CASH' THEN 'CASH' "
+                            + "ELSE coalesce(i.sector, 'UNCLASSIFIED') END",
+        AxisKey.MARKET,       "CASE WHEN i.asset_class = 'CASH' THEN 'CASH' ELSE i.market END",
+        AxisKey.CURRENCY,     "i.currency",
+        AxisKey.ASSET_CLASS,  "CASE WHEN i.asset_class = 'CASH' THEN 'CASH' ELSE i.asset_class END",
+        AxisKey.IS_LEVERAGED, "CASE WHEN i.asset_class = 'CASH' THEN 'CASH' "
+                            + "WHEN i.is_leveraged IS NULL THEN 'UNCLASSIFIED' "
+                            + "ELSE i.is_leveraged::text END");
+
+    private static final Map<AxisKey, String> LABEL_EXPR = Map.of(
+        AxisKey.ACCOUNT,      "a.label",
+        AxisKey.ACCOUNT_TYPE, "CASE a.account_type WHEN 'GENERAL' THEN '일반' ELSE '연금' END",
+        AxisKey.INSTRUMENT,   "i.name",
+        AxisKey.SECTOR,       "CASE WHEN i.asset_class = 'CASH' THEN '현금' "
+                            + "ELSE coalesce(i.sector, '미분류') END",
+        AxisKey.MARKET,       "CASE WHEN i.asset_class = 'CASH' THEN '현금' "
+                            + "WHEN i.market = 'KR' THEN '국내' ELSE '미국' END",
+        AxisKey.CURRENCY,     "i.currency",
+        AxisKey.ASSET_CLASS,  "CASE i.asset_class WHEN 'STOCK' THEN '주식' "
+                            + "WHEN 'ETF' THEN 'ETF' ELSE '현금' END",
+        AxisKey.IS_LEVERAGED, "CASE WHEN i.asset_class = 'CASH' THEN '현금' "
+                            + "WHEN i.is_leveraged IS NULL THEN '미분류' "
+                            + "WHEN i.is_leveraged THEN '레버리지' ELSE '일반' END");
+
+    private AxisSql() { }
+
+    public static String keyExpr(AxisKey axis)   { return KEY_EXPR.get(axis); }
+    public static String labelExpr(AxisKey axis) { return LABEL_EXPR.get(axis); }
+}
+```
+
+- [ ] **Step 4: `MetricSql` — 측정값 SUM과 CASH 분리**
+
+```java
+package com.stockproject.portfolio.query.aggregate;
 
 /**
- * 스펙 §3.6 4단계(GROUP BY + SUM). 이 설계의 핵심 주장이 구현되는 자리다 —
- * 저장은 position_line 한 종류이고 화면은 group_by만 바꾼다.
- * 집계 값은 가산 측정값(MeasureBundle)만 담고 비율은 담지 않는다(§1.5).
+ * 집계 SELECT 목록. CASH 분리를 FILTER 절이 하며, 스펙 §6.2의 CASH 열이 여기 그대로 보인다.
+ * 비율은 이 목록에 없다 — 파생 지표는 Derived가 집계 후에 만든다(불변식 1).
  */
-@Component
-public class AggregationEngine {
+final class MetricSql {
 
-    public Aggregation aggregate(List<Line> lines, List<AxisKey> groupBy) {
-        return new Aggregation(bundleOf(lines), group(lines, groupBy, 0));
-    }
+    static final String MEASURES = """
+            sum(t.quantity)            FILTER (WHERE i.asset_class <> 'CASH') AS sec_quantity,
+            sum(t.cost_amount_local)   FILTER (WHERE i.asset_class <> 'CASH') AS sec_cost_local,
+            sum(t.market_value_local)  FILTER (WHERE i.asset_class <> 'CASH') AS sec_market_local,
+            sum(t.cost_amount_krw)     FILTER (WHERE i.asset_class <> 'CASH') AS sec_cost_krw,
+            sum(t.market_value_krw)    FILTER (WHERE i.asset_class <> 'CASH') AS sec_market_krw,
+            sum(t.quantity)            FILTER (WHERE i.asset_class =  'CASH') AS cash_quantity,
+            sum(t.cost_amount_local)   FILTER (WHERE i.asset_class =  'CASH') AS cash_cost_local,
+            sum(t.market_value_local)  FILTER (WHERE i.asset_class =  'CASH') AS cash_market_local,
+            sum(t.cost_amount_krw)     FILTER (WHERE i.asset_class =  'CASH') AS cash_cost_krw,
+            sum(t.market_value_krw)    FILTER (WHERE i.asset_class =  'CASH') AS cash_market_krw,
+            array_agg(DISTINCT i.currency)                                    AS currencies,
+            count(DISTINCT i.instrument_id) FILTER (WHERE i.asset_class <> 'CASH') AS instrument_count,
+            count(DISTINCT t.account_id)                                      AS account_count
+            """;
 
-    private List<GroupNode> group(List<Line> lines, List<AxisKey> axes, int depth) {
-        if (depth >= axes.size()) return List.of();
+    private MetricSql() { }
+}
+```
 
-        AxisKey axis = axes.get(depth);
-        Map<GroupKey, List<Line>> buckets = new LinkedHashMap<>();
-        for (Line line : lines) {
-            buckets.computeIfAbsent(axis.keyOf(line), k -> new ArrayList<>()).add(line);
+`FILTER` 절이 없는 행은 `NULL`이 되므로 매핑에서 `coalesce`를 쓰거나 `BigDecimal.ZERO`로 대체한다.
+
+- [ ] **Step 5: `AggregateSqlBuilder` — GROUPING SETS로 행·소계·합계를 한 번에**
+
+```java
+package com.stockproject.portfolio.query.aggregate;
+
+import com.stockproject.portfolio.catalog.*;
+import com.stockproject.portfolio.query.LineFilter;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * 스펙 §3.6 2~4단계를 한 쿼리로 만든다.
+ * 조립 재료가 전부 카탈로그 대조를 통과한 enum이라 사용자 문자열이 SQL에 닿지 않는다.
+ */
+public final class AggregateSqlBuilder {
+
+    private AggregateSqlBuilder() { }
+
+    public static String build(List<AxisKey> groupBy, Lens lens, LineFilter filter) {
+        groupBy.forEach(a -> {
+            if (!a.enabled()) throw new IllegalArgumentException("비활성 축: " + a.key());
+        });
+
+        List<String> selects = new ArrayList<>();
+        List<String> groupExprs = new ArrayList<>();
+        for (int i = 0; i < groupBy.size(); i++) {
+            AxisKey axis = groupBy.get(i);
+            selects.add("%s AS key%d".formatted(AxisSql.keyExpr(axis), i));
+            selects.add("%s AS label%d".formatted(AxisSql.labelExpr(axis), i));
+            selects.add("grouping(%s) AS g%d".formatted(AxisSql.keyExpr(axis), i));
+            groupExprs.add(AxisSql.keyExpr(axis));
+            groupExprs.add(AxisSql.labelExpr(axis));
         }
 
-        List<GroupNode> nodes = new ArrayList<>(buckets.size());
-        buckets.forEach((key, bucketLines) ->
-                nodes.add(new GroupNode(key, bundleOf(bucketLines),
-                        group(bucketLines, axes, depth + 1))));
-
-        nodes.sort(ORDER);
-        return List.copyOf(nodes);
+        return """
+               WITH target_line AS (%s)
+               SELECT %s%s
+                 FROM target_line t
+                 JOIN account    a ON a.account_id    = t.account_id
+                 JOIN instrument i ON i.instrument_id = t.instrument_id
+                %s
+                GROUP BY GROUPING SETS (%s)
+               """.formatted(
+                   LensSql.cte(lens),
+                   selects.isEmpty() ? "" : String.join(",\n       ", selects) + ",\n       ",
+                   MetricSql.MEASURES,
+                   whereClause(filter),
+                   groupingSets(groupExprs));
     }
 
-    /** 스펙 §3.6 6단계 — 평가금액 내림차순, 기타 버킷은 항상 맨 끝. */
-    private static final Comparator<GroupNode> ORDER =
-            Comparator.<GroupNode, Boolean>comparing(n -> n.key().other())
-                    .thenComparing(n -> n.measures().total().marketValueKrw(),
-                                   Comparator.reverseOrder())
-                    .thenComparing(n -> n.key().key());
+    /** ((a1,l1,a2,l2), (a1,l1), ()) — 잎 · 소계 · 전체 합계를 한 결과로 낸다. */
+    private static String groupingSets(List<String> groupExprs) {
+        List<String> sets = new ArrayList<>();
+        for (int depth = groupExprs.size(); depth > 0; depth -= 2) {
+            sets.add("(" + String.join(", ", groupExprs.subList(0, depth)) + ")");
+        }
+        sets.add("()");
+        return String.join(", ", sets);
+    }
 
-    private static MeasureBundle bundleOf(List<Line> lines) {
-        MeasureBundle acc = MeasureBundle.EMPTY;
-        for (Line line : lines) acc = acc.plus(MeasureBundle.of(line));
-        return acc;
+    private static String whereClause(LineFilter filter) {
+        List<String> conditions = new ArrayList<>();
+        if (!filter.accountIds().isEmpty())    conditions.add("a.account_id  = ANY (:accountIds)");
+        if (!filter.accountTypes().isEmpty())  conditions.add("a.account_type = ANY (:accountTypes)");
+        if (!filter.markets().isEmpty())       conditions.add("i.market       = ANY (:markets)");
+        if (!filter.assetClasses().isEmpty())  conditions.add("i.asset_class  = ANY (:assetClasses)");
+        return conditions.isEmpty() ? "" : "WHERE " + String.join("\n   AND ", conditions);
     }
 }
 ```
 
-- [ ] **Step 5: 테스트 통과 확인**
+- [ ] **Step 6: `AggregateQueryRepository` — 실행하고 트리로 조립**
 
-Run: `./gradlew test --tests '*AggregationEngineTest'` → PASS. 특히 `9.2`·`8.1`·`53300000`이 §C.5와 일치해야 한다.
+`grouping()` 값이 그 행의 깊이를 알려준다. `g0 = 1`이면 전체 합계, `g0 = 0 && g1 = 1`이면 1단계 소계, 둘 다 `0`이면 잎이다. 잎을 부모 키로 묶어 `GroupNode` 트리를 만들고, 정렬은 §3.6 6단계대로 **평가금액 내림차순 · 기타 버킷 맨 끝**으로 Java가 한다.
 
-- [ ] **Step 6: 커밋**
+```java
+    private static final Comparator<GroupNode> ORDER =
+            Comparator.<GroupNode, Boolean>comparing(n -> n.key().other())
+                    .thenComparing(n -> n.measures().total().marketValueKrw(), Comparator.reverseOrder())
+                    .thenComparing(n -> n.key().key());
+```
+
+`array_agg(DISTINCT currency)`는 `String[]`으로 오므로 `CurrencySet`으로 옮긴다. `FILTER`가 걸러 낸 `NULL`은 `Measures.ZERO` 쪽으로 접는다.
+
+- [ ] **Step 7: 빌더 단위 테스트**
+
+```java
+    /** 불변식 1 — 비율 지표는 집계 SELECT에 들어갈 수 없다. */
+    @Test
+    void 비가산_지표는_집계에_넣을_수_없다() {
+        assertThat(Metric.of(MetricKey.WEIGHT_PCT).additivity()).isEqualTo(Additivity.NON_ADDITIVE);
+        assertThat(AggregateSqlBuilder.build(List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE))
+                .doesNotContain("weight_pct", "unrealized_pnl_pct", "cash_ratio_pct");
+    }
+
+    @Test
+    void 비활성_축은_거부한다() {
+        assertThatThrownBy(() -> AggregateSqlBuilder.build(
+                List.of(AxisKey.IS_LEVERAGED), Lens.DIRECT, LineFilter.NONE))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 두_렌즈의_쿼리는_CTE만_다르다() {
+        String direct = AggregateSqlBuilder.build(List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
+        String lensed = AggregateSqlBuilder.build(List.of(AxisKey.SECTOR), Lens.LOOK_THROUGH, LineFilter.NONE);
+
+        String tail = "FROM target_line t";
+        assertThat(direct.substring(direct.indexOf(tail)))
+                .isEqualTo(lensed.substring(lensed.indexOf(tail)));
+    }
+```
+
+마지막 테스트가 §1.5의 "하위 로직은 렌즈 적용 여부와 무관"을 문자열 수준에서 고정한다.
+
+- [ ] **Step 8: 테스트 통과 → 커밋**
 
 ```bash
-git add -A && git commit -m "feat: 집계 엔진 — group_by + SUM + 2단계 중첩"
+./gradlew test --tests '*Aggregate*'
+git add -A && git commit -m "feat: 집계 쿼리 — GROUPING SETS로 행·소계·합계를 한 스캔에서"
 ```
 
 ---
@@ -3295,7 +2960,7 @@ git add -A && git commit -m "feat: 집계 엔진 — group_by + SUM + 2단계 �
 - Test: `test/.../view/assembly/RowValuePolicyTest.java` · `CurrencyDisplayPolicyTest.java` · `NoticeCollectorTest.java` · `EmptyReasonResolverTest.java`
 
 **Interfaces:**
-- Consumes: Task 2 카탈로그, Task 3 `Derived`, Task 6 `Aggregation`, Task 5 `LensResult`
+- Consumes: Task 2 카탈로그, Task 3 `Derived`·`Aggregation`, Task 5 `UndecomposedEtf`, Task 6 집계 결과
 - Produces:
   - `Envelope<T>(OffsetDateTime asOf, T data, String emptyReason, List<NoticeDto> notices)`
   - `RowDto(String key, String label, Map<String,Object> metrics, List<RowDto> rows)` — `metrics`는 `@JsonAnyGetter`로 평탄화된다
@@ -3495,7 +3160,7 @@ public record AssemblyContext(
         LocalDate asOf, OffsetDateTime bannerAsOf, Lens lens,
         List<Line> factLines,                 // 필터 전 라인 (STALE_ACCOUNTS · FX_APPLIED 재료)
         List<Line> lensedLines,               // 렌즈·필터 후 라인
-        LensResult lensResult,
+        UndecomposedEtf undecomposed,
         List<MetricKey> omittedRowMetrics,
         List<AccountRow> accounts,
         int seededRowCount, int excludedAccountCount,
@@ -3860,8 +3525,8 @@ package com.stockproject.portfolio.view;
 /**
  * 스펙 §3.6 2~6단계. 순서가 이 클래스의 계약이다.
  *   라인 적재 → 팩트 검증(§9.1) → 렌즈(2) → 총합 보존 검증 → 필터(3.5) → 집계(4)
- *   → 파생(5) → 조립(6)
- * 팩트 검증은 필터 전에 수행한다 — "연동된 모든 계좌에 라인 존재" 규칙이 필터를 걸면 성립하지 않는다.
+ * 팩트 검증은 집계 전에, 필터와 무관하게 그 as_of 전체를 대상으로 수행한다 —
+ * "연동된 모든 계좌에 라인 존재" 규칙이 필터를 걸면 성립하지 않는다.
  */
 @Service
 public class SnapshotViewService {
@@ -3872,24 +3537,20 @@ public class SnapshotViewService {
         Optional<LocalDate> asOf = calendar.latestAsOf();
         if (asOf.isEmpty()) return emptyEnvelope(accounts);
 
-        List<Line> factLines = positionLines.findLines(asOf.get(), LineFilter.NONE);
-        positionLineInvariants.validate(asOf.get(), factLines, accounts);       // §9.1
+        positionLineInvariants.validate(asOf.get());                       // §9.1
 
-        LensResult lensed = lensOf(lens).apply(factLines);
-        lensOutputInvariants.validateTotalPreserved(factLines, lensed.lines()); // §9.1 렌즈
-
-        List<Line> target = filter.isEmpty() ? lensed.lines() : applyFilter(lensed.lines(), filter);
         ViewSpec view = Catalog.view(viewKey);
-        Aggregation agg = engine.aggregate(target, groupByOf(view, rowAxis));
+        Aggregation agg = aggregateQuery.aggregate(                        // §3.6 2~4단계
+                asOf.get(), groupByOf(view, rowAxis), lens, filter);
 
         return assembler.assemble(view, lens, rowAxis, agg, contextOf(...));
     }
 }
 ```
 
-**필터를 렌즈 뒤에 두는 이유**: §3.6이 "필터는 마스터 조인 뒤에 적용한다"고 정하고, 계좌 필터만 렌즈 앞으로 밀 수 있다고 명시했다. 이 계획은 최적화를 하지 않고 규칙대로 렌즈 뒤에 둔다. 그래서 `LineFilter`가 SQL과 Java 두 곳에서 쓰인다 — `findLines`는 `LineFilter.NONE`으로만 호출하고, 실제 필터링은 Java `applyFilter`가 한다. **저장소의 필터 지원은 Task 4에서 테스트했고 향후 최적화 여지로 남긴다.**
+**필터는 집계 쿼리의 `WHERE` 절이며 마스터 조인 뒤에 적용된다**(§3.6 3.5단계). 계좌 필터를 렌즈 CTE 안으로 밀면 결과가 같으면서 스캔이 줄지만, 스펙이 그것을 "구현 최적화 여지"로 남겼으므로 이 계획은 규칙대로 조인 뒤에 둔다.
 
-`summary`는 `render(SUMMARY, null, DIRECT, NONE)` 결과에 미니차트 블록을 더한다. 미니차트는 같은 라인 집합에 `groupBy = [miniChartAxis]`로 한 번 더 집계하고, 렌즈는 미니차트 블록에만 적용한다(§6.3). `daily_change_*`는 `calendar.previousAsOf(asOf)`의 `totalAssetsKrwAt`으로 계산하며, 직전 스냅샷이 없으면 두 값 모두 `null`이다.
+`summary`는 `render(SUMMARY, null, DIRECT, NONE)` 결과에 미니차트 블록을 더한다. 미니차트는 `groupBy = [miniChartAxis]`로 집계 쿼리를 한 번 더 실행하며, 렌즈는 미니차트 블록에만 적용한다(§6.3). 총합이 보존되므로 `total`은 렌즈와 무관하게 같다. `daily_change_*`는 `calendar.previousAsOf(asOf)`의 `totalAssetsKrwAt`으로 계산하며, 직전 스냅샷이 없으면 두 값 모두 `null`이다.
 
 `accounts`는 `render(ACCOUNTS, null, DIRECT, NONE)`이고 `groupBy = [ACCOUNT_TYPE, ACCOUNT]`다. 행 필드는 `AccountRow`와 `CollectionStatusPort`에서 채운다.
 
@@ -4230,7 +3891,7 @@ SELECT r.trade_id, r.account_id, r.instrument_id, i.symbol, i.name, i.currency,
   JOIN instrument i ON i.instrument_id = r.instrument_id
  WHERE (r.sold_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN :from AND :to
 ```
-계좌 필터는 `findLines`와 같은 `= ANY (:param)` 방식으로 append한다.
+계좌 필터는 집계 쿼리와 같은 `= ANY (:param)` 방식으로 append한다.
 
 서비스가 하는 일:
 1. 기준일 = `calendar.latestAsOf()` → `PeriodResolver.resolve(...)`
@@ -4456,7 +4117,7 @@ public class ManualCashflowRepository {
 
     public ManualCashflowTotals totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo,
                                               LineFilter filter) {
-        // 계좌 필터는 findLines와 같은 = ANY (:param) 방식으로 append 한다
+        // 계좌 필터는 집계 쿼리와 같은 = ANY (:param) 방식으로 append 한다
         return jdbc.sql(SQL).param("from", exclusiveFrom).param("to", inclusiveTo)
                 .query((rs, n) -> new ManualCashflowTotals(
                         rs.getBigDecimal("deposit"), rs.getBigDecimal("withdraw")))
@@ -4726,12 +4387,12 @@ Run: `./gradlew test --tests '*SixViewGoldenTest'` → FAIL. 실패 메시지의
     void 현지_통화는_단일_외화_묶음에만_실린다() throws Exception {
         JsonNode sector = json("/portfolio/views/allocation?axis=sector&lens=DIRECT").get("data").get("rows");
 
-        assertThat(rowByKey(sector, "IT서비스").get("currency").asText()).isEqualTo("USD");
-        assertThat(rowByKey(sector, "IT서비스").get("market_value_local").decimalValue())
+        assertThat(rowByLabel(sector, "IT서비스").get("currency").asText()).isEqualTo("USD");
+        assertThat(rowByLabel(sector, "IT서비스").get("market_value_local").decimalValue())
                 .isEqualByComparingTo("4400.00");
-        assertThat(rowByKey(sector, "소프트웨어").has("market_value_local")).isFalse();   // KRW + USD
-        assertThat(rowByKey(sector, "현금").has("market_value_local")).isFalse();         // KRW + USD
-        assertThat(rowByKey(sector, "반도체").has("market_value_local")).isFalse();       // 단일 KRW
+        assertThat(rowByLabel(sector, "소프트웨어").has("market_value_local")).isFalse();   // KRW + USD
+        assertThat(rowByLabel(sector, "현금").has("market_value_local")).isFalse();         // KRW + USD
+        assertThat(rowByLabel(sector, "반도체").has("market_value_local")).isFalse();       // 단일 KRW
 
         JsonNode pension = json("/portfolio/views/accounts").get("data").get("rows").get(1);
         assertThat(pension.has("market_value_local")).isFalse();                          // 소계는 혼합
@@ -4841,8 +4502,8 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | 스펙 절 | 태스크 |
 |---|---|
 | §1.3 그레인 · §3.1 팩트 그레인 | 1(PK) · 4(검증기) |
-| §1.5 · §3.2 저장 규칙·가산성 | 1(린트) · 3(타입) · 6(엔진) |
-| §3.3 축과 필터 | 2(카탈로그) · 4(마스터 조인·필터) |
+| §1.5 · §3.2 저장 규칙·가산성 | 1(린트) · 3(타입) · 6(집계 쿼리) |
+| §3.3 축과 필터 | 2(카탈로그) · 6(마스터 조인·필터) |
 | §3.4 렌즈 | 5 |
 | §3.5 뷰 사양 | 2 |
 | §3.6 파이프라인 2~6단계 | 4·5·6·7·8 |
@@ -4859,7 +4520,7 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | §4.6 현금흐름 커버리지 (계좌, 유형) | 10 |
 | §8.4 실현손익·자산 변화 응답 | 9·10 |
 | §8.6 오류와 빈 상태 | 7·8 |
-| §9.1 런타임 검증(`position_line`·렌즈) | 4·5 |
+| §9.1 런타임 검증(`position_line`·렌즈) | 4(검사 쿼리) · 5(총합 보존) |
 | §9.2 스키마 규약 | 1(린트) · 3(ArchUnit) |
 | §9.3 요청 검증·응답 조립 | 7·8 |
 | §10 화면 상태 전수 | 7·8·9·10 (빈 상태·경고·계좌 상태 세 표현 수단) |
