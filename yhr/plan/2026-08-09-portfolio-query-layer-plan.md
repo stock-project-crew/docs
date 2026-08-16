@@ -761,6 +761,7 @@ back-end/
     │   ├── query/
     │   │   ├── LineFilter.java
     │   │   ├── AccountMapper.java · SnapshotCalendarMapper.java   @Select 애노테이션
+    │   │   ├── UuidTypeHandler.java          uuid ↔ java.util.UUID
     │   │   ├── FactCheckMapper.java          §9.1 검사 쿼리 5개
     │   │   ├── aggregate/
     │   │   │   ├── AxisSql.java              축 → SQL 식. AxisFragment 생성
@@ -2878,6 +2879,8 @@ public interface SnapshotCalendarMapper {
     LocalDate earliestOnOrAfter(@Param("scope") UserScope scope, @Param("date") LocalDate date);
 }
 ```
+
+**MyBatis 설정 둘이 이 매퍼들의 전제다.** `arg-name-based-constructor-auto-mapping: true`라야 결과가 record 생성자로 이름 기준 매핑되어 컬럼 순서에 묶이지 않고, `UuidTypeHandler`를 `type-handlers-package`로 등록해야 `IN (…)` 목록처럼 타입이 확정된 자리에서 `UUID`가 바인딩된다 — MyBatis 기본 등록에 `java.util.UUID`가 없다.
 
 `SnapshotCalendarRepository`가 이 매퍼를 감싸 `null`을 `Optional`로 바꾸고 `totalAssetsKrwAt`을 제공한다.
 
