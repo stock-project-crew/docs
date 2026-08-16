@@ -11,7 +11,7 @@
 
 **Architecture:** 저장은 `position_line` 한 종류이고, 화면은 `group_by`만 바꾼다. 조회 요청은 한 개의 집계 쿼리로 처리한다 — 렌즈 CTE가 대상 행 집합을 만들고, 마스터를 조인해 축을 붙이고, 필터를 걸고, 요청 축으로 `GROUP BY`하며 측정값을 `SUM`한다(스펙 §3.6의 2~4단계). 파생 지표와 응답 조립만 Java가 맡는다(5~6단계). 가산 가능한 측정값과 가산 불가능한 비율이 **서로 다른 타입**으로 분리되어 있어 비율을 더하는 코드는 컴파일되지 않는다.
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · Gradle (Kotlin DSL) · PostgreSQL 16 · Flyway · MyBatis (ORM 없음) · Docker Compose · JUnit 5 + AssertJ + Testcontainers + ArchUnit
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · Gradle (Kotlin DSL) · PostgreSQL 16 · Flyway · MyBatis (ORM 없음) · Docker Compose · JUnit 5 + AssertJ + ArchUnit
 
 ---
 
@@ -70,7 +70,7 @@ GET /portfolio/catalog
 
 ### A.2.1 빌드 도구 — **Gradle (Kotlin DSL)**
 
-Maven과 기능 차이가 결과를 가르지 않는다. Gradle을 고른 이유는 (1) Spring Initializr 기본값이라 팀원이 프로젝트를 다시 생성해도 같은 모양이 나오고, (2) 증분 빌드로 테스트 반복이 빠르며, (3) Testcontainers·ArchUnit 같은 테스트 전용 설정이 한 파일에 모이기 때문이다. **근거가 취향 수준이라는 점을 그대로 적어 둔다** — Maven으로 바꿔도 이 계획의 나머지는 한 줄도 변하지 않는다.
+Maven과 기능 차이가 결과를 가르지 않는다. Gradle을 고른 이유는 (1) Spring Initializr 기본값이라 팀원이 프로젝트를 다시 생성해도 같은 모양이 나오고, (2) 증분 빌드로 테스트 반복이 빠르며, (3) 테스트 전용 설정이 한 파일에 모이기 때문이다. **근거가 취향 수준이라는 점을 그대로 적어 둔다** — Maven으로 바꿔도 이 계획의 나머지는 한 줄도 변하지 않는다.
 
 ### A.2.2 마이그레이션 — **Flyway (평문 SQL)**
 
@@ -112,7 +112,7 @@ SQL을 사람이 쓰고, 동적 조립을 매퍼 XML이 맡는다.
 **감수하는 것과 완화.**
 
 - **축 식은 값 바인딩(`#{}`)이 아니라 문자열 치환(`${}`)을 쓴다.** 컬럼 이름과 표현식은 바인딩할 수 없기 때문이다. `${}`에 들어가는 값은 **카탈로그 대조(§9.3)를 통과한 `AxisKey` enum이 고른 상수뿐**이며 요청 문자열이 닿지 않는다. → 이 규칙을 테스트로 고정한다(Task 6): 매퍼에 넘기는 축 목록의 타입이 `List<AxisKey>`이고 `String`을 받는 경로가 없다.
-- 컬럼명 오타와 조각 조합 실수를 컴파일이 잡지 못한다. → (a) 축 × 렌즈 조합마다 Testcontainers 테스트를 돌려 실제로 실행되는지 확인하고(Task 6), (b) 모든 스냅샷 뷰에서 `Σ rows = total`을 검사해 조합이 틀리면 수치로 드러나게 하며(Task 11), (c) 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
+- 컬럼명 오타와 조각 조합 실수를 컴파일이 잡지 못한다. → (a) 축 × 렌즈 조합마다 실제 DB에서 실행되는지 테스트로 확인하고(Task 6), (b) 모든 스냅샷 뷰에서 `Σ rows = total`을 검사해 조합이 틀리면 수치로 드러나게 하며(Task 11), (c) 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
 
 **되돌리는 조건.** 축이나 지표가 늘어 XML 조각 조합이 사람 눈으로 검토되지 않는 수준이 되면 jOOQ(코드 생성 없이)로 옮긴다. 그때 바뀌는 것은 `query` 패키지와 매퍼 XML이고 나머지 계층은 인터페이스로 격리돼 있다.
 
@@ -152,6 +152,7 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | 보관 기간 | **무제한 삭제 없음** | 자산 변화 뷰가 과거 스냅샷을 읽고(§5.4), 지우면 과거 기간 계산이 불가능해진다(§7.5) |
 | 파티셔닝 | **하지 않는다** | 연 증가량이 영업일 250 × 라인 수십 = 만 행 규모. 트리거를 미리 정해둔다: `position_line`이 1,000만 행을 넘거나 단일 `as_of` 조회 p95가 200ms를 넘으면 `as_of` RANGE 파티셔닝을 검토한다 |
 | enum 표현 | **`text` + `CHECK`** (PostgreSQL ENUM 타입 아님) | ENUM 타입은 값 추가·삭제 마이그레이션이 번거롭고 매핑에서 이득이 없다 |
+| 테스트 DB | compose의 **`portfolio_test`** 데이터베이스. 개발용 `portfolio`와 같은 인스턴스, 다른 DB | 테스트가 개발 데이터를 지우지 않는다. 시드 스크립트가 매 테스트 `TRUNCATE` 후 채우므로 격리는 그것으로 충분하고, Java에서 Docker API를 부르지 않아 도구 버전에 묶이지 않는다 |
 | 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | `instrument`는 데이터팀 소유라(§11.2) 스키마 배치를 이쪽이 정하지 않는다. SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
@@ -400,7 +401,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
   "total": { "total_assets_krw": 58000000, "securities_value_krw": 53300000,
              "deposit_krw": 4700000, "cost_amount_krw": 48800000,
              "unrealized_pnl_krw": 4500000, "unrealized_pnl_pct": 9.2,
-             "cash_ratio_pct": 8.1, "instrument_count": 5, "account_count": 4 },
+             "cash_ratio_pct": 8.1, "instrument_count": 6, "account_count": 4 },
   "rows": [
     { "key": "반도체", "label": "반도체",
       "market_value_krw": 23240000, "cost_amount_krw": 20000000,
@@ -664,6 +665,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 back-end/
 ├── build.gradle.kts · settings.gradle.kts · gradle/wrapper/
 ├── docker-compose.yml · Dockerfile · .env.example
+├── docker/initdb/       테스트 DB 생성 스크립트
 ├── README.md
 ├── docs/decisions.md                     빌드·마이그레이션·데이터 접근·집계 위치 결정 기록
 └── src
@@ -726,7 +728,7 @@ back-end/
     │                RealizedPnlData · AssetChangeData · CatalogDto
     └── main/resources/
         ├── application.yaml · application-local.yaml
-        ├── mapper/           AggregateMapper.xml · FactCheckMapper.xml
+        ├── mapper/           AggregateMapper.xml
         ├── db/migration/     V1__account.sql · V2__position_line.sql · V3__realized_pnl_line.sql
         │                     V4__manual_cashflow.sql
         ├── db/external/      V900__instrument_mirror.sql · V901__etf_coverage_mirror.sql
@@ -839,7 +841,7 @@ USD 라인의 `fx_rate = 1400.000000`.
                "deposit_krw": 4700000, "cost_amount_krw": 48800000,
                "unrealized_pnl_krw": 4500000, "unrealized_pnl_pct": 9.2,
                "cash_ratio_pct": 8.1, "daily_change_krw": 1200000,
-               "daily_change_pct": 2.1, "account_count": 4, "instrument_count": 5 },
+               "daily_change_pct": 2.1, "account_count": 4, "instrument_count": 6 },
     "rows": [],
     "mini_chart": { "group_by": ["market"], "lens": "DIRECT",
       "rows": [ { "key": "KR", "label": "국내", "market_value_krw": 46800000, "weight_pct": 80.7 },
@@ -1035,7 +1037,7 @@ notices: SEEDED_ROWS { count: 1 }
 **검증 방법**
 ```bash
 cd back-end
-docker compose up -d db
+docker compose up -d db          # portfolio · portfolio_test 두 DB가 함께 뜬다
 ./gradlew test --tests '*MigrationLintTest' --tests '*SchemaSmokeTest'
 docker compose exec -T db psql -U portfolio -d portfolio -f /sample/sample_portfolio.sql
 docker compose exec -T db psql -U portfolio -d portfolio -c \
@@ -1080,9 +1082,6 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.springframework.boot:spring-boot-testcontainers")
-    testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
 }
 
@@ -1317,34 +1316,27 @@ class MigrationLintTest {
 
 Run: `./gradlew test --tests '*MigrationLintTest'` → **PASS**해야 한다(작성한 마이그레이션에 금지 컬럼이 없으므로). 검사기가 실제로 동작하는지 보려면 `V2`에 `weight_pct numeric(5,2),`를 임시로 넣고 실행해 FAIL을 확인한 뒤 되돌린다.
 
-- [ ] **Step 5: Testcontainers 스모크 테스트**
+- [ ] **Step 5: 스키마 스모크 테스트**
 
-`SchemaSmokeTest.java`:
+테스트는 compose의 `portfolio_test` 데이터베이스를 쓴다(§A.2.5).
+
 ```java
 package com.stockproject.portfolio;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/** 테스트는 compose의 portfolio_test 데이터베이스를 쓴다. `docker compose up -d db`가 선행되어야 한다. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Testcontainers
 class SchemaSmokeTest {
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> db = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired JdbcClient jdbc;
 
@@ -1375,11 +1367,16 @@ class SchemaSmokeTest {
 `src/test/resources/application-test.yaml`:
 ```yaml
 spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/portfolio_test?currentSchema=public}
+    username: ${DB_USER:portfolio}
+    password: ${DB_PASSWORD:portfolio}
   flyway:
+    # 데이터팀 소유 테이블 미러를 함께 적용한다
     locations: classpath:db/migration,classpath:db/external
 ```
 
-Run: `./gradlew test --tests '*SchemaSmokeTest'` → PASS.
+Run: `docker compose up -d db && ./gradlew test --tests '*SchemaSmokeTest'` → PASS.
 
 - [ ] **Step 6: Docker Compose와 Dockerfile**
 
@@ -1396,6 +1393,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./src/main/resources/db/sample:/sample:ro
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio"]
       interval: 3s
@@ -1428,6 +1426,12 @@ WORKDIR /app
 COPY --from=build /src/build/libs/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+```
+
+`docker/initdb/01-create-test-database.sql` — 첫 기동 시 테스트 DB를 함께 만든다:
+```sql
+-- 테스트 전용 데이터베이스. 개발용 portfolio 와 분리해 테스트가 개발 데이터를 지우지 않게 한다.
+CREATE DATABASE portfolio_test OWNER portfolio;
 ```
 
 `.env.example`:
@@ -2762,7 +2766,7 @@ class AggregateQueryRepositoryTest {
         assertThat(Derived.unrealizedPnlKrw(t)).isEqualByComparingTo("4500000");
         assertThat(Derived.unrealizedPnlPct(t)).isEqualByComparingTo("9.2");
         assertThat(Derived.cashRatioPct(t, agg.weightDenominator())).isEqualByComparingTo("8.1");
-        assertThat(Derived.instrumentCount(t)).isEqualTo(5);
+        assertThat(Derived.instrumentCount(t)).isEqualTo(6);
         assertThat(Derived.accountCount(t)).isEqualTo(4);
     }
 
@@ -3671,7 +3675,6 @@ public class ViewController {
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Testcontainers
 class SnapshotViewApiTest {
 
     @Test
@@ -3689,7 +3692,7 @@ class SnapshotViewApiTest {
             .andExpect(jsonPath("$.data.total.daily_change_krw").value(1200000))
             .andExpect(jsonPath("$.data.total.daily_change_pct").value(2.1))
             .andExpect(jsonPath("$.data.total.account_count").value(4))
-            .andExpect(jsonPath("$.data.total.instrument_count").value(5))
+            .andExpect(jsonPath("$.data.total.instrument_count").value(6))
             .andExpect(jsonPath("$.data.total.market_value_krw").doesNotExist())   // 불변식 4
             .andExpect(jsonPath("$.data.mini_chart.rows[0].key").value("KR"))
             .andExpect(jsonPath("$.data.mini_chart.rows[0].market_value_krw").value(46800000))
@@ -4378,7 +4381,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Testcontainers
 class SixViewGoldenTest {
 
     @ParameterizedTest(name = "{1}")
