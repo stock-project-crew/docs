@@ -761,7 +761,7 @@ back-end/
     │   ├── query/
     │   │   ├── LineFilter.java
     │   │   ├── AccountMapper.java · SnapshotCalendarMapper.java   @Select 애노테이션
-    │   │   ├── UuidTypeHandler.java          uuid ↔ java.util.UUID
+    │   │   ├── UuidTypeHandler.java · StringArrayTypeHandler.java
     │   │   ├── FactCheckMapper.java          §9.1 검사 쿼리 5개
     │   │   ├── aggregate/
     │   │   │   ├── AxisSql.java              축 → SQL 식. AxisFragment 생성
@@ -3290,12 +3290,13 @@ import com.stockproject.portfolio.catalog.AxisKey;
 
 import java.util.Map;
 
-/** 축 → SQL 식. 스펙 §6.1의 축 표와 폴백 규칙을 그대로 옮긴 것이다. */
+/** 축 → SQL 식. 스펙 §6.1의 축 표와 폴백 규칙을 그대로 옮긴 것이다.
+ *  바깥 쿼리의 별칭은 계좌가 acct, 종목이 i다. */
 public final class AxisSql {
 
     private static final Map<AxisKey, String> KEY_EXPR = Map.of(
-        AxisKey.ACCOUNT,      "a.account_id::text",
-        AxisKey.ACCOUNT_TYPE, "a.account_type",
+        AxisKey.ACCOUNT,      "acct.account_id::text",
+        AxisKey.ACCOUNT_TYPE, "acct.account_type",
         AxisKey.INSTRUMENT,   "i.symbol",
         AxisKey.SECTOR,       "CASE WHEN i.asset_class = 'CASH' THEN 'CASH' "
                             + "ELSE coalesce(i.sector, 'UNCLASSIFIED') END",
@@ -3307,8 +3308,8 @@ public final class AxisSql {
                             + "ELSE i.is_leveraged::text END");
 
     private static final Map<AxisKey, String> LABEL_EXPR = Map.of(
-        AxisKey.ACCOUNT,      "a.label",
-        AxisKey.ACCOUNT_TYPE, "CASE a.account_type WHEN 'GENERAL' THEN '일반' ELSE '연금' END",
+        AxisKey.ACCOUNT,      "acct.label",
+        AxisKey.ACCOUNT_TYPE, "CASE acct.account_type WHEN 'GENERAL' THEN '일반' ELSE '연금' END",
         AxisKey.INSTRUMENT,   "i.name",
         AxisKey.SECTOR,       "CASE WHEN i.asset_class = 'CASH' THEN '현금' "
                             + "ELSE coalesce(i.sector, '미분류') END",
@@ -3429,6 +3430,10 @@ public record AxisFragment(int index, String keyExpr, String labelExpr) { }
 ```
 
 빈 조합 `()`는 `groupingSets`의 빈 리스트가 그대로 렌더링해 준다. `map-underscore-to-camel-case`가 켜져 있어도 별칭을 카멜케이스로 준 것은 `AggregateRowDto`의 필드명과 직접 맞추기 위해서다.
+
+**`AggregateRowDto`는 record가 아니라 세터를 가진 POJO다.** 요청 축이 0~2개라 `key1`·`label1`·`g1` 컬럼이 아예 없는 조합이 있고, 생성자 매핑은 없는 컬럼을 채울 방법이 없다. 세터 자동 매핑이면 나온 컬럼만 채워지고 나머지는 비어 있어 축 개수가 그대로 표현된다. `grouping()` 기본값을 `1`로 두어 **없는 축은 "묶이지 않은 축"**이 되고, `depth()`가 0의 개수로 그 행의 깊이를 낸다.
+
+`array_agg`가 내는 `text[]`는 `StringArrayTypeHandler`가 `String[]`으로 받는다 — `UuidTypeHandler`와 같은 이유로 MyBatis 기본 등록에 없다.
 
 `AggregateMapper` 인터페이스:
 
