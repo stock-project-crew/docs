@@ -2938,9 +2938,10 @@ git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검
 ### Task 5: 렌즈 — CTE로 표현한다 (§3.4 · §3.6 2단계)
 
 **Files:**
-- Create: `src/main/resources/mapper/AggregateMapper.xml` (렌즈 `<sql>` 조각)
+- Create: `src/main/resources/mapper/AggregateMapper.xml` (렌즈 `<sql>` 조각) · `EtfCoverageMapper.xml`
 - Create: `query/aggregate/AggregateMapper.java` · `EtfCoverageMapper.java` · `UndecomposedEtf.java`
 - Create: `src/main/resources/db/external/V3__etf_coverage_mirror.sql`
+- Modify: `db/sample/sample_portfolio.sql` (`TRUNCATE` 대상에 `etf_coverage`를 더한다 — 픽스처가 세계 전체를 소유한다)
 - Test: `test/.../query/aggregate/LensPreservationTest.java`
 
 **Interfaces:**
@@ -3003,13 +3004,18 @@ class LensPreservationTest {
         }
     }
 
-    /** 스펙 §3.4 — 미확보 ETF는 전개하지 않고 ETF 행을 그대로 남긴다. */
+    /**
+     * 구성종목이 확보된 ETF는 미확보 분기에서 빠진다 — 전개 분기가 붙을 자리다(§A.9).
+     * etf_coverage가 비어 있어 NOT EXISTS가 늘 참이므로, COVERED 행을 하나 넣어야
+     * 이 조건이 실제로 도는지 확인된다.
+     */
     @Test
-    void 미확보_ETF는_행이_그대로_남는다() {
-        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(AxisKey.INSTRUMENT),
-                Lens.LOOK_THROUGH, LineFilter.NONE);
+    void 확보된_ETF는_미확보_분기에서_빠진다() {
+        markCovered(TIGER);
 
-        assertThat(agg.rows()).extracting(n -> n.key().key()).contains("133690");
+        assertThat(etfCoverageMapper.undecomposedAt(YHR, AS_OF, LineFilter.NONE).count()).isZero();
+        assertThat(aggregateMapper.sumMarketValueKrw(YHR, AS_OF, Lens.LOOK_THROUGH))
+                .isEqualByComparingTo("47000000");
     }
 
     @Test
