@@ -1119,6 +1119,7 @@ spring:
     username: ${DB_USER:portfolio}
     password: ${DB_PASSWORD:portfolio}
   flyway:
+    # 백엔드 소유 테이블만. 데이터팀 소유 테이블 미러(db/external)는 운영에서 적용하지 않는다.
     locations: classpath:db/migration
   jackson:
     property-naming-strategy: SNAKE_CASE
