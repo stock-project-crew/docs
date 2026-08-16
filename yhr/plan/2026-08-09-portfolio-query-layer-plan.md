@@ -157,7 +157,7 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | 파티셔닝 | **하지 않는다** | 연 증가량이 영업일 250 × 라인 수십 = 만 행 규모. 트리거를 미리 정해둔다: `position_line`이 1,000만 행을 넘거나 단일 `as_of` 조회 p95가 200ms를 넘으면 `as_of` RANGE 파티셔닝을 검토한다 |
 | enum 표현 | **`text` + `CHECK`** (PostgreSQL ENUM 타입 아님) | ENUM 타입은 값 추가·삭제 마이그레이션이 번거롭고 매핑에서 이득이 없다 |
 | 테스트 DB | compose의 **`portfolio_test`** 데이터베이스. 개발용 `portfolio`와 같은 인스턴스, 다른 DB | 테스트가 개발 데이터를 지우지 않는다. 시드 스크립트가 매 테스트 `TRUNCATE` 후 채우므로 격리는 그것으로 충분하고, Java에서 Docker API를 부르지 않아 도구 버전에 묶이지 않는다 |
-| 마이그레이션 순서 | 백엔드 1번대 · 데이터팀 미러 900번대. 두 위치를 함께 적용하는 로컬·테스트만 `out-of-order` 허용 | 번호 공간을 나눠 두 팀의 마이그레이션이 서로의 번호를 잠식하지 않는다. 운영은 `db/migration`만 적용해 엄격한 순서 검증이 그대로 산다 |
+| 마이그레이션 번호 | `db/migration`과 `db/external`을 통틀어 **하나의 순열**. 새 파일은 폴더와 무관하게 다음 번호 | 두 폴더가 이력 테이블 하나를 공유하므로 번호대를 예약하면 낮은 번호가 뒤늦게 나타나 순서 검증에 걸린다. 파일을 쓰는 쪽이 백엔드 하나뿐이라 예약이 막을 충돌도 없다. 운영에서는 미러 번호가 비지만, 번호가 비는 것은 순서 위반이 아니다 |
 | 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | `instrument`는 데이터팀 소유라(§11.2) 스키마 배치를 이쪽이 정하지 않는다. SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
@@ -790,10 +790,9 @@ back-end/
     └── main/resources/
         ├── application.yaml · application-local.yaml
         ├── mapper/           AggregateMapper.xml
-        ├── db/migration/     V1__account.sql · V2__position_line.sql · V3__realized_pnl_line.sql
-        │                     V4__manual_cashflow.sql · V5__app_user.sql · V6__account_user_id.sql
-        ├── db/external/      V900__instrument_mirror.sql · V901__etf_coverage_mirror.sql
-        │                     데이터팀 소유 미러 — local·test 전용
+        ├── db/migration/     V1__initial_schema.sql      백엔드 소유 5개 테이블
+        ├── db/external/      V2__instrument_mirror.sql · V3__etf_coverage_mirror.sql
+        │                     데이터팀 소유 미러 — local·test 전용. 번호는 db/migration과 한 순열
         └── db/sample/        sample_portfolio.sql
     └── test/java/com/stockproject/portfolio/
         ├── ArchitectureRulesTest.java     불변식 1·5·BigDecimal·계층 접근
@@ -821,9 +820,9 @@ back-end/
 
 | user_id 끝자리 | email | display_name | 출처 | 노리는 것 |
 |---|---|---|---|---|
-| `…0001` | yhr@stock-project.local | yhr | `V5__app_user.sql` | 주 사용자. §C.5~C.11의 골든 값 |
-| `…0002` | jdh@stock-project.local | jdh | `V5__app_user.sql` | 겹치는 종목을 보유한 두 번째 사용자 |
-| `…0003` | hhj@stock-project.local | hhj | `V5__app_user.sql` | `as_of`가 하나뿐인 사용자 |
+| `…0001` | yhr@stock-project.local | yhr | `V1__initial_schema.sql` | 주 사용자. §C.5~C.11의 골든 값 |
+| `…0002` | jdh@stock-project.local | jdh | `V1__initial_schema.sql` | 겹치는 종목을 보유한 두 번째 사용자 |
+| `…0003` | hhj@stock-project.local | hhj | `V1__initial_schema.sql` | `as_of`가 하나뿐인 사용자 |
 | `…0004` | test_empty@stock-project.local | test_empty | 샘플 SQL | 계좌 0개 → `NO_ACCOUNTS` |
 
 UUID는 `40000000-0000-0000-0000-00000000000N` 꼴. `password_hash`는 BCrypt이며 셋 다 로컬 개발용 같은 비밀번호다 — 운영 전 교체 대상임을 README에 적는다.
@@ -1191,8 +1190,8 @@ hhj의 일간 변화가 `null`인 것은 직전 `as_of`가 없기 때문이다. 
 - Create: `back-end/docker-compose.yml` · `back-end/Dockerfile` · `back-end/.env.example`
 - Create: `back-end/src/main/java/com/stockproject/portfolio/PortfolioApplication.java`
 - Create: `back-end/src/main/resources/application.yaml` · `application-local.yaml`
-- Create: `back-end/src/main/resources/db/migration/V1__account.sql` · `V2__position_line.sql` · `V3__realized_pnl_line.sql` · `V4__manual_cashflow.sql` · `V5__app_user.sql` · `V6__account_user_id.sql`
-- Create: `back-end/src/main/resources/db/external/V900__instrument_mirror.sql`
+- Create: `back-end/src/main/resources/db/migration/V1__initial_schema.sql`
+- Create: `back-end/src/main/resources/db/external/V2__instrument_mirror.sql`
 - Create: `back-end/src/main/resources/db/sample/sample_portfolio.sql`
 - Test: `back-end/src/test/java/com/stockproject/portfolio/MigrationLintTest.java`
 - Test: `back-end/src/test/java/com/stockproject/portfolio/SchemaSmokeTest.java`
@@ -1205,12 +1204,12 @@ hhj의 일간 변화가 `null`인 것은 직전 `as_of`가 없기 때문이다. 
 
 **완료 조건**
 1. `./gradlew build`가 통과한다.
-2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 7개 마이그레이션을 적용한다.
+2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 마이그레이션 2개를 적용한다.
 3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 30행(07-27 16행 · 07-24 14행), `realized_pnl_line` 4행, `manual_cashflow` 2행, `account` 7행, `app_user` 4행, `instrument` 8행이 들어간다.
 4. **사용자별 총자산이 58,000,000 / 14,000,000 / 2,000,000 / 0으로 갈린다**(§C.12). 전역 합계는 74,000,000이다.
 5. `MigrationLintTest`가 통과한다 — 마이그레이션에 비율 컬럼이 없다.
 6. `db/external`은 `local`·`test` 프로필에서만 적용되고 기본(운영) 프로필에서는 적용되지 않는다.
-7. **`V1`~`V4`·`V900`을 수정하지 않는다.** 이미 적용된 마이그레이션을 고치면 Flyway가 체크섬 불일치로 거부한다 — 소유권 축은 `V5`·`V6` 두 파일로만 들어온다.
+7. 마이그레이션 번호가 두 폴더를 통틀어 하나의 순열이다(§A.2.5). 이후 태스크가 파일을 더할 때는 폴더와 무관하게 그때의 다음 번호를 쓴다.
 
 **검증 방법**
 ```bash
@@ -1327,19 +1326,49 @@ spring:
   flyway:
     # 데이터팀 소유 테이블 미러를 함께 적용한다 — 로컬 전용
     locations: classpath:db/migration,classpath:db/external
-    # 미러가 900번대를 차지하므로 백엔드 마이그레이션이 늘 때마다 낮은 번호가 뒤에 온다.
-    # 두 위치를 함께 적용하는 프로필에서만 필요하다 — 운영은 db/migration만 적용해 순서가 어긋나지 않는다.
-    out-of-order: true
 ```
 
-**두 위치를 함께 적용하면 순서가 어긋난다.** 백엔드 마이그레이션은 1번부터 올라가고 데이터팀 미러는 900번대를 쓰는데, 미러가 이미 적용된 데이터베이스에 백엔드 마이그레이션을 하나 더하면 그것이 900보다 낮은 번호로 뒤늦게 들어온다. 기본 설정의 Flyway는 이를 거부한다. 번호 공간을 나눈 대가이며, 운영은 `db/migration`만 적용하므로 이 완화가 필요 없다 — **엄격한 검증이 살아 있어야 할 곳에서는 그대로 살아 있다.**
+**번호는 두 폴더를 통틀어 하나의 순열이다.** 로컬·테스트는 두 위치를 함께 적용하고 Flyway는 이력을 한 테이블에 기록하므로, 폴더마다 번호대를 예약하면 낮은 번호가 뒤늦게 나타나 순서 검증에 걸린다. 미러 파일도 백엔드가 쓰는 것이라 번호를 두고 다툴 상대가 없으니 예약할 이유도 없다. 운영은 `db/migration`만 적용해 미러 번호가 비는데, **비는 것은 순서 위반이 아니라** 그대로 성립한다.
 
 - [ ] **Step 3: 마이그레이션 SQL 작성**
 
-`V1__account.sql`:
+백엔드 소유 테이블 다섯을 한 파일에 담는다. 처음 만드는 스키마이므로 중간 단계가 없다 — `account.user_id`는 컬럼 정의에 `NOT NULL REFERENCES` 한 줄로 들어간다.
+
+`V1__initial_schema.sql`:
 ```sql
+-- 백엔드 소유 테이블. 소유 경계는 설계 스펙 §11.2 — 데이터팀 소유 테이블은 여기서 만들지 않는다.
+--
+-- 마이그레이션 번호는 db/migration 과 db/external 을 통틀어 하나의 순열이다.
+-- 새 파일은 폴더와 무관하게 그때의 다음 번호를 쓴다.
+
+-- 사용자. 스코프의 기준이며 인증 토큰의 sub가 이 id다 — 설계 스펙 §3.8 · §8.8
+CREATE TABLE app_user (
+    id            uuid PRIMARY KEY,
+    email         text        NOT NULL UNIQUE,
+    password_hash text        NOT NULL,
+    display_name  text        NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE app_user IS
+  '사용자. 행은 이 마이그레이션이 심고 회원가입 경로를 두지 않는다 — 설계 스펙 §5.1 · §12';
+COMMENT ON COLUMN app_user.password_hash IS
+  'BCrypt 해시만 저장한다. 원문은 로그·응답 어디에도 남기지 않는다 — 설계 스펙 §8.8';
+
+-- 비밀번호 해시는 로컬 개발용 값이다. 운영 배포 전에 교체한다.
+INSERT INTO app_user (id, email, password_hash, display_name) VALUES
+ ('40000000-0000-0000-0000-000000000001','yhr@stock-project.local',
+   '$2y$10$JJQvq3uLIY63DiNMRghXPeqrhqzfEPZZHjHTT3PXqCzyK6XY7YK8G','yhr'),
+ ('40000000-0000-0000-0000-000000000002','jdh@stock-project.local',
+   '$2y$10$3G5stjp8OaLSEjyPiRpVh.VFOCyEMhSCClFc/zbf2W2wmIcETVOwO','jdh'),
+ ('40000000-0000-0000-0000-000000000003','hhj@stock-project.local',
+   '$2y$10$uvxd.nOL0RT7hOgHKaxO4e5oWVWUSL7iiIZTpVbHvPA3j3l5BBUlm','hhj');
+
+-- 계좌. user_id가 소유권 축이며, 보유 스냅샷·실현손익·입출금은 계좌를 통해
+-- 소유자가 결정된다 — 설계 스펙 §3.8
 CREATE TABLE account (
     account_id     uuid PRIMARY KEY,
+    user_id        uuid NOT NULL REFERENCES app_user (id),
     broker         text NOT NULL,
     label          text NOT NULL,
     account_type   text NOT NULL CHECK (account_type IN ('GENERAL', 'PENSION')),
@@ -1350,12 +1379,15 @@ CREATE TABLE account (
     last_synced_at timestamptz
 );
 
-COMMENT ON COLUMN account.credential_ref IS '시크릿 매니저 키만 저장한다. 자격증명 값 자체를 저장하지 않는다 — 스펙 §5.1';
-COMMENT ON COLUMN account.label IS '표시명. broker와 다르다 — 같은 기관에 위탁·IRP가 함께 있다';
-```
+CREATE INDEX idx_account_user ON account (user_id);
 
-`V2__position_line.sql`:
-```sql
+COMMENT ON COLUMN account.user_id IS
+  '소유자. 생성 후 바뀌지 않는다 — 계좌 소유자 이전을 지원하지 않는다. 설계 스펙 §9.1 · §12';
+COMMENT ON COLUMN account.credential_ref IS
+  '시크릿 매니저 키만 저장한다. 자격증명 값 자체를 저장하지 않는다 — 설계 스펙 §5.1';
+COMMENT ON COLUMN account.label IS
+  '표시명. broker와 다르다 — 같은 기관에 위탁·IRP가 함께 있다';
+
 CREATE TABLE position_line (
     as_of              date           NOT NULL,
     account_id         uuid           NOT NULL REFERENCES account (account_id),
@@ -1376,17 +1408,12 @@ CREATE TABLE position_line (
 CREATE INDEX idx_position_line_account_as_of ON position_line (account_id, as_of);
 
 COMMENT ON TABLE position_line IS
-  '보유 스냅샷. 그레인 (as_of, account_id, instrument_id). 비율(수익률·비중) 컬럼을 두지 않는다 — 스펙 §1.5 · §9.2';
+  '보유 스냅샷. 그레인 (as_of, account_id, instrument_id). 비율(수익률·비중) 컬럼을 두지 않는다 — 설계 스펙 §1.5 · §9.2';
 COMMENT ON COLUMN position_line.cost_amount_local IS
-  '잔고 평단 기준(cln_balance.avg_price × quantity). position_basis를 참조하지 않는다 — 스펙 §4.1';
+  '잔고 평단 기준(cln_balance.avg_price × quantity). position_basis를 참조하지 않는다 — 설계 스펙 §4.1';
 COMMENT ON COLUMN position_line.instrument_id IS
   '데이터팀 소유 instrument 참조. 배포 순서를 묶지 않기 위해 FK를 걸지 않는다';
-```
 
-`fx_rate`·`fx_as_of`를 `NOT NULL`로 둔 것이 §9.1의 "`market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수"를 스키마로 표현한 것이다. 세 컬럼 모두 `NOT NULL`이므로 규칙이 구조적으로 성립한다.
-
-`V3__realized_pnl_line.sql`:
-```sql
 CREATE TABLE realized_pnl_line (
     trade_id           text           PRIMARY KEY,
     account_id         uuid           NOT NULL REFERENCES account (account_id),
@@ -1408,15 +1435,12 @@ CREATE INDEX idx_realized_pnl_line_sold_at ON realized_pnl_line (sold_at);
 CREATE INDEX idx_realized_pnl_line_account_sold_at ON realized_pnl_line (account_id, sold_at);
 
 COMMENT ON TABLE realized_pnl_line IS
-  '매도 체결 1건 = 1행. trade_id upsert로만 생성한다(insert-only 금지) — 스펙 §9.1';
+  '매도 체결 1건 = 1행. trade_id upsert로만 생성한다(insert-only 금지) — 설계 스펙 §9.1';
 COMMENT ON COLUMN realized_pnl_line.grade IS
-  '산출 시점 position_basis 등급의 스냅샷. 이후 갱신하지 않는다. MIXED는 응답 조립 시에만 생기며 저장하지 않는다 — 스펙 §4.3 · §8.4';
-```
+  '산출 시점 position_basis 등급의 스냅샷. 이후 갱신하지 않는다. MIXED는 응답 조립 시에만 생기며 저장하지 않는다 — 설계 스펙 §4.3 · §8.4';
 
-`V4__manual_cashflow.sql`:
-```sql
--- 사용자 입력 입출금. 증권사가 입출금 이력 API를 열어주지 않아(KIS는 TR 자체가 없음)
--- DEPOSIT·WITHDRAW는 원천이 아니라 사용자 입력을 기본 경로로 둔다 — 스펙 §4.6 · §5.1
+-- 사용자 입력 입출금. 증권사 API가 입출금 이력을 열어주지 않는 경우가 있어
+-- DEPOSIT·WITHDRAW는 원천이 아니라 사용자 입력을 기본 경로로 둔다 — 설계 스펙 §4.6 · §5.1
 CREATE TABLE manual_cashflow (
     id           uuid PRIMARY KEY,
     account_id   uuid           NOT NULL REFERENCES account (account_id),
@@ -1431,59 +1455,23 @@ CREATE INDEX idx_manual_cashflow_occurred_on ON manual_cashflow (occurred_on);
 CREATE INDEX idx_manual_cashflow_account_occurred_on ON manual_cashflow (account_id, occurred_on);
 
 COMMENT ON TABLE manual_cashflow IS
-  '자산 변화 뷰의 "넣은 돈"의 유일한 출처. cln_cashflow에는 DEPOSIT·WITHDRAW가 오지 않는다 — 스펙 §9.1';
+  '자산 변화 뷰의 "넣은 돈"의 유일한 출처. cln_cashflow에는 DEPOSIT·WITHDRAW가 오지 않는다 — 설계 스펙 §9.1';
 ```
 
-`amount`를 양수로 제약하고 방향은 `type`이 정한다 — 부호와 유형이 어긋나 이중 부정이 생기는 것을 막는다.
+`fx_rate`·`fx_as_of`를 `NOT NULL`로 둔 것이 §9.1의 "`market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수"를 스키마로 표현한 것이다. 세 컬럼 모두 `NOT NULL`이므로 규칙이 구조적으로 성립한다.
 
-`V5__app_user.sql` — 소유권 축의 기준이 되는 테이블. 사용자 행을 여기서 심는다:
-```sql
--- 사용자. 스코프의 기준이며 토큰 sub가 user_id다 — 설계 스펙 §3.8 · §8.8
-CREATE TABLE app_user (
-    id            uuid PRIMARY KEY,
-    email         text        NOT NULL UNIQUE,
-    password_hash text        NOT NULL,
-    display_name  text        NOT NULL,
-    created_at    timestamptz NOT NULL DEFAULT now()
-);
+`manual_cashflow.amount`를 양수로 제약하고 방향은 `type`이 정한다 — 부호와 유형이 어긋나 이중 부정이 생기는 것을 막는다.
 
-COMMENT ON TABLE app_user IS
-  '사용자. 행은 이 마이그레이션이 심고 회원가입 경로를 두지 않는다 — 설계 스펙 §5.1 · §12';
-COMMENT ON COLUMN app_user.password_hash IS
-  'BCrypt 해시만 저장한다. 원문은 로그·응답 어디에도 남기지 않는다 — 설계 스펙 §8.8';
+`app_user` 시드가 마이그레이션에 있는 이유는 회원가입 경로를 두지 않기 때문이다(§12). 사용자가 늘어나는 속도가 사람을 추가하는 속도와 같아 셀프서비스가 값을 하지 않는다.
 
--- 비밀번호 해시는 로컬 개발용 값이다. 운영 배포 전에 교체한다.
-INSERT INTO app_user (id, email, password_hash, display_name) VALUES
- ('40000000-0000-0000-0000-000000000001','yhr@stock-project.local','<bcrypt>','yhr'),
- ('40000000-0000-0000-0000-000000000002','jdh@stock-project.local','<bcrypt>','jdh'),
- ('40000000-0000-0000-0000-000000000003','hhj@stock-project.local','<bcrypt>','hhj');
-```
-
-PK 컬럼명이 `id`인 것은 `account`·`manual_cashflow`와 결이 같아서다. 참조하는 쪽은 `user_id`로 부른다.
-
-`V6__account_user_id.sql` — 계좌에 소유자를 붙인다:
-```sql
--- 소유권 축. account 하나에만 두고 나머지 테이블은 계좌를 통해 소유자가 결정된다 — 설계 스펙 §3.8
-ALTER TABLE account ADD COLUMN user_id uuid;
-
-UPDATE account SET user_id = '40000000-0000-0000-0000-000000000001' WHERE user_id IS NULL;
-
-ALTER TABLE account
-    ALTER COLUMN user_id SET NOT NULL,
-    ADD CONSTRAINT fk_account_user FOREIGN KEY (user_id) REFERENCES app_user (id);
-
-CREATE INDEX idx_account_user ON account (user_id);
-
-COMMENT ON COLUMN account.user_id IS
-  '소유자. 생성 후 바뀌지 않는다 — 계좌 소유자 이전을 지원하지 않는다. 설계 스펙 §9.1 · §12';
-```
-
-`NOT NULL`을 나중에 거는 세 단계인 이유는 이미 계좌 행이 있는 DB 때문이다. 컬럼을 곧바로 `NOT NULL`로 추가하면 기존 행이 값을 갖지 못해 마이그레이션이 실패한다. 백필 대상이 주 사용자인 것은 그 계좌들이 실제로 그의 것이기 때문이다.
-
-`V900__instrument_mirror.sql` (`db/external/`):
+`V2__instrument_mirror.sql` (`db/external/`):
 ```sql
 -- 데이터팀 소유 테이블의 로컬·테스트 전용 미러.
--- 소유 경계는 스펙 §11.2. 운영 프로필(spring.flyway.locations=classpath:db/migration)은 이 파일을 적용하지 않는다.
+-- 소유 경계는 설계 스펙 §11.2. 운영 프로필(spring.flyway.locations=classpath:db/migration)은
+-- 이 파일을 적용하지 않는다.
+--
+-- 번호는 db/migration 과 통틀어 하나의 순열이다. 운영에서는 이 번호가 비지만,
+-- 번호가 비는 것은 문제가 되지 않는다 — 낮은 번호가 뒤늦게 오는 것만 순서 위반이다.
 CREATE TABLE IF NOT EXISTS instrument (
     instrument_id uuid PRIMARY KEY,
     isin          text,
@@ -1496,6 +1484,7 @@ CREATE TABLE IF NOT EXISTS instrument (
     is_leveraged  boolean
 );
 ```
+
 
 - [ ] **Step 4: 마이그레이션 린트 테스트를 쓴다 (실패 확인)**
 
@@ -1621,7 +1610,6 @@ spring:
     password: ${DB_PASSWORD:portfolio}
   flyway:
     locations: classpath:db/migration,classpath:db/external
-    out-of-order: true
 ```
 
 Run: `docker compose up -d db && ./gradlew test --tests '*SchemaSmokeTest'` → PASS.
@@ -2944,7 +2932,7 @@ git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검
 **Files:**
 - Create: `src/main/resources/mapper/AggregateMapper.xml` (렌즈 `<sql>` 조각)
 - Create: `query/aggregate/AggregateMapper.java` · `EtfCoverageMapper.java` · `UndecomposedEtf.java`
-- Create: `src/main/resources/db/external/V901__etf_coverage_mirror.sql`
+- Create: `src/main/resources/db/external/V3__etf_coverage_mirror.sql`
 - Test: `test/.../query/aggregate/LensPreservationTest.java`
 
 **Interfaces:**
@@ -2967,7 +2955,7 @@ git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검
 
 - [ ] **Step 1: `etf_coverage` 미러를 추가한다**
 
-`db/external/V901__etf_coverage_mirror.sql`을 새로 만든다. **이미 적용된 `V900`을 고치지 않는다** — Flyway가 체크섬 불일치로 거부한다. 데이터팀 소유이며 로컬·테스트 전용이라는 성격은 `instrument`와 같다.
+`db/external/V3__etf_coverage_mirror.sql`을 새로 만든다. 데이터팀 소유이며 로컬·테스트 전용이라는 성격은 `instrument`와 같고, 번호는 폴더와 무관하게 그때의 다음 값이다(§A.2.5). **이미 적용된 마이그레이션은 고치지 않는다** — 내용을 바꾸면 Flyway가 체크섬 불일치로 거부한다.
 
 ```sql
 CREATE TABLE IF NOT EXISTS etf_coverage (
