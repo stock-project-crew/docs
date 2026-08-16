@@ -7,11 +7,11 @@
 - **근거 스펙**: [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) · [와이어플로우](../specs/portfolio-management/wireflow.png) · [설계 공유 문서](../meetings/2026-08-09-portfolio-design-review.md) · [KIS 실측](../verification/kis-portfolio-assumptions.md)
 - **스펙 수정 금지**: 이 계획은 스펙을 인용만 한다. 스펙 파일을 고치지 않는다.
 
-**Goal:** `position_line`에 손으로 넣은 샘플 행만으로 6개 뷰의 REST 응답이 전부 나오는, 실행 가능한 조회 계층 뼈대를 만든다.
+**Goal:** `position_line`에 손으로 넣은 샘플 행만으로 6개 뷰의 REST 응답이 전부 나오는, 실행 가능한 조회 계층 뼈대를 만든다. 로그인한 사용자는 **자기 계좌의 자산만** 본다.
 
-**Architecture:** 저장은 `position_line` 한 종류이고, 화면은 `group_by`만 바꾼다. 조회 요청은 한 개의 집계 쿼리로 처리한다 — 렌즈 CTE가 대상 행 집합을 만들고, 마스터를 조인해 축을 붙이고, 필터를 걸고, 요청 축으로 `GROUP BY`하며 측정값을 `SUM`한다(스펙 §3.6의 2~4단계). 파생 지표와 응답 조립만 Java가 맡는다(5~6단계). 가산 가능한 측정값과 가산 불가능한 비율이 **서로 다른 타입**으로 분리되어 있어 비율을 더하는 코드는 컴파일되지 않는다.
+**Architecture:** 저장은 `position_line` 한 종류이고, 화면은 `group_by`만 바꾼다. 조회 요청은 한 개의 집계 쿼리로 처리한다 — 렌즈 CTE가 **인증 주체의** 대상 행 집합을 만들고, 마스터를 조인해 축을 붙이고, 필터를 걸고, 요청 축으로 `GROUP BY`하며 측정값을 `SUM`한다(스펙 §3.6의 2~4단계). 파생 지표와 응답 조립만 Java가 맡는다(5~6단계). 가산 가능한 측정값과 가산 불가능한 비율이 **서로 다른 타입**으로 분리되어 있어 비율을 더하는 코드는 컴파일되지 않는다.
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · Gradle (Kotlin DSL) · PostgreSQL 16 · Flyway · MyBatis (ORM 없음) · Docker Compose · JUnit 5 + AssertJ + ArchUnit
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · Gradle (Kotlin DSL) · PostgreSQL 16 · Flyway · MyBatis (ORM 없음) · Spring Security + JWT · Docker Compose · JUnit 5 + AssertJ + ArchUnit
 
 ---
 
@@ -27,7 +27,7 @@
 - **모든 금액 계산은 `BigDecimal`.** `double`/`float`를 금액·수량·환율·비율에 쓰지 않는다. ArchUnit으로 강제한다(Task 3).
 - **참조 테이블의 스키마는 SQL에 박지 않는다.** `instrument`는 데이터팀이 소유하고 백엔드가 만들지 않으므로(§11.2), 그 테이블이 어느 스키마에 놓이는지를 이쪽이 정하지 않는다. SQL은 스키마 무자격 이름으로 쓰고 해석은 JDBC URL의 `currentSchema`가 정한다 — 로컬·테스트는 `public`이다. 배치가 달라져도 코드는 그대로다.
 - **데이터팀 소유 테이블을 백엔드 마이그레이션이 만들지 않는다.** 소유 경계는 스펙 §11.2 — 백엔드는 `account` · `position_line` · `position_basis` · `realized_pnl_line` · `sync_run`만 소유한다. 조인에 필요한 `instrument`는 로컬·테스트 전용 미러로만 만든다(§A.2.3).
-- **이번 범위에 인증을 넣지 않는다.** 근거는 §A.9.
+- **모든 조회는 인증 주체의 데이터로 스코프된다**(스펙 §3.8). 스코프는 요청 파라미터가 아니라 토큰에서 오고, 강제 방법은 §A.3 불변식 5다.
 - **한국어 라벨·메시지는 서버가 완성해 내린다**(§8.2). 클라이언트는 `message`를 그대로 출력하고 `code`로 분기한다.
 - **커밋 메시지는 Conventional Commits** (`feat:` · `test:` · `chore:` · `docs:`). 각 태스크 끝에 1커밋.
 
@@ -37,9 +37,10 @@
 
 ## A.1 도달점과 범위
 
-**도달점.** `docker compose up` → 샘플 SQL 실행 → 아래 6개 요청이 모두 `200`과 유효한 응답 봉투를 반환한다.
+**도달점.** `docker compose up` → 샘플 SQL 실행 → 로그인해 얻은 토큰으로 아래 요청이 모두 `200`과 유효한 응답 봉투를 반환하고, **다른 사용자의 토큰으로 부르면 그 사용자의 값이 나온다.**
 
 ```
+POST /auth/login
 GET /portfolio/views/summary
 GET /portfolio/views/positions?lens=DIRECT
 GET /portfolio/views/allocation?axis=sector&lens=DIRECT
@@ -64,7 +65,7 @@ GET /portfolio/catalog
 | 5 | 파생 지표 | ○ |
 | 6 | 통화 선택·정렬·기타 버킷 배치·as-of 첨부 | ○ |
 
-**스펙 §9 검증 규칙 중 이번 범위는 9.1의 `position_line`·렌즈 관련과 9.3 전부.** 9.1의 평단·등급 묶음은 1.5/1.6단계에 속해 제외한다.
+**스펙 §9 검증 규칙 중 이번 범위는 9.1의 사용자 스코프·`position_line`·렌즈 관련과 9.3 전부.** 9.1의 평단·등급 묶음은 1.5/1.6단계에 속해 제외한다.
 
 ## A.2 스택 선택과 근거
 
@@ -112,7 +113,7 @@ SQL을 사람이 쓰고, 동적 조립을 매퍼 XML이 맡는다.
 **감수하는 것과 완화.**
 
 - **축 식은 값 바인딩(`#{}`)이 아니라 문자열 치환(`${}`)을 쓴다.** 컬럼 이름과 표현식은 바인딩할 수 없기 때문이다. `${}`에 들어가는 값은 **카탈로그 대조(§9.3)를 통과한 `AxisKey` enum이 고른 상수뿐**이며 요청 문자열이 닿지 않는다. → 이 규칙을 테스트로 고정한다(Task 6): 매퍼에 넘기는 축 목록의 타입이 `List<AxisKey>`이고 `String`을 받는 경로가 없다.
-- 컬럼명 오타와 조각 조합 실수를 컴파일이 잡지 못한다. → (a) 축 × 렌즈 조합마다 실제 DB에서 실행되는지 테스트로 확인하고(Task 6), (b) 모든 스냅샷 뷰에서 `Σ rows = total`을 검사해 조합이 틀리면 수치로 드러나게 하며(Task 11), (c) 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
+- 컬럼명 오타와 조각 조합 실수를 컴파일이 잡지 못한다. → (a) 축 × 렌즈 조합마다 실제 DB에서 실행되는지 테스트로 확인하고(Task 6), (b) 모든 스냅샷 뷰에서 `Σ rows = total`을 검사해 조합이 틀리면 수치로 드러나게 하며(Task 12), (c) 데이터팀 소유 테이블은 `information_schema` 대조 테스트로 계약을 검사한다(Task 4).
 
 **되돌리는 조건.** 축이나 지표가 늘어 XML 조각 조합이 사람 눈으로 검토되지 않는 수준이 되면 jOOQ(코드 생성 없이)로 옮긴다. 그때 바뀌는 것은 `query` 패키지와 매퍼 XML이고 나머지 계층은 인터페이스로 격리돼 있다.
 
@@ -146,6 +147,9 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
+| `app_user` 인덱스 | PK `user_id`, `email` UNIQUE | 로그인이 이메일로 한 행을 찾는다. UNIQUE가 곧 로그인 ID 유일성이다 |
+| `account` 인덱스 | `(user_id)` | 모든 조회가 계좌를 통해 사용자로 좁혀진다(§3.8). 계좌 수가 사용자당 한 자릿수라 이 인덱스 하나면 스코프 비용이 사라진다 |
+| `account.user_id` FK | **건다** — `app_user` 참조 | `instrument`와 달리 같은 팀이 소유해 배포 순서가 묶이지 않는다. 소유자 없는 계좌는 스코프가 성립하지 않으므로 DB가 막는 편이 맞다 |
 | `position_line` PK | `(as_of, account_id, instrument_id)` | 그레인 유일성을 DB가 1차 보증(§9.1) |
 | `position_line` 보조 인덱스 | `(account_id, as_of)` | 자산 변화 뷰의 계좌 필터 + 기간 경계 조회 |
 | `realized_pnl_line` 인덱스 | PK `trade_id`, 보조 `(sold_at)` · `(account_id, sold_at)` | 기간 귀속이 체결일(§4.3) |
@@ -156,9 +160,9 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | `instrument`는 데이터팀 소유라(§11.2) 스키마 배치를 이쪽이 정하지 않는다. SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
-## A.3 반드시 지켜야 할 불변식 네 가지와 강제 방법
+## A.3 반드시 지켜야 할 불변식 다섯 가지와 강제 방법
 
-이 네 개가 이 계획의 존재 이유다. 각 항목의 "구조로 강제"가 구현의 합격선이다.
+이 다섯 개가 이 계획의 존재 이유다. 각 항목의 "구조로 강제"가 구현의 합격선이다.
 
 ### 불변식 1 — 비율은 저장하지 않고 집계 후 계산한다 (§1.5 · §3.2 · §9.2)
 
@@ -232,7 +236,25 @@ array_agg(DISTINCT i.currency) AS currencies
 | `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `instrument_count` | 행·합계 양쪽 (양쪽 모두 CASH 제외 의미로 동일) |
 | `quantity` · `avg_cost` · `weight_pct` | 행 전용 |
 
-**구조로 강제하는 방법.** 카탈로그 `Metric`에 `scope: ROW | TOTAL | BOTH`를 두고, 응답 조립기가 `scope`를 보고 목적지를 정한다. 그리고 `Σ rows.market_value_krw == total.total_assets_krw`를 **모든 스냅샷 뷰 응답에서 검사하는 테스트**를 둔다(Task 6·8).
+**구조로 강제하는 방법.** 카탈로그 `Metric`에 `scope: ROW | TOTAL | BOTH`를 두고, 응답 조립기가 `scope`를 보고 목적지를 정한다. 그리고 `Σ rows.market_value_krw == total.total_assets_krw`를 **모든 스냅샷 뷰 응답에서 검사하는 테스트**를 둔다(Task 6·9).
+
+### 불변식 5 — 조회는 인증 주체의 데이터로만 스코프된다 (§3.8 · §8.8 · §9.1)
+
+한 테이블에 여러 사용자의 자산이 함께 있으므로, `WHERE` 절 하나를 빠뜨리면 남의 자산이 총합에 섞이고 남의 계좌가 목록에 보인다. 앞의 네 불변식과 달리 **위반해도 값이 이상해 보이지 않는다** — 총자산이 좀 커 보일 뿐이다. 그래서 강제를 코드 리뷰에 맡기지 않는다.
+
+**구조로 강제하는 방법 네 겹.**
+
+1. **스코프가 CTE 안에 있다.** `targetLine` 조각이 `account`를 조인하고 `user_id`를 건다(Task 5). 그 아래 조인·필터·집계는 이미 좁혀진 집합을 받으므로 스코프를 다시 걸 자리도, 빠뜨릴 자리도 없다. 스펙 §3.8의 "스코프는 2단계 앞에 선다"가 쿼리 구조로 성립한다.
+2. **매퍼가 스코프 없이 호출되지 않는다.** 사용자 소유 테이블을 읽는 모든 매퍼 메서드가 `UserScope`를 첫 파라미터로 받는다. 리플렉션 테스트가 매퍼 인터페이스를 훑어 이를 검사한다(Task 8).
+3. **`UserScope`는 `LineFilter`와 다른 타입이다.** 필터는 사용자가 고르는 것이고 스코프는 고를 수 없는 것이라(§3.8), 한 타입에 담으면 `LineFilter.NONE`으로 스코프까지 비워진다. 두 타입이 갈려 있으면 그 실수가 컴파일되지 않는다.
+4. **컨트롤러가 `user_id`를 받지 않는다.** ArchUnit이 `api` 패키지의 핸들러 시그니처에 `user`·`userId` 이름의 `@RequestParam`·`@PathVariable`이 있으면 실패시킨다(Task 8).
+
+```java
+/** 스코프 — 인증 주체가 정한다. 요청이 고를 수 없어 LineFilter와 타입을 나눈다(§3.8). */
+public record UserScope(UUID userId) { }
+```
+
+그리고 **샘플 데이터가 네 사용자를 담는다**(§C). 스코프가 새면 골든 값 58,000,000이 74,000,000이 되어 Task 12의 골든 테스트가 즉시 깨진다 — 검사를 잊어도 수치가 말한다.
 
 ## A.4 카탈로그 — 실제 값
 
@@ -258,6 +280,8 @@ Axis { key, label, source, applicableViews[], lensSensitive, enabled }
 | `is_leveraged` | 레버리지 | 종목 속성 | `allocation` | **true** | **false** — 원천 미확보, 요청 시 거부(§9.3) |
 
 `account` 계열이 `lensSensitive = false`인 이유: look-through가 총합을 보존하므로 계좌 합계가 렌즈에 흔들리지 않는다. 그래서 `LOOK_THROUGH`에서도 계좌 필터만 허용된다(§9.3).
+
+**사용자 축은 없다.** 축은 한 사람의 자산을 묶는 기준이고 사용자는 대상 행 집합 자체를 정하므로, `AxisKey`에 값을 추가하지 않고 `UserScope`로 다룬다(§A.3 불변식 5).
 
 **분류 축의 폴백** (§6.1)
 
@@ -503,8 +527,13 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | `UNKNOWN_FILTER_VALUE` | 400 | 필터 값이 enum·계좌 목록에 없다 |
 | `INVALID_PERIOD` | 400 | `period=CUSTOM`인데 `from`/`to` 누락 또는 `from > to` |
 | `FACT_INVARIANT_VIOLATED` | 500 | §9.1 런타임 검증 실패 (§A.8) |
+| `UNAUTHENTICATED` | 401 | 토큰 없음 · 만료 · 서명 불일치 (§8.8) |
+| `INVALID_CREDENTIALS` | 401 | 로그인 실패. 이메일 없음과 비밀번호 불일치를 구분하지 않는다 |
+| `FORBIDDEN_ACCOUNT` | 403 | 인증 주체 소유가 아닌 계좌를 필터로 지정 (§9.3) |
 
 **빈 상태는 오류가 아니다.** `rows: []` + `empty_reason` + `200`이다.
+
+**남의 계좌 지정은 빈 상태가 아니라 오류다.** `403`을 내는 이유는 조용히 비우면 존재하지 않는 계좌 ID(빈 결과)와 남의 계좌 ID(역시 빈 결과)가 같은 응답을 내야 하는데, 어느 쪽이든 응답이 달라지는 순간 계좌 ID의 존재 여부가 새기 때문이다. 처음부터 거부하면 그 구분이 필요 없다.
 
 ## A.7 테이블 컬럼과 타입
 
@@ -528,11 +557,28 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리가 없으면 잘못 더할 방법도 없다(§3.2).
 
-### A.7.2 `account` — 계좌, 백엔드 소유 (§5.1)
+### A.7.2 `app_user` · `account` — 사용자와 계좌, 백엔드 소유 (§5.1)
+
+소유권 축이 여기 있다. `app_user`가 스코프의 기준이고 `account.user_id`가 그것을 자산에 연결하는 유일한 고리다(§3.8).
+
+**`app_user`**
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `user_id` | `uuid` PK | 토큰 `sub`가 이 값이다 |
+| `email` | `text` UNIQUE NOT NULL | 로그인 ID |
+| `password_hash` | `text` NOT NULL | BCrypt. 원문은 저장하지 않는다 |
+| `display_name` | `text` NOT NULL | 화면 표시명 |
+| `created_at` | `timestamptz` NOT NULL | |
+
+행은 마이그레이션이 심는다(§C.1). 회원가입 경로를 두지 않는다(§12).
+
+**`account`**
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
 | `account_id` | `uuid` PK | |
+| `user_id` | `uuid` NOT NULL | → `app_user` FK. 생성 후 변경 불가(§9.1) |
 | `broker` | `text` | 기관명 (`한국투자증권`) |
 | `label` | `text` | 표시명. §8.5의 `by_account[].label`과 §2.7의 계좌 컬럼이 쓴다. 같은 기관에 계좌가 여럿이라(위탁·IRP) `broker`로는 구분되지 않는다 |
 | `account_type` | `text` CHECK | `GENERAL` · `PENSION` |
@@ -600,11 +646,16 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 
 `position_line`을 읽은 직후, **집계 전에** 통과해야 한다. 위반은 조용히 넘기지 않고 `500 FACT_INVARIANT_VIOLATED`로 실패시킨다 — 손으로 넣은 샘플이 틀렸다는 뜻이므로 크게 터지는 쪽이 맞다.
 
+**검증도 스코프 안에서 한다.** `PositionLineInvariants.validate(UserScope, LocalDate)`이며, 남의 데이터가 깨졌다고 내 화면이 `500`이 되지 않는다. 조회 경로가 이미 그 사용자만 읽으므로 검증 범위도 같아야 한다.
+
 | 규칙 | 강제 지점 |
 |---|---|
+| 사용자 소유 테이블 조회는 `UserScope`로 좁혀진다 | **구조로 강제**(§A.3 불변식 5) — 매퍼 시그니처 리플렉션 테스트 + `targetLine` CTE + ArchUnit |
+| `as_of` 후보는 그 사용자의 계좌에 라인이 있는 날짜뿐 (§3.8) | `SnapshotCalendarMapper`의 다섯 쿼리 전부가 `account` 조인 + `user_id` 조건 |
+| `account.user_id`는 생성 후 변경 불가 | 이번 범위에 계좌 쓰기 경로가 없어 발생하지 않는다. 연동(§A.9)에서 강제 |
 | `position_line`은 `(as_of, account, instrument)`마다 **정확히 1행** — 그레인 유일성 | PK(1차) + `PositionLineInvariants`(적재된 라인 집합 재검사) |
 | `market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수 | `NOT NULL` 3개(1차) + 검증기(렌즈 산출 라인까지 커버) |
-| 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 | 검증기 — `account` 목록과 대조. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다 |
+| 그 사용자의 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 | 검증기 — 그 사용자의 `account` 목록과 대조. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다 |
 | `is_carried_forward = true`이면 `source_as_of < as_of` | **검증기 전용.** `timestamptz AT TIME ZONE`이 immutable이 아니라 CHECK 제약으로 표현할 수 없다 |
 | CASH 행은 원가 = 평가금액 (§5.2) | 검증기 — `asset_class`가 다른 테이블에 있어 CHECK로 표현 불가 |
 | look-through 전개 후 `Σ market_value_krw`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) | 렌즈 CTE의 총합을 `position_line`의 총합과 대조하는 테스트 (Task 5) |
@@ -625,7 +676,8 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 손익성 현금흐름 (`cln_cashflow` — `DIVIDEND`·`FEE`·`TAX`) | 매매대금 배제 규칙과 `FEE`·`TAX` 원천이 팀 미합의 (안건 1) | `EarningsCashflowPort` 인터페이스 + `EmptyEarningsCashflowPort`. 빈 결과가 곧 "미확보"이므로 `CASHFLOW_UNCOVERED`가 정직하게 뜨고 항등식은 그대로 성립한다 |
 | 입출금 **입력 화면·`POST` 엔드포인트** | 조회 계층이 범위다. 읽기 경로와 테이블은 만든다 | `manual_cashflow` 테이블 + 샘플 행 + `ManualCashflowMapper`(읽기). **`DEPOSIT`·`WITHDRAW`는 스텁이 아니라 실제 값이다** |
 | 종목 상세 `GET /portfolio/instruments/{id}` | `position_basis` · `cln_trade` · `corporate_action`에 의존 | 만들지 않는다. 6개 뷰 엔드포인트만 노출 |
-| API 인증 | 자격증명 보관 방식이 안건 7에 걸려 있고, 단일 사용자 전제라 인증 모델이 계좌 연동과 함께 결정된다 | Spring Security를 넣지 않는다. 로컬 전용임을 README에 명시 |
+| 회원가입 · 비밀번호 재설정 | 사용자가 늘어나는 속도가 사람을 추가하는 속도와 같아 셀프서비스가 값을 하지 않는다(§12) | 사용자 행은 마이그레이션이 심는다(§C.1). `app_user` 테이블과 로그인 조회 경로는 실제로 만든다 |
+| refresh 토큰 · 강제 로그아웃 | 서버가 세션을 들지 않는 선택의 대가다(§8.8) | access token 하나로 끝낸다. 만료되면 재로그인 |
 | 프론트엔드 | 담당자 미정 | — |
 
 **`LOOK_THROUGH` 스텁이 가짜가 아닌 이유.** `etf_coverage`에 행이 없으면 모든 ETF가 미확보이고, 스펙 §3.4는 그 경우 "**전개하지 않고 ETF 행을 그대로 남긴다**"고 정한다. 즉 이번 범위의 `LOOK_THROUGH`는 **스펙이 정의한 정상 경로**를 타며, 미분해 평가금액을 `CONSTITUENT_UNAVAILABLE`에 실어 사용자에게 알린다. 구현하지 않는 것은 안분 산술 하나이고, 그것이 붙을 자리는 CTE의 `UNION ALL` 한 곳이다.
@@ -690,6 +742,14 @@ back-end/
     │   │   │   ├── TotalAssetsKrw.java   package-private 생성자
     │   │   │   ├── GroupKey.java · GroupNode.java
     │   │   │   └── Derived.java          파생 지표 계산 유일 지점
+    │   ├── auth/                         인증과 스코프 (§8.8 · §3.8)
+    │   │   ├── UserScope.java            record(UUID userId) — LineFilter와 다른 타입
+    │   │   ├── AppUser.java · AppUserMapper.java
+    │   │   ├── JwtCodec.java             발급·검증. 비밀키는 환경변수
+    │   │   ├── JwtAuthenticationFilter.java · SecurityConfig.java
+    │   │   ├── UserScopeArgumentResolver.java  컨트롤러가 파라미터로 받지 않게 하는 주입 지점
+    │   │   ├── AccountOwnershipGuard.java      계좌 필터 소유 검사 → 403
+    │   │   └── AuthController.java · dto/ LoginRequest · TokenResponse · MeResponse
     │   ├── validation/
     │   │   ├── PositionLineInvariants.java
     │   │   ├── FactInvariantViolation.java
@@ -730,16 +790,18 @@ back-end/
         ├── application.yaml · application-local.yaml
         ├── mapper/           AggregateMapper.xml
         ├── db/migration/     V1__account.sql · V2__position_line.sql · V3__realized_pnl_line.sql
-        │                     V4__manual_cashflow.sql
+        │                     V4__manual_cashflow.sql · V5__app_user.sql · V6__account_user_id.sql
         ├── db/external/      V900__instrument_mirror.sql · V901__etf_coverage_mirror.sql
         │                     데이터팀 소유 미러 — local·test 전용
         └── db/sample/        sample_portfolio.sql
     └── test/java/com/stockproject/portfolio/
-        ├── ArchitectureRulesTest.java     불변식 1·BigDecimal·계층 접근
+        ├── ArchitectureRulesTest.java     불변식 1·5·BigDecimal·계층 접근
         ├── MigrationLintTest.java         비율 컬럼 금지 (§9.2)
+        ├── UserScopeIsolationTest.java    사용자별 합계가 갈리는지
         ├── catalog/CatalogInvariantTest.java
         ├── domain/…                       가산성·총합 보존·분모·통화 단위 테스트
-        ├── query/…                        Testcondtainers 저장소 테스트
+        ├── auth/…                         토큰 발급·검증·매퍼 시그니처 (불변식 5)
+        ├── query/…                        portfolio_test DB 저장소 테스트
         └── api/SixViewGoldenTest.java     도달점 검증
     └── test/resources/golden/*.json
 ```
@@ -748,18 +810,38 @@ back-end/
 
 # Part C — 샘플 데이터와 기대 응답 (도달점의 정의)
 
-`db/sample/sample_portfolio.sql`이 만드는 세계다. 태스크 11의 골든 테스트가 이 표를 그대로 검증한다.
+`db/sample/sample_portfolio.sql`이 만드는 세계다. 태스크 12의 골든 테스트가 이 표를 그대로 검증한다.
 
-## C.1 계좌 4개
+**§C.5~C.11의 기대 응답은 전부 `yhr` 토큰으로 부른 것이다.** 다른 사용자의 데이터가 함께 들어 있어도 이 수치는 변하지 않아야 하고, 변하면 스코프가 샌 것이다(§C.12).
 
-| account_id 끝자리 | broker | label | type | source | link_state |
-|---|---|---|---|---|---|
-| `…0001` | 한국투자증권 | 한국투자 위탁 | GENERAL | KIS | CONNECTED |
-| `…0002` | 삼성증권 | 삼성증권 | GENERAL | CODEF | CONNECTED |
-| `…0003` | 한국투자증권 | 한국투자 IRP | PENSION | KIS | CONNECTED |
-| `…0004` | 미래에셋증권 | 미래에셋 연금 | PENSION | CODEF | CONNECTED |
+## C.1 사용자 4명과 계좌 7개
+
+**`app_user`** — 마이그레이션이 심는다(§A.9). 샘플 SQL은 `test_empty`만 더하고 나머지는 건드리지 않는다.
+
+| user_id 끝자리 | email | display_name | 출처 | 노리는 것 |
+|---|---|---|---|---|
+| `…0001` | yhr@stock-project.local | yhr | `V5__app_user.sql` | 주 사용자. §C.5~C.11의 골든 값 |
+| `…0002` | jdh@stock-project.local | jdh | `V5__app_user.sql` | 겹치는 종목을 보유한 두 번째 사용자 |
+| `…0003` | hhj@stock-project.local | hhj | `V5__app_user.sql` | `as_of`가 하나뿐인 사용자 |
+| `…0004` | test_empty@stock-project.local | test_empty | 샘플 SQL | 계좌 0개 → `NO_ACCOUNTS` |
+
+UUID는 `40000000-0000-0000-0000-00000000000N` 꼴. `password_hash`는 BCrypt이며 셋 다 로컬 개발용 같은 비밀번호다 — 운영 전 교체 대상임을 README에 적는다.
+
+**`account`**
+
+| account_id 끝자리 | 소유자 | broker | label | type | source | link_state |
+|---|---|---|---|---|---|---|
+| `…0001` | yhr | 한국투자증권 | 한국투자 위탁 | GENERAL | KIS | CONNECTED |
+| `…0002` | yhr | 삼성증권 | 삼성증권 | GENERAL | CODEF | CONNECTED |
+| `…0003` | yhr | 한국투자증권 | 한국투자 IRP | PENSION | KIS | CONNECTED |
+| `…0004` | yhr | 미래에셋증권 | 미래에셋 연금 | PENSION | CODEF | CONNECTED |
+| `…0005` | jdh | 키움증권 | 키움 위탁 | GENERAL | CODEF | CONNECTED |
+| `…0006` | jdh | 미래에셋증권 | 미래에셋 IRP | PENSION | CODEF | CONNECTED |
+| `…0007` | hhj | 한국투자증권 | 한국투자 위탁 | GENERAL | KIS | CONNECTED |
 
 UUID는 `20000000-0000-0000-0000-00000000000N` 꼴.
+
+**`test_empty`가 픽스처인 이유.** 팀원 셋은 실제 계정이라 배치가 붙어도 대체되지 않고 각자의 실계좌가 여기 매달린다. 계좌 없는 사용자는 사람이 아니라 빈 상태를 재현하기 위한 장치이므로, 마이그레이션이 아니라 샘플이 소유한다. 샘플의 `TRUNCATE` 대상에 `app_user`가 없는 것도 같은 이유다 — 픽스처가 계정을 지웠다 다시 만들면 개발 DB의 비밀번호 해시가 매번 초기화된다.
 
 ## C.2 종목 8개
 
@@ -776,9 +858,11 @@ UUID는 `20000000-0000-0000-0000-00000000000N` 꼴.
 
 UUID는 `10000000-0000-0000-0000-00000000000N` 꼴.
 
-## C.3 `position_line` — `as_of = 2026-07-27` (10행)
+## C.3 `position_line` — `as_of = 2026-07-27`
 
-USD 라인의 `fx_rate = 1400.000000`.
+USD 라인의 `fx_rate = 1400.000000`. **종목 가격은 사용자 사이에 같다** — 같은 세계의 같은 날 종가이므로 삼성전자는 누구에게나 07-27에 71,200원, 07-24에 65,200원이다.
+
+### yhr — 10행
 
 | 계좌 | 종목 | qty | cost_local | mv_local | cost_krw | mv_krw | fx_as_of | 이월 |
 |---|---|---|---|---|---|---|---|---|
@@ -793,9 +877,39 @@ USD 라인의 `fx_rate = 1400.000000`.
 | 미래에셋 연금 | MSFT | 10 | 3,000.00 | 3,500.00 | 4,200,000 | 4,900,000 | **07-24** | **✔** |
 | 미래에셋 연금 | CASH-USD | 100 | 100.00 | 100.00 | 140,000 | 140,000 | **07-24** | **✔** |
 
-`source_as_of` — 이월이 아닌 라인은 `2026-07-27T15:30:00+09:00`, 미래에셋 연금 2행은 `2026-07-24T15:30:00+09:00`. `is_final = false`.
+`source_as_of` — 이월이 아닌 라인은 `2026-07-27T15:30:00+09:00`, 미래에셋 연금 2행은 `2026-07-24T15:30:00+09:00`. `is_final = false`. **총자산 58,000,000.**
 
-**`as_of = 2026-07-24` 스냅샷**: 위와 같은 10행을 그대로 복제하고 **삼성전자 `mv_local`·`mv_krw`만 13,040,000**으로 바꾼다. 이월 플래그는 전부 `false`, `source_as_of`는 `2026-07-24T15:30:00+09:00`, `is_final = true`. → 총자산 56,800,000.
+### jdh — 4행
+
+| 계좌 | 종목 | qty | cost_local | mv_local | cost_krw | mv_krw | fx_as_of | 이월 |
+|---|---|---|---|---|---|---|---|---|
+| 키움 위탁 | 005930 | 100 | 6,500,000 | 7,120,000 | 6,500,000 | 7,120,000 | 07-27 | – |
+| 키움 위탁 | CASH-KRW | 880,000 | 880,000 | 880,000 | 880,000 | 880,000 | 07-27 | – |
+| 미래에셋 IRP | 133690 | 50 | 5,000,000 | 5,500,000 | 5,000,000 | 5,500,000 | 07-27 | – |
+| 미래에셋 IRP | CASH-KRW | 500,000 | 500,000 | 500,000 | 500,000 | 500,000 | 07-27 | – |
+
+`source_as_of`는 `2026-07-27T15:30:00+09:00`, `is_final = false`. **총자산 14,000,000.**
+
+**삼성전자와 TIGER를 yhr과 겹쳐 보유한다.** 스코프가 새면 종목별 뷰에서 삼성전자 수량이 200이 아니라 300이 되고 평단이 흔들린다 — 총액만 보는 검사를 통과하고도 잡히는 자리다.
+
+### hhj — 2행
+
+| 계좌 | 종목 | qty | cost_local | mv_local | cost_krw | mv_krw | fx_as_of | 이월 |
+|---|---|---|---|---|---|---|---|---|
+| 한국투자 위탁 | AAPL | 5 | 1,000.00 | 1,100.00 | 1,400,000 | 1,540,000 | 07-27 | – |
+| 한국투자 위탁 | CASH-KRW | 460,000 | 460,000 | 460,000 | 460,000 | 460,000 | 07-27 | – |
+
+`source_as_of`는 `2026-07-27T15:30:00+09:00`, `is_final = false`. **총자산 2,000,000.**
+
+### `as_of = 2026-07-24` 스냅샷 — yhr 10행 + jdh 4행
+
+각 사용자의 07-27 라인을 복제하고 **삼성전자 `mv_local`·`mv_krw`만 단가 65,200원 기준으로** 바꾼다 — yhr 13,040,000(200주) · jdh 6,520,000(100주). 이월 플래그는 전부 `false`, `source_as_of`는 `2026-07-24T15:30:00+09:00`, `is_final = true`.
+
+→ yhr 총자산 56,800,000 · jdh 총자산 13,400,000.
+
+**hhj는 이 스냅샷을 갖지 않는다.** 연동을 07-27에 시작한 사용자이고, 이것이 `as_of` 캘린더가 스코프 안에 있는지(§3.8)를 검사하는 자리다 — 캘린더가 전역이면 hhj의 자산 변화 뷰가 07-24를 기초로 잡아 남의 세계에서 기간 손익을 계산한다.
+
+전체 행 수는 07-27 16행 + 07-24 14행 = **30행**이다.
 
 **이 데이터가 노리는 것**
 
@@ -810,25 +924,33 @@ USD 라인의 `fx_rate = 1400.000000`.
 | 미확보 ETF → `CONSTITUENT_UNAVAILABLE` | TIGER 1종, 미분해 11,000,000 |
 | 일간 변화 | 07-24 대비 +1,200,000 |
 | 2단계 중첩 소계 | 계좌유형 2 × 계좌 2 |
+| **사용자 스코프** | 전역 합계 74,000,000 vs yhr 58,000,000 |
+| **종목 겹침** | 005930 · 133690을 yhr·jdh가 함께 보유 |
+| **`as_of` 캘린더 스코프** | hhj는 07-27만 |
+| **계좌 없는 사용자** | test_empty → `NO_ACCOUNTS` |
 
-## C.4 `realized_pnl_line` — 3행 · `manual_cashflow` — 1행
+## C.4 `realized_pnl_line` — 4행 · `manual_cashflow` — 2행
 
-| trade_id | 계좌 | 종목 | sold_at | qty | sell_krw | cost_basis_krw | fee_tax | pnl_krw | grade |
-|---|---|---|---|---|---|---|---|---|---|
-| `T-0001` | 한국투자 위탁 | 005930 | 2026-03-02 | 3 | 400,000 | 320,000 | 1,000 | 79,000 | SEEDED |
-| `T-0002` | 한국투자 위탁 | 005930 | 2026-05-12 | 5 | 700,000 | 500,000 | 2,000 | 198,000 | VERIFIED |
-| `T-0003` | 삼성증권 | 035420 | 2026-02-18 | 10 | 2,000,000 | 2,300,000 | 5,000 | −305,000 | VERIFIED |
+| trade_id | 소유자 | 계좌 | 종목 | sold_at | qty | sell_krw | cost_basis_krw | fee_tax | pnl_krw | grade |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `T-0001` | yhr | 한국투자 위탁 | 005930 | 2026-03-02 | 3 | 400,000 | 320,000 | 1,000 | 79,000 | SEEDED |
+| `T-0002` | yhr | 한국투자 위탁 | 005930 | 2026-05-12 | 5 | 700,000 | 500,000 | 2,000 | 198,000 | VERIFIED |
+| `T-0003` | yhr | 삼성증권 | 035420 | 2026-02-18 | 10 | 2,000,000 | 2,300,000 | 5,000 | −305,000 | VERIFIED |
+| `T-1001` | jdh | 키움 위탁 | 005930 | 2026-06-19 | 2 | 150,000 | 130,000 | 1,000 | 19,000 | VERIFIED |
 
 `*_local`은 KRW 종목이라 `*_krw`와 같은 값.
 
+`T-1001`도 **005930의 매도**다. 스코프가 새면 yhr의 실현손익 뷰에서 삼성전자 노드의 `trade_count`가 2가 아니라 3이 되고 `last_sold_at`이 05-12에서 06-19로 밀린다(§C.10).
+
 **`manual_cashflow`** — 사용자 입력 입출금(§A.7.4)
 
-| id | 계좌 | type | amount | currency | occurred_on | memo |
-|---|---|---|---|---|---|---|
-| `30000000-…-0001` | 한국투자 위탁 | `DEPOSIT` | 2,000,000 | KRW | 2026-07-27 | 월 적립 |
+| id | 소유자 | 계좌 | type | amount | currency | occurred_on | memo |
+|---|---|---|---|---|---|---|---|
+| `30000000-…-0001` | yhr | 한국투자 위탁 | `DEPOSIT` | 2,000,000 | KRW | 2026-07-27 | 월 적립 |
+| `30000000-…-0002` | jdh | 키움 위탁 | `DEPOSIT` | 500,000 | KRW | 2026-07-27 | 월 적립 |
 
 날짜가 `(기초 as_of 2026-07-24, 기말 as_of 2026-07-27]` 안에 들어와야 항등식이 성립한다(§A.6.3).
-이 한 행이 자산 변화 뷰의 존재 이유를 샘플에서 재현한다 — **자산은 120만원 늘었지만 200만원을 넣고 80만원을 잃은** 상황이다(§2.9).
+yhr의 한 행이 자산 변화 뷰의 존재 이유를 샘플에서 재현한다 — **자산은 120만원 늘었지만 200만원을 넣고 80만원을 잃은** 상황이다(§2.9). jdh는 같은 날짜에 반대 부호가 나와(Δ 600,000 − 넣은 돈 500,000 = +100,000) 두 사용자의 이야기가 갈린다.
 
 ## C.5 기대 응답 — `GET /portfolio/views/summary`
 
@@ -1000,12 +1122,63 @@ notices: SEEDED_ROWS { count: 1 }
 
 값이 0인 `WITHDRAW`·`DIVIDEND`·`FEE_TAX`는 `breakdown`에서 숨긴다. `split_available = false`는 거래 원장 산출이 범위 밖이기 때문이다 — `total`은 항상 정확하다.
 
+## C.12 사용자 격리 — 같은 요청, 다른 토큰
+
+같은 URL을 네 토큰으로 부른 결과다. 스코프가 새면 이 표가 깨진다.
+
+```bash
+TOKEN=$(curl -s localhost:8080/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"jdh@stock-project.local","password":"…"}' | jq -r .access_token)
+curl -s localhost:8080/portfolio/views/summary -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+**`GET /portfolio/views/summary`**
+
+| 지표 | yhr | jdh | hhj | test_empty |
+|---|---|---|---|---|
+| `total_assets_krw` | 58,000,000 | 14,000,000 | 2,000,000 | — |
+| `securities_value_krw` | 53,300,000 | 12,620,000 | 1,540,000 | — |
+| `deposit_krw` | 4,700,000 | 1,380,000 | 460,000 | — |
+| `cost_amount_krw` | 48,800,000 | 11,500,000 | 1,400,000 | — |
+| `unrealized_pnl_krw` | 4,500,000 | 1,120,000 | 140,000 | — |
+| `unrealized_pnl_pct` | 9.2 | 9.7 | 10.0 | — |
+| `cash_ratio_pct` | 8.1 | 9.9 | 23.0 | — |
+| `daily_change_krw` | 1,200,000 | 600,000 | **null** | — |
+| `daily_change_pct` | 2.1 | 4.5 | **null** | — |
+| `account_count` | 4 | 2 | 1 | — |
+| `instrument_count` | 6 | 2 | 1 | — |
+| `empty_reason` | null | null | null | **`NO_ACCOUNTS`** |
+
+hhj의 일간 변화가 `null`인 것은 직전 `as_of`가 없기 때문이다. 전역 캘린더를 쓰면 07-24가 잡히고, 그 날짜에 hhj의 라인이 없어 `0`이 되거나 남의 총자산이 들어온다.
+
+**나머지 뷰**
+
+| 요청 | yhr | jdh | hhj |
+|---|---|---|---|
+| `positions?lens=DIRECT` — 005930 행 | 200주 · 평단 60,000 | 100주 · 평단 65,000 | 행 없음 |
+| `allocation?axis=sector` — `반도체` | 23,240,000 | 7,120,000 | 행 없음 |
+| `accounts` — 최상위 노드 | 일반 · 연금 | 일반 · 연금 | 일반 |
+| `realized-pnl?period=THIS_YEAR` | total −28,000 · 2행 | total 19,000 · 1행 | `NO_TRADES_IN_PERIOD` |
+| `asset-change` 07-01~07-31 | 56,800,000 → 58,000,000 · 넣은 돈 2,000,000 · 번 돈 −800,000 | 13,400,000 → 14,000,000 · 넣은 돈 500,000 · 번 돈 +100,000 | 2,000,000 → 2,000,000 · `breakdown` 빈 배열 |
+
+**스코프가 새면 나타나는 값** — 대조용이다.
+
+| 자리 | 정상(yhr) | 전역 |
+|---|---|---|
+| 요약 총자산 | 58,000,000 | 74,000,000 |
+| 종목별 005930 수량 | 200 | 300 |
+| 섹터 `반도체` | 23,240,000 | 30,360,000 |
+| 실현손익 005930 `trade_count` · `last_sold_at` | 2 · 2026-05-12 | 3 · 2026-06-19 |
+| 계좌별 계좌 수 | 4 | 7 |
+
+**소유하지 않은 계좌를 필터로 넣으면 `403`이다.** yhr 토큰으로 `?account=20000000-…-0005`(jdh의 키움 위탁)를 부르면 빈 결과가 아니라 `FORBIDDEN_ACCOUNT`다(§A.6.4).
+
 
 ---
 
 # Part D — 태스크
 
-11개 태스크. 각 태스크는 독립적으로 테스트 가능한 산출물로 끝나고 1커밋을 만든다.
+12개 태스크. 각 태스크는 독립적으로 테스트 가능한 산출물로 끝나고 1커밋을 만든다.
 의존: 1 → 2 → 3 → 4 → 5 → 6 → 7 → {8, 9, 10} → 11. 8·9·10은 서로 독립이라 병렬 가능하다.
 
 ---
@@ -1017,38 +1190,49 @@ notices: SEEDED_ROWS { count: 1 }
 - Create: `back-end/docker-compose.yml` · `back-end/Dockerfile` · `back-end/.env.example`
 - Create: `back-end/src/main/java/com/stockproject/portfolio/PortfolioApplication.java`
 - Create: `back-end/src/main/resources/application.yaml` · `application-local.yaml`
-- Create: `back-end/src/main/resources/db/migration/V1__account.sql` · `V2__position_line.sql` · `V3__realized_pnl_line.sql` · `V4__manual_cashflow.sql`
+- Create: `back-end/src/main/resources/db/migration/V1__account.sql` · `V2__position_line.sql` · `V3__realized_pnl_line.sql` · `V4__manual_cashflow.sql` · `V5__app_user.sql` · `V6__account_user_id.sql`
 - Create: `back-end/src/main/resources/db/external/V900__instrument_mirror.sql`
 - Create: `back-end/src/main/resources/db/sample/sample_portfolio.sql`
 - Test: `back-end/src/test/java/com/stockproject/portfolio/MigrationLintTest.java`
 - Test: `back-end/src/test/java/com/stockproject/portfolio/SchemaSmokeTest.java`
+- Test: `back-end/src/test/java/com/stockproject/portfolio/UserScopeIsolationTest.java`
 - Modify: `back-end/README.md` · `back-end/.gitignore` (Gradle·빌드 산출물 추가)
 
 **Interfaces:**
-- Produces: Flyway 마이그레이션이 만드는 테이블 4개(`account`·`position_line`·`realized_pnl_line`·`manual_cashflow`)와 로컬 전용 미러 `instrument`. 이후 모든 태스크의 저장소가 이 스키마를 읽는다.
+- Produces: Flyway 마이그레이션이 만드는 테이블 5개(`app_user`·`account`·`position_line`·`realized_pnl_line`·`manual_cashflow`)와 로컬 전용 미러 `instrument`. 이후 모든 태스크의 저장소가 이 스키마를 읽는다.
+- Produces: 소유권 축 `account.user_id`. 이후 모든 조회가 이 컬럼을 통해 스코프된다(§A.3 불변식 5).
 
 **완료 조건**
 1. `./gradlew build`가 통과한다.
-2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 5개 마이그레이션을 적용한다.
-3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 20행(`as_of` 2개 × 10행), `realized_pnl_line` 3행, `manual_cashflow` 1행, `account` 4행, `instrument` 8행이 들어간다.
-4. `MigrationLintTest`가 통과한다 — 마이그레이션에 비율 컬럼이 없다.
-5. `db/external`은 `local`·`test` 프로필에서만 적용되고 기본(운영) 프로필에서는 적용되지 않는다.
+2. `docker compose up -d db` 후 `./gradlew bootRun --args='--spring.profiles.active=local'`로 앱이 뜨고 Flyway가 7개 마이그레이션을 적용한다.
+3. `psql`로 `sample_portfolio.sql`을 실행하면 `position_line` 30행(07-27 16행 · 07-24 14행), `realized_pnl_line` 4행, `manual_cashflow` 2행, `account` 7행, `app_user` 4행, `instrument` 8행이 들어간다.
+4. **사용자별 총자산이 58,000,000 / 14,000,000 / 2,000,000 / 0으로 갈린다**(§C.12). 전역 합계는 74,000,000이다.
+5. `MigrationLintTest`가 통과한다 — 마이그레이션에 비율 컬럼이 없다.
+6. `db/external`은 `local`·`test` 프로필에서만 적용되고 기본(운영) 프로필에서는 적용되지 않는다.
+7. **`V1`~`V4`·`V900`을 수정하지 않는다.** 이미 적용된 마이그레이션을 고치면 Flyway가 체크섬 불일치로 거부한다 — 소유권 축은 `V5`·`V6` 두 파일로만 들어온다.
 
 **검증 방법**
 ```bash
 cd back-end
 docker compose up -d db          # portfolio · portfolio_test 두 DB가 함께 뜬다
-./gradlew test --tests '*MigrationLintTest' --tests '*SchemaSmokeTest'
+./gradlew test --tests '*MigrationLintTest' --tests '*SchemaSmokeTest' \
+               --tests '*UserScopeIsolationTest'
 docker compose exec -T db psql -U portfolio -d portfolio -f /sample/sample_portfolio.sql
 docker compose exec -T db psql -U portfolio -d portfolio -c \
   "SELECT as_of, count(*) FROM position_line GROUP BY 1 ORDER BY 1;"
-# 기대: 2026-07-24 | 10 / 2026-07-27 | 10
+# 기대: 2026-07-24 | 14 / 2026-07-27 | 16
 docker compose exec -T db psql -U portfolio -d portfolio -c \
-  "SELECT sum(market_value_krw) FROM position_line WHERE as_of='2026-07-27';"
-# 기대: 58000000
+  "SELECT u.display_name, coalesce(sum(pl.market_value_krw), 0) AS total
+     FROM app_user u
+     LEFT JOIN account a ON a.user_id = u.user_id
+     LEFT JOIN position_line pl ON pl.account_id = a.account_id AND pl.as_of = '2026-07-27'
+    GROUP BY u.display_name ORDER BY total DESC;"
+# 기대: yhr | 58000000 / jdh | 14000000 / hhj | 2000000 / test_empty | 0
 docker compose exec -T db psql -U portfolio -d portfolio -c \
-  "SELECT type, amount FROM manual_cashflow;"
-# 기대: DEPOSIT | 2000000
+  "SELECT u.display_name, m.type, m.amount FROM manual_cashflow m
+     JOIN account a ON a.account_id = m.account_id
+     JOIN app_user u ON u.user_id = a.user_id ORDER BY 1;"
+# 기대: jdh | DEPOSIT | 500000 / yhr | DEPOSIT | 2000000
 ```
 
 - [ ] **Step 1: Gradle 프로젝트 생성**
@@ -1245,6 +1429,50 @@ COMMENT ON TABLE manual_cashflow IS
 
 `amount`를 양수로 제약하고 방향은 `type`이 정한다 — 부호와 유형이 어긋나 이중 부정이 생기는 것을 막는다.
 
+`V5__app_user.sql` — 소유권 축의 기준이 되는 테이블. 사용자 행을 여기서 심는다:
+```sql
+-- 사용자. 스코프의 기준이며 토큰 sub가 user_id다 — 설계 스펙 §3.8 · §8.8
+CREATE TABLE app_user (
+    id            uuid PRIMARY KEY,
+    email         text        NOT NULL UNIQUE,
+    password_hash text        NOT NULL,
+    display_name  text        NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE app_user IS
+  '사용자. 행은 이 마이그레이션이 심고 회원가입 경로를 두지 않는다 — 설계 스펙 §5.1 · §12';
+COMMENT ON COLUMN app_user.password_hash IS
+  'BCrypt 해시만 저장한다. 원문은 로그·응답 어디에도 남기지 않는다 — 설계 스펙 §8.8';
+
+-- 비밀번호 해시는 로컬 개발용 값이다. 운영 배포 전에 교체한다.
+INSERT INTO app_user (id, email, password_hash, display_name) VALUES
+ ('40000000-0000-0000-0000-000000000001','yhr@stock-project.local','<bcrypt>','yhr'),
+ ('40000000-0000-0000-0000-000000000002','jdh@stock-project.local','<bcrypt>','jdh'),
+ ('40000000-0000-0000-0000-000000000003','hhj@stock-project.local','<bcrypt>','hhj');
+```
+
+PK 컬럼명이 `id`인 것은 `account`·`manual_cashflow`와 결이 같아서다. 참조하는 쪽은 `user_id`로 부른다.
+
+`V6__account_user_id.sql` — 계좌에 소유자를 붙인다:
+```sql
+-- 소유권 축. account 하나에만 두고 나머지 테이블은 계좌를 통해 소유자가 결정된다 — 설계 스펙 §3.8
+ALTER TABLE account ADD COLUMN user_id uuid;
+
+UPDATE account SET user_id = '40000000-0000-0000-0000-000000000001' WHERE user_id IS NULL;
+
+ALTER TABLE account
+    ALTER COLUMN user_id SET NOT NULL,
+    ADD CONSTRAINT fk_account_user FOREIGN KEY (user_id) REFERENCES app_user (id);
+
+CREATE INDEX idx_account_user ON account (user_id);
+
+COMMENT ON COLUMN account.user_id IS
+  '소유자. 생성 후 바뀌지 않는다 — 계좌 소유자 이전을 지원하지 않는다. 설계 스펙 §9.1 · §12';
+```
+
+`NOT NULL`을 나중에 거는 세 단계인 이유는 이미 계좌 행이 있는 DB 때문이다. 컬럼을 곧바로 `NOT NULL`로 추가하면 기존 행이 값을 갖지 못해 마이그레이션이 실패한다. 백필 대상이 주 사용자인 것은 그 계좌들이 실제로 그의 것이기 때문이다.
+
 `V900__instrument_mirror.sql` (`db/external/`):
 ```sql
 -- 데이터팀 소유 테이블의 로컬·테스트 전용 미러.
@@ -1342,15 +1570,27 @@ class SchemaSmokeTest {
     @Autowired JdbcClient jdbc;
 
     @Test
-    void 마이그레이션이_테이블_다섯개를_만든다() {
+    void 마이그레이션이_테이블_여섯개를_만든다() {
         List<String> tables = jdbc.sql("""
                 SELECT table_name FROM information_schema.tables
                  WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                  ORDER BY table_name
                 """).query(String.class).list();
 
-        assertThat(tables).contains("account", "position_line", "realized_pnl_line",
+        assertThat(tables).contains("app_user", "account", "position_line", "realized_pnl_line",
                                     "manual_cashflow", "instrument");
+    }
+
+    /** 소유권 축은 account 하나에만 있다 — 설계 스펙 §3.8. */
+    @Test
+    void 소유권_축이_account에만_있다() {
+        List<String> owning = jdbc.sql("""
+                SELECT table_name FROM information_schema.columns
+                 WHERE table_schema = 'public' AND column_name = 'user_id'
+                 ORDER BY table_name
+                """).query(String.class).list();
+
+        assertThat(owning).containsExactly("account");
     }
 
     @Test
@@ -1448,7 +1688,15 @@ DB_PASSWORD=portfolio
 ```sql
 BEGIN;
 
+-- app_user는 지우지 않는다. 팀원 계정은 마이그레이션이 소유하는 실제 계정이고,
+-- 이 파일은 계좌부터 아래의 포트폴리오 내용만 다시 만드는 픽스처다.
 TRUNCATE realized_pnl_line, manual_cashflow, position_line, account, instrument;
+
+-- 계좌가 하나도 없는 사용자. 요약 뷰의 온보딩 상태(NO_ACCOUNTS)를 재현하기 위한
+-- 픽스처이며 사람이 아니다 — 그래서 마이그레이션이 아니라 여기서 만든다.
+INSERT INTO app_user (id, email, password_hash, display_name) VALUES
+ ('40000000-0000-0000-0000-000000000004','test_empty@stock-project.local','<bcrypt>','test_empty')
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, currency, sector, is_leveraged) VALUES
  ('10000000-0000-0000-0000-000000000001','KR7005930003','005930','삼성전자','STOCK','KR','KRW','반도체',false),
@@ -1460,11 +1708,14 @@ INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, 
  ('10000000-0000-0000-0000-000000000007',NULL,'CASH-KRW','KRW 예수금','CASH','KR','KRW',NULL,NULL),
  ('10000000-0000-0000-0000-000000000008',NULL,'CASH-USD','USD 예수금','CASH','US','USD',NULL,NULL);
 
-INSERT INTO account (account_id, broker, label, account_type, source, credential_ref, link_state, last_synced_at) VALUES
- ('20000000-0000-0000-0000-000000000001','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000002','삼성증권','삼성증권','GENERAL','CODEF',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000003','한국투자증권','한국투자 IRP','PENSION','KIS',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000004','미래에셋증권','미래에셋 연금','PENSION','CODEF',NULL,'CONNECTED',NULL);
+INSERT INTO account (account_id, user_id, broker, label, account_type, source, credential_ref, link_state, last_synced_at) VALUES
+ ('20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001','삼성증권','삼성증권','GENERAL','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001','한국투자증권','한국투자 IRP','PENSION','KIS',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000004','40000000-0000-0000-0000-000000000001','미래에셋증권','미래에셋 연금','PENSION','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000005','40000000-0000-0000-0000-000000000002','키움증권','키움 위탁','GENERAL','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000006','40000000-0000-0000-0000-000000000002','미래에셋증권','미래에셋 IRP','PENSION','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000007','40000000-0000-0000-0000-000000000003','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL);
 
 -- as_of 2026-07-27 (확정 전, is_final = false)
 INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
@@ -1490,21 +1741,38 @@ INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
  ('2026-07-27','20000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000005',10,
    3000,3500,4200000,4900000,1400,'2026-07-24','2026-07-24T15:30:00+09',true,false),
  ('2026-07-27','20000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000008',100,
-   100,100,140000,140000,1400,'2026-07-24','2026-07-24T15:30:00+09',true,false);
+   100,100,140000,140000,1400,'2026-07-24','2026-07-24T15:30:00+09',true,false),
+ -- jdh — 005930·133690을 yhr과 겹쳐 보유한다. 스코프가 새면 수량과 평단이 흔들린다.
+ ('2026-07-27','20000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000001',100,
+   6500000,7120000,6500000,7120000,1,'2026-07-27','2026-07-27T15:30:00+09',false,false),
+ ('2026-07-27','20000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000007',880000,
+   880000,880000,880000,880000,1,'2026-07-27','2026-07-27T15:30:00+09',false,false),
+ ('2026-07-27','20000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000006',50,
+   5000000,5500000,5000000,5500000,1,'2026-07-27','2026-07-27T15:30:00+09',false,false),
+ ('2026-07-27','20000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000007',500000,
+   500000,500000,500000,500000,1,'2026-07-27','2026-07-27T15:30:00+09',false,false),
+ -- hhj — 07-27에 연동을 시작해 직전 스냅샷이 없다. as_of 캘린더가 스코프 안에 있는지 드러낸다.
+ ('2026-07-27','20000000-0000-0000-0000-000000000007','10000000-0000-0000-0000-000000000004',5,
+   1000,1100,1400000,1540000,1400,'2026-07-27','2026-07-27T15:30:00+09',false,false),
+ ('2026-07-27','20000000-0000-0000-0000-000000000007','10000000-0000-0000-0000-000000000007',460000,
+   460000,460000,460000,460000,1,'2026-07-27','2026-07-27T15:30:00+09',false,false);
 
--- as_of 2026-07-24 (EOD 확정). 삼성전자 평가금액만 다르다 → 일간 변화 +1,200,000
+-- as_of 2026-07-24 (EOD 확정). 삼성전자 단가만 65,200원으로 다르다 — 같은 날의 같은 종가라
+-- 보유 수량에 곱하면 사용자마다의 값이 나온다. hhj는 아직 연동 전이라 제외한다.
 INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
     cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
     fx_rate, fx_as_of, source_as_of, is_carried_forward, is_final)
 SELECT '2026-07-24', account_id, instrument_id, quantity,
        cost_amount_local,
        CASE WHEN instrument_id = '10000000-0000-0000-0000-000000000001'
-            THEN 13040000 ELSE market_value_local END,
+            THEN quantity * 65200 ELSE market_value_local END,
        cost_amount_krw,
        CASE WHEN instrument_id = '10000000-0000-0000-0000-000000000001'
-            THEN 13040000 ELSE market_value_krw END,
+            THEN quantity * 65200 ELSE market_value_krw END,
        fx_rate, '2026-07-24', '2026-07-24T15:30:00+09', false, true
-  FROM position_line WHERE as_of = '2026-07-27';
+  FROM position_line
+ WHERE as_of = '2026-07-27'
+   AND account_id <> '20000000-0000-0000-0000-000000000007';
 
 INSERT INTO realized_pnl_line (trade_id, account_id, instrument_id, sold_at, quantity,
     sell_amount_local, cost_basis_local, sell_amount_krw, cost_basis_krw,
@@ -1514,24 +1782,81 @@ INSERT INTO realized_pnl_line (trade_id, account_id, instrument_id, sold_at, qua
  ('T-0002','20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001',
    '2026-05-12T10:02:00+09',5,700000,500000,700000,500000,2000,198000,198000,'VERIFIED'),
  ('T-0003','20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000003',
-   '2026-02-18T13:44:00+09',10,2000000,2300000,2000000,2300000,5000,-305000,-305000,'VERIFIED');
+   '2026-02-18T13:44:00+09',10,2000000,2300000,2000000,2300000,5000,-305000,-305000,'VERIFIED'),
+ -- jdh의 005930 매도. 스코프가 새면 yhr의 삼성전자 노드에 섞여 trade_count와 last_sold_at이 밀린다.
+ ('T-1001','20000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000001',
+   '2026-06-19T11:07:00+09',2,150000,130000,150000,130000,1000,19000,19000,'VERIFIED');
 
 -- 사용자 입력 입출금. (기초 as_of 2026-07-24, 기말 as_of 2026-07-27] 안에 들어와야
--- 자산 변화 항등식이 성립한다 (§A.6.3)
+-- 자산 변화 항등식이 성립한다
 INSERT INTO manual_cashflow (id, account_id, type, amount, currency, occurred_on, memo) VALUES
  ('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
-   'DEPOSIT',2000000,'KRW','2026-07-27','월 적립');
+   'DEPOSIT',2000000,'KRW','2026-07-27','월 적립'),
+ ('30000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000005',
+   'DEPOSIT',500000,'KRW','2026-07-27','월 적립');
 
 COMMIT;
 ```
 
-- [ ] **Step 8: 검증 명령을 실행하고 결과를 확인한다**
+- [ ] **Step 8: 사용자 격리 테스트**
 
-위 **검증 방법**의 네 명령을 순서대로 돌려 기대값과 일치하는지 본다.
+스코프를 거는 코드는 아직 없다. 이 단계에서 검사하는 것은 **데이터가 사용자별로 갈릴 수 있게 놓였는가**이며, 이후 태스크가 조회 경로에서 이 값을 재현해야 한다.
 
-- [ ] **Step 9: README와 커밋**
+```java
+/** 소유권 축이 사용자별 합계를 실제로 가른다. */
+@SpringBootTest
+@ActiveProfiles("test")
+class UserScopeIsolationTest {
 
-`README.md`에 실행 방법(위 검증 명령), 스택, **인증이 없고 로컬 전용이라는 사실**, 소유 테이블 경계(`db/external`은 데이터팀 소유 미러라 운영에서 적용하지 않는다)를 적는다.
+    @Autowired JdbcClient jdbc;
+
+    @Test
+    void 사용자별_총자산이_갈린다() {
+        Map<String, Long> totals = jdbc.sql("""
+                SELECT u.display_name, coalesce(sum(pl.market_value_krw), 0) AS total
+                  FROM app_user u
+                  LEFT JOIN account a ON a.user_id = u.id
+                  LEFT JOIN position_line pl
+                         ON pl.account_id = a.account_id AND pl.as_of = DATE '2026-07-27'
+                 GROUP BY u.display_name
+                """).query((rs, n) -> Map.entry(rs.getString(1), rs.getLong(2)))
+                    .list().stream().collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        assertThat(totals).containsOnly(
+                entry("yhr", 58_000_000L), entry("jdh", 14_000_000L),
+                entry("hhj", 2_000_000L),  entry("test_empty", 0L));
+    }
+
+    /** 스코프를 빠뜨리면 이 값이 나온다 — 대조군이다. */
+    @Test
+    void 스코프_없는_합계는_전역이다() {
+        assertThat(jdbc.sql("SELECT sum(market_value_krw) FROM position_line WHERE as_of = DATE '2026-07-27'")
+                .query(Long.class).single()).isEqualTo(74_000_000L);
+    }
+
+    /** as_of 캘린더도 사용자별이다 — hhj는 07-27에 연동했다(§3.8). */
+    @Test
+    void as_of_후보가_사용자마다_다르다() {
+        assertThat(asOfsOf("hhj")).containsExactly(LocalDate.of(2026, 7, 27));
+        assertThat(asOfsOf("yhr")).containsExactly(LocalDate.of(2026, 7, 24), LocalDate.of(2026, 7, 27));
+    }
+
+    /** 겹치는 종목이 사용자마다 다른 수량으로 잡힌다. */
+    @Test
+    void 같은_종목을_두_사용자가_보유한다() {
+        assertThat(quantityOf("yhr", "005930")).isEqualByComparingTo("200");
+        assertThat(quantityOf("jdh", "005930")).isEqualByComparingTo("100");
+    }
+}
+```
+
+- [ ] **Step 9: 검증 명령을 실행하고 결과를 확인한다**
+
+위 **검증 방법**의 명령을 순서대로 돌려 기대값과 일치하는지 본다.
+
+- [ ] **Step 10: README와 커밋**
+
+`README.md`에 실행 방법(위 검증 명령), 스택, 소유 테이블 경계(`db/external`은 데이터팀 소유 미러라 운영에서 적용하지 않는다), 그리고 **사용자 계정과 비밀번호**를 적는다 — 팀원 셋의 로그인 계정이 마이그레이션에 들어 있고 비밀번호 해시가 로컬 개발용이라 운영 배포 전에 교체해야 한다는 사실이다.
 
 ```bash
 git add -A
@@ -2216,6 +2541,7 @@ git add -A && git commit -m "feat: 집계 결과 타입과 파생 지표 — 가
 ### Task 4: 계좌·달력 조회와 런타임 검증 (§9.1)
 
 **Files:**
+- Create: `auth/UserScope.java`
 - Create: `query/AccountRepository.java` · `SnapshotCalendarRepository.java` · `LineFilter.java`
 - Create: `query/CollectionStatusPort.java` · `NoCollectionStatusPort.java`
 - Create: `validation/PositionLineInvariants.java` · `FactInvariantViolation.java`
@@ -2223,18 +2549,22 @@ git add -A && git commit -m "feat: 집계 결과 타입과 파생 지표 — 가
 
 **Interfaces:**
 - Produces:
+  - `record UserScope(UUID userId)` — 조회의 대상 세계를 정한다(§3.8). Task 8이 토큰에서 만들어 주입하며, 이 태스크에서는 저장소가 받는 파라미터로만 쓴다
   - `record AccountRow(UUID id, String broker, String label, AccountType type, LinkState linkState, OffsetDateTime lastSyncedAt)`
-  - `List<AccountRow> AccountRepository.findAll()`
+  - `List<AccountRow> AccountRepository.findAll(UserScope scope)`
   - `record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes, Set<Market> markets, Set<AssetClass> assetClasses)` · `LineFilter.NONE` · `isEmpty()`
-  - `Optional<LocalDate> SnapshotCalendarRepository.latestAsOf()` · `previousAsOf(LocalDate)` · `latestOnOrBefore(LocalDate)` · `latestBefore(LocalDate)` · `earliestOnOrAfter(LocalDate)`
-  - `BigDecimal SnapshotCalendarRepository.totalAssetsKrwAt(LocalDate, LineFilter)`
-  - `void PositionLineInvariants.validate(LocalDate asOf)`
+  - `Optional<LocalDate> SnapshotCalendarRepository.latestAsOf(UserScope)` · `previousAsOf(UserScope, LocalDate)` · `latestOnOrBefore(UserScope, LocalDate)` · `latestBefore(UserScope, LocalDate)` · `earliestOnOrAfter(UserScope, LocalDate)`
+  - `BigDecimal SnapshotCalendarRepository.totalAssetsKrwAt(UserScope, LocalDate, LineFilter)`
+  - `void PositionLineInvariants.validate(UserScope, LocalDate asOf)`
 
 **완료 조건**
-1. 샘플 데이터에서 `latestAsOf()`가 `2026-07-27`, `previousAsOf`가 `2026-07-24`, `totalAssetsKrwAt(2026-07-24)`가 `56800000`이다.
-2. `PositionLineInvariants.validate`가 §A.8의 5개 규칙을 **SQL 검사 쿼리**로 확인하고 위반 시 `FactInvariantViolation`을 던진다.
-3. 위반 데이터를 넣으면 실제로 실패한다 — 규칙마다 테스트가 있다.
-4. `SchemaContractTest`가 데이터팀 소유 `instrument`의 컬럼 계약을 `information_schema`로 확인한다.
+1. `yhr` 스코프에서 `latestAsOf()`가 `2026-07-27`, `previousAsOf`가 `2026-07-24`, `totalAssetsKrwAt(2026-07-24)`가 `56800000`이다.
+2. **`hhj` 스코프에서 `latestAsOf()`가 `2026-07-27`이고 `previousAsOf`가 비어 있다** — `as_of` 캘린더가 사용자별이다(§3.8).
+3. `AccountRepository.findAll`이 `yhr`에 4행, `jdh`에 2행, `hhj`에 1행, `test_empty`에 0행을 낸다.
+4. `PositionLineInvariants.validate`가 §A.8의 5개 규칙을 **SQL 검사 쿼리**로 확인하고 위반 시 `FactInvariantViolation`을 던진다. 검사 범위는 그 사용자의 계좌다.
+5. 위반 데이터를 넣으면 실제로 실패한다 — 규칙마다 테스트가 있다. **남의 계좌를 깨뜨리면 내 검증은 통과한다.**
+6. `SchemaContractTest`가 데이터팀 소유 `instrument`의 컬럼 계약을 `information_schema`로 확인한다.
+7. `LineFilter`와 `UserScope`가 **별개 타입**이다. `LineFilter.NONE`으로 스코프까지 비워지는 경로가 없다(§A.3 불변식 5).
 
 **검증 방법**
 ```bash
@@ -2244,7 +2574,24 @@ git add -A && git commit -m "feat: 집계 결과 타입과 파생 지표 — 가
 
 > 운영 코드는 매퍼만 쓴다. **테스트의 픽스처 조작과 단언에는 `JdbcClient`를 그대로 쓴다** — 위반 데이터를 만들거나 `information_schema`를 훑는 일회성 SQL에 매퍼를 만들 이유가 없다. `mybatis-spring-boot-starter`가 `spring-boot-starter-jdbc`를 함께 가져오므로 의존성 추가가 없다.
 
-- [ ] **Step 1: `LineFilter`**
+- [ ] **Step 1: `UserScope`와 `LineFilter` — 타입을 가른다**
+
+```java
+package com.stockproject.portfolio.auth;
+
+import java.util.UUID;
+
+/**
+ * 스코프 — 조회 대상 행이 애초에 누구 것인가(스펙 §3.8).
+ * 요청이 고를 수 없으므로 LineFilter와 타입을 나눈다. 한 타입에 담으면
+ * LineFilter.NONE 하나로 스코프까지 비워진다.
+ */
+public record UserScope(UUID userId) {
+    public UserScope {
+        java.util.Objects.requireNonNull(userId, "스코프 없는 조회는 성립하지 않는다");
+    }
+}
+```
 
 ```java
 package com.stockproject.portfolio.query;
@@ -2257,6 +2604,7 @@ import java.util.UUID;
 /**
  * 요청 필터 — 스펙 §3.3. 필터는 그레인을 바꾸지 않고 대상 행만 고른다.
  * 값은 카탈로그 대조(§9.3)를 통과한 enum·계좌 ID이므로 SQL에 사용자 문자열이 닿지 않는다.
+ * 계좌 ID의 소유 검사는 요청 검증 단계가 한다(§9.3) — 여기서는 이미 통과한 값만 받는다.
  */
 public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
                          Set<Market> markets, Set<AssetClass> assetClasses) {
@@ -2270,14 +2618,19 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
 }
 ```
 
+**`LineFilter.NONE`이 있고 `UserScope.NONE`이 없는 것**이 두 개념의 차이다. 필터를 걸지 않는 요청은 정상이고, 스코프를 걸지 않는 요청은 존재하지 않는다.
+
 - [ ] **Step 2: 런타임 검증 테스트를 먼저 쓴다**
 
 `PositionLineInvariantsTest` — 규칙마다 위반 데이터를 넣고 실패를 확인한다. 샘플 적재 후 각 테스트가 한 규칙만 깨뜨린다.
 
 ```java
+    private static final UserScope YHR = new UserScope(UUID.fromString("40000000-…-0001"));
+    private static final UserScope JDH = new UserScope(UUID.fromString("40000000-…-0002"));
+
     @Test
     void 정상_샘플은_통과한다() {
-        invariants.validate(LocalDate.of(2026, 7, 27));      // 예외 없음
+        invariants.validate(YHR, LocalDate.of(2026, 7, 27));      // 예외 없음
     }
 
     /** 스펙 §9.1 — 연동이 유효한 모든 계좌는 해당 as_of에 라인이 있어야 한다. */
@@ -2286,8 +2639,19 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
         jdbc.sql("DELETE FROM position_line WHERE as_of = :d AND account_id = :a")
                 .param("d", LocalDate.of(2026, 7, 27)).param("a", MIRAE).update();
 
-        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
+        assertThatThrownBy(() -> invariants.validate(YHR, LocalDate.of(2026, 7, 27)))
                 .isInstanceOf(FactInvariantViolation.class)
+                .hasMessageContaining("라인 없음");
+    }
+
+    /** 검증도 스코프 안에서 한다 — 남의 데이터가 깨져도 내 조회는 산다. */
+    @Test
+    void 다른_사용자의_위반은_내_검증을_깨지_않는다() {
+        jdbc.sql("DELETE FROM position_line WHERE as_of = :d AND account_id = :a")
+                .param("d", LocalDate.of(2026, 7, 27)).param("a", KIWOOM).update();   // jdh의 계좌
+
+        invariants.validate(YHR, LocalDate.of(2026, 7, 27));      // 예외 없음
+        assertThatThrownBy(() -> invariants.validate(JDH, LocalDate.of(2026, 7, 27)))
                 .hasMessageContaining("라인 없음");
     }
 
@@ -2299,7 +2663,7 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
         jdbc.sql("UPDATE account SET link_state = 'DISCONNECTED' WHERE account_id = :a")
                 .param("a", MIRAE).update();
 
-        invariants.validate(LocalDate.of(2026, 7, 27));      // 예외 없음
+        invariants.validate(YHR, LocalDate.of(2026, 7, 27));      // 예외 없음
     }
 
     /** 스펙 §5.2 — CASH 행은 원가 = 평가금액. */
@@ -2307,10 +2671,11 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
     void CASH_행의_원가가_평가금액과_다르면_거부한다() {
         jdbc.sql("""
                 UPDATE position_line SET cost_amount_krw = market_value_krw - 1
-                 WHERE as_of = :d AND instrument_id = :i
-                """).param("d", LocalDate.of(2026, 7, 27)).param("i", CASH_KRW).update();
+                 WHERE as_of = :d AND instrument_id = :i AND account_id = :a
+                """).param("d", LocalDate.of(2026, 7, 27)).param("i", CASH_KRW)
+                    .param("a", KIS_GENERAL).update();
 
-        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
+        assertThatThrownBy(() -> invariants.validate(YHR, LocalDate.of(2026, 7, 27)))
                 .hasMessageContaining("CASH");
     }
 
@@ -2322,7 +2687,7 @@ public record LineFilter(Set<UUID> accountIds, Set<AccountType> accountTypes,
                  WHERE as_of = :d AND is_carried_forward
                 """).param("d", LocalDate.of(2026, 7, 27)).update();
 
-        assertThatThrownBy(() -> invariants.validate(LocalDate.of(2026, 7, 27)))
+        assertThatThrownBy(() -> invariants.validate(YHR, LocalDate.of(2026, 7, 27)))
                 .hasMessageContaining("is_carried_forward");
     }
 ```
@@ -2353,52 +2718,63 @@ import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDate;
 
-/** 스펙 §9.1 팩트 정합성 검사. 각 메서드는 위반 건수를 낸다 — 0이면 통과다. */
+/**
+ * 스펙 §9.1 팩트 정합성 검사. 각 메서드는 위반 건수를 낸다 — 0이면 통과다.
+ * 모든 검사가 account를 조인해 스코프 안에서만 센다 — 남의 데이터가 깨졌다고
+ * 내 화면이 500이 되지 않는다.
+ */
 @Mapper
 public interface FactCheckMapper {
 
     /** 그레인 유일성 — PK가 1차 보증. 검사를 남겨 의도를 드러낸다. */
     @Select("""
             SELECT count(*) FROM (
-              SELECT 1 FROM position_line WHERE as_of = #{asOf}
-               GROUP BY as_of, account_id, instrument_id HAVING count(*) > 1) d
+              SELECT 1 FROM position_line pl JOIN account a USING (account_id)
+               WHERE pl.as_of = #{asOf} AND a.user_id = #{scope.userId}
+               GROUP BY pl.as_of, pl.account_id, pl.instrument_id HAVING count(*) > 1) d
             """)
-    int duplicatedGrain(@Param("asOf") LocalDate asOf);
+    int duplicatedGrain(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 
     /** market_value_krw가 있으면 fx_rate·fx_as_of 필수 (NOT NULL이 1차 보증). */
     @Select("""
-            SELECT count(*) FROM position_line
-             WHERE as_of = #{asOf} AND market_value_krw IS NOT NULL
-               AND (fx_rate IS NULL OR fx_as_of IS NULL)
+            SELECT count(*) FROM position_line pl JOIN account a USING (account_id)
+             WHERE pl.as_of = #{asOf} AND a.user_id = #{scope.userId}
+               AND pl.market_value_krw IS NOT NULL
+               AND (pl.fx_rate IS NULL OR pl.fx_as_of IS NULL)
             """)
-    int missingFxRate(@Param("asOf") LocalDate asOf);
+    int missingFxRate(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 
     /** CASH 행은 원가 = 평가금액 (스펙 §5.2). */
     @Select("""
-            SELECT count(*) FROM position_line pl JOIN instrument i USING (instrument_id)
-             WHERE pl.as_of = #{asOf} AND i.asset_class = 'CASH'
+            SELECT count(*) FROM position_line pl
+              JOIN account a USING (account_id)
+              JOIN instrument i USING (instrument_id)
+             WHERE pl.as_of = #{asOf} AND a.user_id = #{scope.userId}
+               AND i.asset_class = 'CASH'
                AND pl.cost_amount_krw <> pl.market_value_krw
             """)
-    int cashCostMismatch(@Param("asOf") LocalDate asOf);
+    int cashCostMismatch(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 
     /** is_carried_forward = true이면 source_as_of < as_of. */
     @Select("""
-            SELECT count(*) FROM position_line
-             WHERE as_of = #{asOf} AND is_carried_forward
-               AND (source_as_of AT TIME ZONE 'Asia/Seoul')::date >= as_of
+            SELECT count(*) FROM position_line pl JOIN account a USING (account_id)
+             WHERE pl.as_of = #{asOf} AND a.user_id = #{scope.userId} AND pl.is_carried_forward
+               AND (pl.source_as_of AT TIME ZONE 'Asia/Seoul')::date >= pl.as_of
             """)
-    int carriedForwardNotStale(@Param("asOf") LocalDate asOf);
+    int carriedForwardNotStale(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 
-    /** 연동이 유효한 모든 계좌는 해당 as_of에 라인 존재 (스펙 §7.3 · §9.1). */
+    /** 그 사용자의 연동이 유효한 모든 계좌는 해당 as_of에 라인 존재 (스펙 §7.3 · §9.1). */
     @Select("""
             SELECT count(*) FROM account a
-             WHERE a.link_state <> 'DISCONNECTED'
+             WHERE a.user_id = #{scope.userId} AND a.link_state <> 'DISCONNECTED'
                AND NOT EXISTS (SELECT 1 FROM position_line pl
                                 WHERE pl.as_of = #{asOf} AND pl.account_id = a.account_id)
             """)
-    int accountsWithoutLine(@Param("asOf") LocalDate asOf);
+    int accountsWithoutLine(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 }
 ```
+
+검사 하나가 **그 사용자의 `as_of`에서만 의미가 있다**는 점이 여기 드러난다. `hhj`에게 `2026-07-24`를 물으면 라인이 하나도 없어 전부 위반으로 나오지만, 애초에 캘린더가 그 날짜를 후보로 주지 않으므로 호출되지 않는다.
 
 ```java
 package com.stockproject.portfolio.validation;
@@ -2423,14 +2799,14 @@ public class PositionLineInvariants {
 
     public PositionLineInvariants(FactCheckMapper checks) { this.checks = checks; }
 
-    public void validate(LocalDate asOf) {
+    public void validate(UserScope scope, LocalDate asOf) {
         List<String> violations = new ArrayList<>();
 
-        add(violations, () -> checks.duplicatedGrain(asOf),        "그레인 유일성 위반");
-        add(violations, () -> checks.missingFxRate(asOf),          "fx_rate·fx_as_of 누락");
-        add(violations, () -> checks.cashCostMismatch(asOf),       "CASH 행의 원가 ≠ 평가금액");
-        add(violations, () -> checks.carriedForwardNotStale(asOf), "is_carried_forward인데 source_as_of >= as_of");
-        add(violations, () -> checks.accountsWithoutLine(asOf),    "연동된 계좌에 라인 없음");
+        add(violations, () -> checks.duplicatedGrain(scope, asOf),        "그레인 유일성 위반");
+        add(violations, () -> checks.missingFxRate(scope, asOf),          "fx_rate·fx_as_of 누락");
+        add(violations, () -> checks.cashCostMismatch(scope, asOf),       "CASH 행의 원가 ≠ 평가금액");
+        add(violations, () -> checks.carriedForwardNotStale(scope, asOf), "is_carried_forward인데 source_as_of >= as_of");
+        add(violations, () -> checks.accountsWithoutLine(scope, asOf),    "연동된 계좌에 라인 없음");
 
         if (!violations.isEmpty()) throw new FactInvariantViolation(violations);
     }
@@ -2463,34 +2839,71 @@ public class FactInvariantViolation extends RuntimeException {
 
 - [ ] **Step 4: `AccountMapper` · `SnapshotCalendarMapper` · `CollectionStatusPort`**
 
-`AccountMapper.findAll()`은 `account` 전체를 읽는다. `DISCONNECTED`도 함께 읽고 필터링은 호출자가 한다 — §7.5의 "연동 해제는 제외"와 §9.1의 "연동이 유효한 계좌"를 각각 판단해야 하기 때문이다. `map-underscore-to-camel-case: true`라 `AccountRow`의 컴포넌트 이름이 컬럼과 그대로 맞는다.
+`AccountMapper.findAll(scope)`는 **그 사용자의** `account` 전체를 읽는다. `DISCONNECTED`도 함께 읽고 그 필터링은 호출자가 한다 — §7.5의 "연동 해제는 제외"와 §9.1의 "연동이 유효한 계좌"를 각각 판단해야 하기 때문이다. 스코프는 그와 달리 매퍼가 건다. 골라야 하는 것과 고를 수 없는 것의 차이다. `map-underscore-to-camel-case: true`라 `AccountRow`의 컴포넌트 이름이 컬럼과 그대로 맞는다.
 
-`SnapshotCalendarMapper`는 `as_of` 축만 다룬다. 전부 고정 SQL이라 애노테이션으로 둔다.
+`SnapshotCalendarMapper`는 `as_of` 축만 다룬다. 전부 고정 SQL이라 애노테이션으로 둔다. **다섯 쿼리 모두 `account`를 조인한다** — `as_of` 후보는 그 사용자의 계좌에 라인이 있는 날짜뿐이다(§3.8).
 
 ```java
 @Mapper
 public interface SnapshotCalendarMapper {
 
-    @Select("SELECT max(as_of) FROM position_line")
-    LocalDate latestAsOf();
+    @Select("""
+            SELECT max(pl.as_of) FROM position_line pl JOIN account a USING (account_id)
+             WHERE a.user_id = #{scope.userId}
+            """)
+    LocalDate latestAsOf(@Param("scope") UserScope scope);
 
-    @Select("SELECT max(as_of) FROM position_line WHERE as_of < #{asOf}")
-    LocalDate previousAsOf(@Param("asOf") LocalDate asOf);
+    @Select("""
+            SELECT max(pl.as_of) FROM position_line pl JOIN account a USING (account_id)
+             WHERE a.user_id = #{scope.userId} AND pl.as_of < #{asOf}
+            """)
+    LocalDate previousAsOf(@Param("scope") UserScope scope, @Param("asOf") LocalDate asOf);
 
-    @Select("SELECT max(as_of) FROM position_line WHERE as_of <= #{date}")
-    LocalDate latestOnOrBefore(@Param("date") LocalDate date);
+    @Select("""
+            SELECT max(pl.as_of) FROM position_line pl JOIN account a USING (account_id)
+             WHERE a.user_id = #{scope.userId} AND pl.as_of <= #{date}
+            """)
+    LocalDate latestOnOrBefore(@Param("scope") UserScope scope, @Param("date") LocalDate date);
 
-    @Select("SELECT max(as_of) FROM position_line WHERE as_of < #{date}")
-    LocalDate latestBefore(@Param("date") LocalDate date);
+    @Select("""
+            SELECT max(pl.as_of) FROM position_line pl JOIN account a USING (account_id)
+             WHERE a.user_id = #{scope.userId} AND pl.as_of < #{date}
+            """)
+    LocalDate latestBefore(@Param("scope") UserScope scope, @Param("date") LocalDate date);
 
-    @Select("SELECT min(as_of) FROM position_line WHERE as_of >= #{date}")
-    LocalDate earliestOnOrAfter(@Param("date") LocalDate date);
+    @Select("""
+            SELECT min(pl.as_of) FROM position_line pl JOIN account a USING (account_id)
+             WHERE a.user_id = #{scope.userId} AND pl.as_of >= #{date}
+            """)
+    LocalDate earliestOnOrAfter(@Param("scope") UserScope scope, @Param("date") LocalDate date);
 }
 ```
 
 `SnapshotCalendarRepository`가 이 매퍼를 감싸 `null`을 `Optional`로 바꾸고 `totalAssetsKrwAt`을 제공한다.
 
-`totalAssetsKrwAt`은 `LineFilter`의 계좌 조건만 반영한다 — 이 값을 쓰는 두 뷰(요약의 일간 변화, 자산 변화)의 필터가 계좌·기간뿐이다.
+`totalAssetsKrwAt`은 스코프와 `LineFilter`의 계좌 조건을 반영한다 — 이 값을 쓰는 두 뷰(요약의 일간 변화, 자산 변화)의 필터가 계좌·기간뿐이다.
+
+```java
+    @Test
+    void as_of_캘린더가_사용자마다_다르다() {
+        assertThat(calendar.latestAsOf(YHR)).contains(LocalDate.of(2026, 7, 27));
+        assertThat(calendar.previousAsOf(YHR, LocalDate.of(2026, 7, 27)))
+                .contains(LocalDate.of(2026, 7, 24));
+
+        assertThat(calendar.latestAsOf(HHJ)).contains(LocalDate.of(2026, 7, 27));
+        assertThat(calendar.previousAsOf(HHJ, LocalDate.of(2026, 7, 27))).isEmpty();
+        assertThat(calendar.latestAsOf(TEST_EMPTY)).isEmpty();
+    }
+
+    @Test
+    void 총자산이_사용자마다_갈린다() {
+        assertThat(calendar.totalAssetsKrwAt(YHR, LocalDate.of(2026, 7, 24), LineFilter.NONE))
+                .isEqualByComparingTo("56800000");
+        assertThat(calendar.totalAssetsKrwAt(JDH, LocalDate.of(2026, 7, 24), LineFilter.NONE))
+                .isEqualByComparingTo("13400000");
+        assertThat(calendar.totalAssetsKrwAt(HHJ, LocalDate.of(2026, 7, 24), LineFilter.NONE))
+                .isEqualByComparingTo("0");
+    }
 
 `CollectionStatusPort`는 데이터팀 소유 `collection_run`을 읽는 자리이며(스펙 §7.7), 계약이 미합의라 `NoCollectionStatusPort`가 빈 맵을 낸다.
 
@@ -2529,15 +2942,16 @@ git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검
 
 **Interfaces:**
 - Produces:
-  - `BigDecimal AggregateMapper.sumMarketValueKrw(LocalDate asOf, Lens lens)` — 렌즈 CTE의 총합
+  - `BigDecimal AggregateMapper.sumMarketValueKrw(UserScope scope, LocalDate asOf, Lens lens)` — 렌즈 CTE의 총합
   - `record UndecomposedEtf(int count, BigDecimal marketValueKrw)`
-  - `UndecomposedEtf EtfCoverageMapper.undecomposedAt(LocalDate asOf, LineFilter filter)`
+  - `UndecomposedEtf EtfCoverageMapper.undecomposedAt(UserScope scope, LocalDate asOf, LineFilter filter)`
 
 **완료 조건**
-1. `DIRECT`와 `LOOK_THROUGH` 두 CTE 모두 `Σ market_value_krw`가 `position_line`의 그것과 같다 — 총합 보존(§9.1).
+1. `DIRECT`와 `LOOK_THROUGH` 두 CTE 모두 `Σ market_value_krw`가 그 사용자의 `position_line` 총합과 같다 — 총합 보존(§9.1).
 2. `etf_coverage`가 비어 있으면 `LOOK_THROUGH`가 ETF 행을 그대로 남긴다(§3.4).
-3. `undecomposedAt`이 미분해 ETF 1건 · `11000000`을 낸다.
+3. `undecomposedAt`이 `yhr`에 미분해 ETF 1건 · `11000000`, `jdh`에 1건 · `5500000`, `hhj`에 0건 · `0`을 낸다.
 4. 두 렌즈의 CTE 아래 쿼리 모양이 같다 — 집계·필터·조인이 렌즈와 무관하다(§1.5).
+5. **두 렌즈 분기 모두 `account`를 조인하고 `user_id`를 건다.** 스코프가 CTE 안에 있어야 하위 단계가 빠뜨릴 자리가 없다(§A.3 불변식 5).
 
 **검증 방법**
 ```bash
@@ -2569,16 +2983,27 @@ class LensPreservationTest {
     @Test
     void 두_렌즈_모두_총합을_보존한다() {
         for (Lens lens : Lens.values()) {
-            assertThat(aggregateMapper.sumMarketValueKrw(AS_OF, lens))
+            assertThat(aggregateMapper.sumMarketValueKrw(YHR, AS_OF, lens))
                     .as("%s 총합 보존", lens)
                     .isEqualByComparingTo("58000000");
+        }
+    }
+
+    /** 스코프가 CTE 안에 있다 — 렌즈를 바꿔도 남의 자산이 들어오지 않는다(§3.8). */
+    @Test
+    void 두_렌즈_모두_스코프를_지킨다() {
+        for (Lens lens : Lens.values()) {
+            assertThat(aggregateMapper.sumMarketValueKrw(JDH, AS_OF, lens))
+                    .isEqualByComparingTo("14000000");
+            assertThat(aggregateMapper.sumMarketValueKrw(TEST_EMPTY, AS_OF, lens))
+                    .isEqualByComparingTo("0");
         }
     }
 
     /** 스펙 §3.4 — 미확보 ETF는 전개하지 않고 ETF 행을 그대로 남긴다. */
     @Test
     void 미확보_ETF는_행이_그대로_남는다() {
-        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.INSTRUMENT),
+        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(AxisKey.INSTRUMENT),
                 Lens.LOOK_THROUGH, LineFilter.NONE);
 
         assertThat(agg.rows()).extracting(n -> n.key().key()).contains("133690");
@@ -2586,10 +3011,15 @@ class LensPreservationTest {
 
     @Test
     void 미분해_ETF의_건수와_금액을_센다() {
-        UndecomposedEtf u = etfCoverageMapper.undecomposedAt(AS_OF, LineFilter.NONE);
+        assertThat(etfCoverageMapper.undecomposedAt(YHR, AS_OF, LineFilter.NONE))
+                .satisfies(u -> {
+                    assertThat(u.count()).isEqualTo(1);
+                    assertThat(u.marketValueKrw()).isEqualByComparingTo("11000000");
+                });
 
-        assertThat(u.count()).isEqualTo(1);
-        assertThat(u.marketValueKrw()).isEqualByComparingTo("11000000");
+        // jdh도 같은 ETF를 보유하지만 자기 몫만 센다
+        assertThat(etfCoverageMapper.undecomposedAt(JDH, AS_OF, LineFilter.NONE).marketValueKrw())
+                .isEqualByComparingTo("5500000");
     }
 }
 ```
@@ -2600,10 +3030,20 @@ class LensPreservationTest {
 
 ```xml
 <!-- 렌즈 — 스펙 §3.4가 정의한 "입력도 라인 집합, 출력도 라인 집합인 변환 함수".
-     출력 컬럼이 두 분기에서 동일하므로 하위 로직은 렌즈 적용 여부와 무관하다. -->
+     출력 컬럼이 두 분기에서 동일하므로 하위 로직은 렌즈 적용 여부와 무관하다.
+
+     스코프도 여기서 걸린다(§3.8) — 이 CTE가 내놓는 것이 이미 그 사용자의 세계라
+     아래의 조인·필터·집계는 스코프를 다시 걸 필요도, 빠뜨릴 자리도 없다. -->
 <sql id="targetLineColumns">
-  account_id, instrument_id, quantity,
-  cost_amount_local, market_value_local, cost_amount_krw, market_value_krw
+  pl.account_id, pl.instrument_id, pl.quantity,
+  pl.cost_amount_local, pl.market_value_local, pl.cost_amount_krw, pl.market_value_krw
+</sql>
+
+<sql id="scopedLine">
+  FROM position_line pl
+  JOIN account owner ON owner.account_id = pl.account_id
+ WHERE pl.as_of = #{asOf}
+   AND owner.user_id = #{scope.userId}
 </sql>
 
 <sql id="targetLine">
@@ -2613,23 +3053,23 @@ class LensPreservationTest {
            전개하지 않고 그대로 남긴다(§3.4). 기타 버킷에 넣지 않는다 —
            "ETF 내 비주식"과 뭉개지기 때문이다.
            전개 분기(ETF 평가금액 × 구성비중 + 기타 버킷 + 잔차 흡수)는 2단계 범위이며
-           etf_constituent 조인으로 여기에 UNION ALL 된다. -->
+           etf_constituent 조인으로 여기에 UNION ALL 된다. 그 분기도 이 조각을 쓴다. -->
       SELECT <include refid="targetLineColumns"/>
-        FROM position_line pl
-       WHERE pl.as_of = #{asOf}
-         AND NOT EXISTS (SELECT 1 FROM etf_coverage c
-                          WHERE c.etf_instrument_id = pl.instrument_id
-                            AND c.state = 'COVERED')
+      <include refid="scopedLine"/>
+        AND NOT EXISTS (SELECT 1 FROM etf_coverage c
+                         WHERE c.etf_instrument_id = pl.instrument_id
+                           AND c.state = 'COVERED')
     </when>
     <otherwise>
       <!-- DIRECT — 2단계를 건너뛰고 position_line이 그대로 3단계로 간다(§3.6). -->
       SELECT <include refid="targetLineColumns"/>
-        FROM position_line
-       WHERE as_of = #{asOf}
+      <include refid="scopedLine"/>
     </otherwise>
   </choose>
 </sql>
 ```
+
+**`scopedLine`을 별도 조각으로 뽑은 이유.** 전개 분기가 `UNION ALL`로 붙을 때 스코프를 다시 써야 하는데, 손으로 옮겨 적으면 한쪽만 고치는 실수가 난다. 조각 하나를 `<include>`하면 두 분기가 같은 조건을 공유하고, 앞으로 붙을 세 번째 분기도 마찬가지다.
 
 총합 보존을 확인할 수 있게 매퍼에 조회 메서드를 하나 둔다. 이것이 §9.1의 "전개 후 Σ market_value가 전개 전과 일치"를 검증 가능하게 만든다.
 
@@ -2650,13 +3090,16 @@ class LensPreservationTest {
     FROM position_line pl
     JOIN instrument i ON i.instrument_id = pl.instrument_id
     JOIN account acct ON acct.account_id = pl.account_id
-   WHERE pl.as_of = #{asOf} AND i.asset_class = 'ETF'
+   WHERE pl.as_of = #{asOf} AND acct.user_id = #{scope.userId}
+     AND i.asset_class = 'ETF'
      AND NOT EXISTS (SELECT 1 FROM etf_coverage c
                       WHERE c.etf_instrument_id = pl.instrument_id
                         AND c.state = 'COVERED')
   <include refid="accountFilter"/>
 </select>
 ```
+
+이 쿼리는 `targetLine`을 거치지 않으므로 스코프를 직접 건다. **`position_line`에서 곧바로 읽는 쿼리는 전부 그렇다** — 매퍼 시그니처 테스트(Task 8)가 `UserScope`를 받지 않는 메서드를 잡아내 이런 자리를 빠뜨리지 않게 한다.
 
 - [ ] **Step 5: 테스트 통과 → 커밋**
 
@@ -2682,7 +3125,7 @@ git add -A && git commit -m "feat: 렌즈를 CTE로 — DIRECT 경로와 미확�
   - `String AxisSql.keyExpr(AxisKey)` · `String AxisSql.labelExpr(AxisKey)`
   - `List<AxisFragment> AxisSql.fragmentsOf(List<AxisKey>)` · `List<List<AxisFragment>> AxisSql.groupingSets(List<AxisFragment>)`
   - `List<AggregateRowDto> AggregateMapper.aggregate(...)`
-  - `Aggregation AggregateQueryRepository.aggregate(LocalDate asOf, List<AxisKey> groupBy, Lens lens, LineFilter filter)`
+  - `Aggregation AggregateQueryRepository.aggregate(UserScope scope, LocalDate asOf, List<AxisKey> groupBy, Lens lens, LineFilter filter)`
 
 **완료 조건**
 1. `groupBy = []`이면 전체 합계 1행만 나온다(요약).
@@ -2692,6 +3135,7 @@ git add -A && git commit -m "feat: 렌즈를 CTE로 — DIRECT 경로와 미확�
 5. `기타` 버킷은 금액과 무관하게 항상 맨 끝이다.
 6. 집계 SELECT에 비율 지표가 없다 — `<sql id="measures">`에 `additive = false`인 지표가 등장하지 않는다(불변식 1).
 7. 매퍼가 `String` 축을 받는 경로가 없다 — `AxisFragment`만 받는다.
+8. **모든 축 × 두 렌즈 조합에서 사용자마다 다른 값이 나온다** — §C.12의 표가 재현된다. `test_empty`는 어느 조합에서도 빈 결과다.
 
 **검증 방법**
 ```bash
@@ -2711,7 +3155,7 @@ class AggregateQueryRepositoryTest {
         for (AxisKey axis : AxisKey.values()) {
             if (!axis.enabled()) continue;
             for (Lens lens : Lens.values()) {
-                Aggregation agg = repository.aggregate(AS_OF, List.of(axis), lens, LineFilter.NONE);
+                Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(axis), lens, LineFilter.NONE);
 
                 BigDecimal rowSum = agg.rows().stream()
                         .map(n -> n.measures().total().marketValueKrw())
@@ -2727,7 +3171,7 @@ class AggregateQueryRepositoryTest {
     /** 스펙 §6.1 폴백 — CASH는 현금, sector가 null인 종목은 미분류로 모인다. */
     @Test
     void 섹터_축의_폴백과_정렬() {
-        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
+        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
 
         assertThat(agg.rows()).extracting(n -> n.key().label())
                 .containsExactly("반도체", "소프트웨어", "미분류", "IT서비스", "현금");
@@ -2739,7 +3183,7 @@ class AggregateQueryRepositoryTest {
     /** 스펙 §8.3 — group_by가 2단계면 중첩되고 소계는 서버가 계산한다. */
     @Test
     void 계좌유형_소계가_자식_합과_같다() {
-        Aggregation agg = repository.aggregate(AS_OF,
+        Aggregation agg = repository.aggregate(YHR, AS_OF,
                 List.of(AxisKey.ACCOUNT_TYPE, AxisKey.ACCOUNT), Lens.DIRECT, LineFilter.NONE);
 
         assertThat(agg.rows()).hasSize(2);
@@ -2756,7 +3200,7 @@ class AggregateQueryRepositoryTest {
 
     @Test
     void group_by가_비면_전체_합계만_나온다() {
-        Aggregation agg = repository.aggregate(AS_OF, List.of(), Lens.DIRECT, LineFilter.NONE);
+        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(), Lens.DIRECT, LineFilter.NONE);
         MeasureBundle t = agg.responseTotal();
 
         assertThat(agg.rows()).isEmpty();
@@ -2774,7 +3218,7 @@ class AggregateQueryRepositoryTest {
     /** 불변식 3 — 통화 집합이 그룹마다 따라온다. */
     @Test
     void 그룹의_통화_집합이_함께_나온다() {
-        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
+        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(AxisKey.SECTOR), Lens.DIRECT, LineFilter.NONE);
 
         assertThat(node(agg, "IT서비스").measures().currencies().single()).contains(CurrencyCode.USD);
         assertThat(node(agg, "소프트웨어").measures().currencies().single()).isEmpty();
@@ -2783,11 +3227,41 @@ class AggregateQueryRepositoryTest {
     /** 필터는 마스터 조인 뒤에 적용된다(§3.6 3.5단계). */
     @Test
     void 시장_필터가_동작한다() {
-        Aggregation agg = repository.aggregate(AS_OF, List.of(AxisKey.INSTRUMENT), Lens.DIRECT,
+        Aggregation agg = repository.aggregate(YHR, AS_OF, List.of(AxisKey.INSTRUMENT), Lens.DIRECT,
                 new LineFilter(Set.of(), Set.of(), Set.of(Market.US), Set.of()));
 
         assertThat(agg.rows()).extracting(n -> n.key().key())
                 .containsExactlyInAnyOrder("AAPL", "MSFT", "CASH-USD");
+    }
+
+    /** 같은 요청이 사용자마다 다른 값을 낸다. 겹치는 종목이 합쳐지지 않는다. */
+    @Test
+    void 같은_요청이_사용자마다_다른_값을_낸다() {
+        assertThat(row(JDH, AxisKey.INSTRUMENT, "005930").measures().total().quantity())
+                .isEqualByComparingTo("100");
+        assertThat(row(YHR, AxisKey.INSTRUMENT, "005930").measures().total().quantity())
+                .isEqualByComparingTo("200");
+
+        assertThat(row(JDH, AxisKey.SECTOR, "반도체").measures().total().marketValueKrw())
+                .isEqualByComparingTo("7120000");
+        assertThat(row(YHR, AxisKey.SECTOR, "반도체").measures().total().marketValueKrw())
+                .isEqualByComparingTo("23240000");
+    }
+
+    /** 계좌가 없는 사용자는 어느 조합에서도 빈 결과다 — empty_reason의 재료다. */
+    @Test
+    void 계좌가_없으면_모든_조합이_비어_있다() {
+        for (AxisKey axis : AxisKey.values()) {
+            if (!axis.enabled()) continue;
+            for (Lens lens : Lens.values()) {
+                Aggregation agg = repository.aggregate(
+                        TEST_EMPTY, AS_OF, List.of(axis), lens, LineFilter.NONE);
+
+                assertThat(agg.rows()).as("axis=%s lens=%s", axis.key(), lens).isEmpty();
+                assertThat(agg.responseTotal().total().marketValueKrw())
+                        .isEqualByComparingTo(BigDecimal.ZERO);
+            }
+        }
     }
 }
 ```
@@ -2953,17 +3427,20 @@ public record AxisFragment(int index, String keyExpr, String labelExpr) { }
 @Mapper
 public interface AggregateMapper {
 
-    List<AggregateRowDto> aggregate(@Param("asOf") LocalDate asOf,
+    List<AggregateRowDto> aggregate(@Param("scope") UserScope scope,
+                                    @Param("asOf") LocalDate asOf,
                                     @Param("axes") List<AxisFragment> axes,
                                     @Param("groupingSets") List<List<AxisFragment>> groupingSets,
                                     @Param("lens") Lens lens,
                                     @Param("filter") LineFilter filter);
 
-    BigDecimal sumMarketValueKrw(@Param("asOf") LocalDate asOf, @Param("lens") Lens lens);
+    BigDecimal sumMarketValueKrw(@Param("scope") UserScope scope,
+                                 @Param("asOf") LocalDate asOf,
+                                 @Param("lens") Lens lens);
 }
 ```
 
-**매개변수 타입이 이 설계의 안전장치다.** `axes`가 `List<AxisFragment>`라 호출자가 임의 문자열을 넣을 수 없고, `AxisFragment`는 `AxisSql.fragmentsOf(List<AxisKey>)`만 만든다.
+**매개변수 타입이 이 설계의 안전장치다.** `axes`가 `List<AxisFragment>`라 호출자가 임의 문자열을 넣을 수 없고, `AxisFragment`는 `AxisSql.fragmentsOf(List<AxisKey>)`만 만든다. `scope`가 첫 자리에 고정인 것도 같은 성격이다 — 빠뜨리면 컴파일되지 않고, 리플렉션 테스트(Task 8)가 자리까지 검사한다.
 
 - [ ] **Step 6: `AggregateQueryRepository` — 실행하고 트리로 조립**
 
@@ -3022,7 +3499,7 @@ class AxisSqlTest {
 }
 ```
 
-`두_렌즈의_쿼리는_CTE만_다르다`는 문자열 비교 대신 **결과로 확인한다** — 렌즈를 바꿔도 `total`이 같다는 것이 §1.5가 실제로 요구하는 바다. 그 검증은 Task 11의 교차 검증에 있다.
+`두_렌즈의_쿼리는_CTE만_다르다`는 문자열 비교 대신 **결과로 확인한다** — 렌즈를 바꿔도 `total`이 같다는 것이 §1.5가 실제로 요구하는 바다. 그 검증은 Task 12의 교차 검증에 있다.
 
 - [ ] **Step 8: 테스트 통과 → 커밋**
 
@@ -3282,7 +3759,7 @@ public record AssemblyContext(
         List<NoticeDto> notices = collector.collect(contextWithCarriedForward());
 
         assertThat(notices).extracting(NoticeDto::code)
-                .containsExactly("FX_APPLIED", "STALE_ACCOUNTS");   // §A.5.2 순서
+                .containsExactly("FX_APPLIED", "STALE_ACCOUNTS");   // 선언 순서대로 실린다
         NoticeDto stale = notices.get(1);
         assertThat(stale.severity()).isEqualTo("warn");
         assertThat(stale.message()).isEqualTo("1개 계좌가 07-24 기준입니다");
@@ -3313,7 +3790,7 @@ public enum EmptyReason {
 
 ```java
 /**
- * 판정 순서를 고정한다(계획 §A.5.3): NO_ACCOUNTS → NO_HOLDINGS
+ * 판정 순서를 고정한다: NO_ACCOUNTS → NO_HOLDINGS
  *   → (realized-pnl이면 NO_TRADES_IN_PERIOD → ALL_UNAVAILABLE) → NO_MATCH_FILTER.
  * 먼저 맞는 것 하나만 내린다.
  */
@@ -3492,35 +3969,222 @@ git add -A && git commit -m "feat: 응답 조립 — 봉투 · notice 16종 · e
 
 ---
 
-### Task 8: 스냅샷 4개 뷰 엔드포인트와 요청 검증
+### Task 8: 인증 — 로그인 · JWT · 스코프 주입 (§8.8 · §3.8)
+
+앞의 태스크들이 `UserScope`를 파라미터로 받아 왔다. 이 태스크가 **그 값이 어디서 오는지**를 정하고, 요청이 그것을 고를 수 없게 만든다.
 
 **Files:**
-- Create: `view/SnapshotViewService.java` · `validation/RequestValidator.java` · `api/ViewController.java` · `api/CatalogController.java` · `api/ApiExceptionHandler.java` · `api/dto/CatalogDto.java` · `api/ApiError.java`
+- Create: `auth/AppUser.java` · `AppUserMapper.java` · `JwtCodec.java` · `JwtProperties.java`
+- Create: `auth/SecurityConfig.java` · `JwtAuthenticationFilter.java` · `UserScopeArgumentResolver.java`
+- Create: `auth/AccountOwnershipGuard.java` · `AuthController.java`
+- Create: `auth/dto/LoginRequest.java` · `TokenResponse.java` · `MeResponse.java`
+- Modify: `build.gradle.kts` (`spring-boot-starter-security` · `jjwt`)
+- Create: `api/ApiExceptionHandler.java` · `api/ApiError.java` (`401` · `403`. 나머지 코드는 뒤에서 더한다)
+- Test: `test/.../auth/JwtCodecTest.java` · `LoginApiTest.java` · `ScopeSignatureTest.java`
+- Modify: `test/.../ArchitectureRulesTest.java` (불변식 5)
+
+**Interfaces:**
+- Consumes: Task 4의 `UserScope`, Task 1의 `app_user` 테이블
+- Produces:
+  - `String JwtCodec.issue(UUID userId)` · `Optional<UUID> JwtCodec.verify(String token)`
+  - `Optional<AppUser> AppUserMapper.findByEmail(String email)`
+  - `void AccountOwnershipGuard.check(UserScope scope, Set<UUID> accountIds)` — 아니면 `ForbiddenAccountException`
+  - 컨트롤러 메서드가 `UserScope`를 파라미터로 선언하면 리졸버가 토큰에서 채워 준다
+
+**완료 조건**
+1. `POST /auth/login`이 올바른 자격으로 `200`과 `access_token` · `expires_at`을 낸다.
+2. 잘못된 비밀번호와 없는 이메일이 **같은 응답**을 낸다 — `401 INVALID_CREDENTIALS`(§8.8).
+3. 토큰 없이 뷰 엔드포인트를 부르면 `401 UNAUTHENTICATED`. 만료·변조 토큰도 같다.
+4. `GET /auth/me`가 토큰 주인의 `user_id` · `email` · `display_name`을 낸다.
+5. 남의 계좌를 `?account=`로 넣으면 `403 FORBIDDEN_ACCOUNT`. **빈 결과가 아니다.**
+6. `ScopeSignatureTest` — 사용자 소유 테이블을 읽는 매퍼 메서드가 전부 `UserScope`를 **첫 파라미터**로 받는다.
+7. `ArchitectureRulesTest` — `api`·`auth` 패키지의 핸들러에 `user`·`user_id` 이름의 `@RequestParam`·`@PathVariable`이 없다.
+8. 비밀번호 원문이 로그·응답 어디에도 나오지 않는다.
+
+**검증 방법**
+```bash
+./gradlew test --tests '*auth.*' --tests '*ArchitectureRulesTest'
+
+TOKEN=$(curl -s localhost:8080/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"yhr@stock-project.local","password":"…"}' | jq -r .access_token)
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/portfolio/views/summary          # 401
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/portfolio/views/summary \
+  -H "Authorization: Bearer $TOKEN"                                                      # 200
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  'localhost:8080/portfolio/views/summary?account=20000000-0000-0000-0000-000000000005'  # 403
+```
+
+- [ ] **Step 1: 의존성과 설정**
+
+```kotlin
+implementation("org.springframework.boot:spring-boot-starter-security")
+implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+testImplementation("org.springframework.security:spring-security-test")
+```
+
+```yaml
+portfolio:
+  auth:
+    # HS256 서명키. 운영에서는 환경변수로만 주입한다.
+    secret: ${JWT_SECRET:local-development-secret-key-at-least-32-bytes}
+    ttl: PT12H
+```
+
+기본값을 둔 것은 로컬에서 바로 뜨게 하기 위해서이고, `.env.example`과 README에 운영 주입을 적는다. 32바이트 미만이면 `JwtCodec`이 기동 시점에 거부한다 — 짧은 키로 서명하면 HS256이 의미를 잃는다.
+
+- [ ] **Step 2: 로그인 실패가 구분되지 않는 것을 테스트로 먼저 고정한다**
+
+```java
+    /** 스펙 §8.8 — 가입 여부가 응답으로 새지 않는다. */
+    @Test
+    void 없는_이메일과_틀린_비밀번호가_같은_응답을_낸다() throws Exception {
+        var noSuchUser = login("nobody@stock-project.local", "whatever");
+        var wrongPassword = login("yhr@stock-project.local", "whatever");
+
+        assertThat(noSuchUser.getStatus()).isEqualTo(401).isEqualTo(wrongPassword.getStatus());
+        assertThat(noSuchUser.getContentAsString()).isEqualTo(wrongPassword.getContentAsString());
+    }
+
+    @Test
+    void 비밀번호가_응답에_나오지_않는다() throws Exception {
+        assertThat(login("yhr@stock-project.local", "…").getContentAsString())
+                .doesNotContain("password", "hash");
+    }
+```
+
+응답 본문까지 같은지 보는 이유는 상태 코드만 맞추고 메시지가 갈리는 경우를 잡기 위해서다.
+
+- [ ] **Step 3: `JwtCodec` · `AppUserMapper` · `AuthController`**
+
+`JwtCodec`은 `sub`·`iat`·`exp`만 싣는다. 계좌 목록을 싣지 않는 이유는 §8.8에 있다 — 계좌는 바뀌고 토큰은 고정이다.
+
+```java
+@Component
+public class JwtCodec {
+    public String issue(UUID userId) { /* sub = userId, exp = now + ttl */ }
+    public Optional<UUID> verify(String token) { /* 서명·만료 실패는 Optional.empty() */ }
+}
+```
+
+`AuthController`는 두 엔드포인트뿐이다. 로그인은 `AppUserMapper.findByEmail` → `BCryptPasswordEncoder.matches` → 발급이며, **사용자가 없을 때도 더미 해시로 한 번 비교한다** — 존재하지 않는 이메일이 빨리 실패해 응답 시간으로 가입 여부가 새는 것을 막는다.
+
+- [ ] **Step 4: 필터와 스코프 주입**
+
+`JwtAuthenticationFilter`가 `Authorization` 헤더를 읽어 `UUID`를 꺼내고, `UserScopeArgumentResolver`가 그것을 컨트롤러 파라미터로 넘긴다.
+
+```java
+@GetMapping("/views/summary")
+public Envelope<SnapshotViewData> summary(UserScope scope, @RequestParam ... ) { }
+```
+
+**컨트롤러가 스코프를 "받는" 것처럼 보이지만 요청은 그 값을 정할 수 없다.** 리졸버가 인증 컨텍스트에서만 만들고, 요청 파라미터를 보지 않는다. 이 성질을 ArchUnit이 지킨다.
+
+```java
+    /** 불변식 5 — 사용자 ID는 요청에서 오지 않는다(§8.8). */
+    @ArchTest
+    static final ArchRule 핸들러는_사용자_ID를_파라미터로_받지_않는다 =
+            noMethods().that().areDeclaredInClassesThat().resideInAPackage("..api..")
+                    .should(haveRequestBoundParameterNamed("user", "userId", "user_id"));
+```
+
+`SecurityConfig`는 `POST /auth/login`만 열고 나머지를 막는다. 세션을 쓰지 않으므로 `STATELESS`이고 CSRF는 끈다 — 쿠키를 쓰지 않아 CSRF의 전제가 성립하지 않는다.
+
+- [ ] **Step 5: 매퍼 시그니처 테스트**
+
+불변식 5의 두 번째 겹이다. 새 매퍼가 늘어도 스코프를 빠뜨리면 여기서 잡힌다.
+
+```java
+/**
+ * 사용자 소유 테이블을 읽는 매퍼는 UserScope를 첫 파라미터로 받는다.
+ * 빠뜨리면 다른 사용자의 자산이 결과에 섞이고, 그 사실이 값으로는 잘 드러나지 않는다.
+ */
+class ScopeSignatureTest {
+
+    @Test
+    void 스코프_없는_조회_경로가_없다() {
+        // query 패키지의 매퍼는 전부 사용자 소유 테이블을 읽는다.
+        // 참조 데이터만 읽는 매퍼가 생기면 그때 다른 패키지로 가른다.
+        List<Class<?>> mappers = new ClassPathScanner()
+                .findInterfacesAnnotatedWith(Mapper.class, "com.stockproject.portfolio.query");
+
+        assertThat(mappers).isNotEmpty();
+        for (Class<?> mapper : mappers) {
+            for (Method m : mapper.getDeclaredMethods()) {
+                assertThat(m.getParameterTypes())
+                        .as("%s.%s", mapper.getSimpleName(), m.getName())
+                        .isNotEmpty()
+                        .satisfies(types -> assertThat(types[0]).isEqualTo(UserScope.class));
+            }
+        }
+    }
+}
+```
+
+**목록을 손으로 유지하지 않고 패키지를 훑는다.** 이후 태스크가 매퍼를 더 만들어도 자동으로 대상이 되며, 목록에 추가하는 것을 잊어 검사에서 빠지는 일이 없다. 인증 자체를 담당하는 `AppUserMapper`가 `auth` 패키지에 있어 대상에서 빠지는 것도 의도한 것이다 — 그것은 스코프를 **만드는** 쪽이라 받을 스코프가 없다.
+
+- [ ] **Step 6: 계좌 소유 검사**
+
+```java
+/** 스펙 §9.3 — 계좌 필터 값은 인증 주체 소유여야 한다. 빈 결과가 아니라 403이다. */
+@Component
+public class AccountOwnershipGuard {
+    public void check(UserScope scope, Set<UUID> accountIds) {
+        if (accountIds.isEmpty()) return;
+        Set<UUID> owned = accountRepository.findAll(scope).stream().map(AccountRow::id).collect(toSet());
+        if (!owned.containsAll(accountIds)) throw new ForbiddenAccountException();
+    }
+}
+```
+
+`RequestValidator`가 카탈로그 대조를 마친 뒤 이 검사를 부른다. 순서가 이런 이유는 형식이 틀린 값(`400`)과 남의 것을 가리키는 값(`403`)이 다른 실패이기 때문이다.
+
+- [ ] **Step 7: 테스트 통과 → 커밋**
+
+```bash
+./gradlew test --tests '*auth.*' --tests '*ArchitectureRulesTest'
+git add -A && git commit -m "feat: 인증 — 로그인·JWT·사용자 스코프 주입"
+```
+
+---
+
+### Task 9: 스냅샷 4개 뷰 엔드포인트와 요청 검증
+
+**Files:**
+- Create: `view/SnapshotViewService.java` · `validation/RequestValidator.java` · `api/ViewController.java` · `api/CatalogController.java` · `api/dto/CatalogDto.java`
+- Modify: `api/ApiExceptionHandler.java` (요청 검증 실패와 팩트 정합성 위반을 더한다)
 - Test: `test/.../api/SnapshotViewApiTest.java` · `test/.../validation/RequestValidatorTest.java`
 
 **Interfaces:**
-- Consumes: Task 4 저장소·검증기, Task 5 렌즈, Task 6 엔진, Task 7 조립기
+- Consumes: Task 4 저장소·검증기, Task 5 렌즈, Task 6 엔진, Task 7 조립기, Task 8 스코프 주입·소유 검사
 - Produces:
-  - `Envelope<SnapshotViewData> SnapshotViewService.summary(Lens miniChartLens, AxisKey miniChartAxis)`
-  - `Envelope<SnapshotViewData> SnapshotViewService.positions(Lens, LineFilter)`
-  - `Envelope<SnapshotViewData> SnapshotViewService.allocation(AxisKey, Lens, LineFilter)`
-  - `Envelope<SnapshotViewData> SnapshotViewService.accounts()`
-  - `void RequestValidator.validateSnapshotRequest(ViewKey, AxisKey axisOrNull, Lens, Map<String,List<String>> filters)`
+  - `Envelope<SnapshotViewData> SnapshotViewService.summary(UserScope, Lens miniChartLens, AxisKey miniChartAxis)`
+  - `Envelope<SnapshotViewData> SnapshotViewService.positions(UserScope, Lens, LineFilter)`
+  - `Envelope<SnapshotViewData> SnapshotViewService.allocation(UserScope, AxisKey, Lens, LineFilter)`
+  - `Envelope<SnapshotViewData> SnapshotViewService.accounts(UserScope)`
+  - `void RequestValidator.validateSnapshotRequest(UserScope, ViewKey, AxisKey axisOrNull, Lens, Map<String,List<String>> filters)`
 
 **완료 조건**
-1. 4개 엔드포인트가 `200`과 §C.5·C.6·C.8·C.9의 값을 낸다.
-2. `?axis=is_leveraged` → `400 AXIS_DISABLED`. `?axis=sector`를 `positions`에 → `400 AXIS_NOT_APPLICABLE`.
-3. `positions?lens=LOOK_THROUGH&market=US` → `400 LENS_SENSITIVE_FILTER_REJECTED`.
-4. `accounts?lens=LOOK_THROUGH` → `400 LENS_NOT_ALLOWED`.
-5. 계좌가 없으면 `200` + `empty_reason: NO_ACCOUNTS`.
-6. `GET /portfolio/catalog`이 렌즈 상태별 허용 필터를 내린다.
+1. 4개 엔드포인트가 `yhr` 토큰으로 `200`과 §C.5·C.6·C.8·C.9의 값을 낸다.
+2. **같은 요청을 `jdh`·`hhj` 토큰으로 부르면 §C.12의 값이 나온다.**
+3. `?axis=is_leveraged` → `400 AXIS_DISABLED`. `?axis=sector`를 `positions`에 → `400 AXIS_NOT_APPLICABLE`.
+4. `positions?lens=LOOK_THROUGH&market=US` → `400 LENS_SENSITIVE_FILTER_REJECTED`.
+5. `accounts?lens=LOOK_THROUGH` → `400 LENS_NOT_ALLOWED`.
+6. 계좌가 없으면(`test_empty`) `200` + `empty_reason: NO_ACCOUNTS`.
+7. 남의 계좌를 `?account=`로 넣으면 `403 FORBIDDEN_ACCOUNT` — 카탈로그 대조를 통과한 UUID여도 그렇다.
+8. `GET /portfolio/catalog`의 계좌 목록에 **인증 주체의 계좌만** 실린다(§8.1).
 
 **검증 방법**
 ```bash
 ./gradlew test --tests '*SnapshotViewApiTest' --tests '*RequestValidatorTest'
-# 그리고 실물 확인
-curl -s 'localhost:8080/portfolio/views/allocation?axis=sector&lens=DIRECT' | jq .
-curl -s -o /dev/null -w '%{http_code}\n' 'localhost:8080/portfolio/views/allocation?axis=is_leveraged'  # 400
+# 그리고 실물 확인 — TOKEN은 POST /auth/login 응답의 access_token이다
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'localhost:8080/portfolio/views/allocation?axis=sector&lens=DIRECT' | jq .
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  'localhost:8080/portfolio/views/allocation?axis=is_leveraged'                            # 400
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  'localhost:8080/portfolio/views/accounts?account=20000000-0000-0000-0000-000000000005'   # 403
 ```
 
 - [ ] **Step 1: 요청 검증 테스트를 먼저 쓴다**
@@ -3812,7 +4476,7 @@ git add -A && git commit -m "feat: 스냅샷 4개 뷰 엔드포인트와 카탈�
 
 ---
 
-### Task 9: 실현손익 엔드포인트 (§8.4)
+### Task 10: 실현손익 엔드포인트 (§8.4)
 
 **Files:**
 - Create: `query/RealizedPnlMapper.java` · `view/RealizedPnlViewService.java` · `view/PeriodResolver.java` · `api/dto/RealizedPnlData.java`
@@ -3822,12 +4486,13 @@ git add -A && git commit -m "feat: 스냅샷 4개 뷰 엔드포인트와 카탈�
 **Interfaces:**
 - Produces:
   - `record RealizedPnlRow(String tradeId, UUID accountId, UUID instrumentId, String instrumentKey, String instrumentLabel, CurrencyCode currency, OffsetDateTime soldAt, BigDecimal quantity, BigDecimal sellAmountLocal, BigDecimal costBasisLocal, BigDecimal sellAmountKrw, BigDecimal costBasisKrw, BigDecimal realizedPnlKrw, Grade grade)`
-  - `List<RealizedPnlRow> RealizedPnlMapper.findByPeriod(LocalDate from, LocalDate to, LineFilter filter)`
+  - `List<RealizedPnlRow> RealizedPnlMapper.findByPeriod(UserScope scope, LocalDate from, LocalDate to, LineFilter filter)`
   - `record Period(LocalDate from, LocalDate to)` · `Period PeriodResolver.resolve(String period, LocalDate from, LocalDate to, LocalDate referenceAsOf)`
-  - `Envelope<RealizedPnlData> RealizedPnlViewService.render(String period, LocalDate from, LocalDate to, LineFilter)`
+  - `Envelope<RealizedPnlData> RealizedPnlViewService.render(UserScope, String period, LocalDate from, LocalDate to, LineFilter)`
 
 **완료 조건**
-1. `?period=THIS_YEAR`가 §C.10의 값을 낸다 — 2행, `MIXED`, `SEEDED_ROWS`.
+1. `?period=THIS_YEAR`가 `yhr`에 §C.10의 값을 낸다 — 2행, `MIXED`, `SEEDED_ROWS`.
+2. **같은 요청이 `jdh`에 1행 · `total 19,000`, `hhj`에 `NO_TRADES_IN_PERIOD`를 낸다.** 삼성전자 노드의 `trade_count`가 2이고 `last_sold_at`이 `2026-05-12`인 것이 스코프가 걸렸다는 증거다 — jdh의 `T-1001`(06-19)이 섞이면 둘 다 밀린다.
 2. 체결 노드가 `rows[].rows`로 중첩되고 접히지 않는다.
 3. `UNAVAILABLE`·`CONFLICT` 체결이 합계에서 빠지고 `EXCLUDED_ACCOUNTS`가 뜬다(단위 테스트로 검증. 샘플에는 그런 행이 없다).
 4. 기간에 매도가 없으면 `200` + `NO_TRADES_IN_PERIOD`.
@@ -3969,12 +4634,13 @@ SELECT r.trade_id, r.account_id, r.instrument_id, i.symbol, i.name, i.currency,
   FROM realized_pnl_line r
   JOIN account    a ON a.account_id    = r.account_id
   JOIN instrument i ON i.instrument_id = r.instrument_id
- WHERE (r.sold_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN :from AND :to
+ WHERE a.user_id = #{scope.userId}
+   AND (r.sold_at AT TIME ZONE 'Asia/Seoul')::date BETWEEN :from AND :to
 ```
-계좌 필터는 `<include refid="accountFilter"/>`로 붙인다 — 집계 매퍼와 같은 조각을 쓴다.
+계좌 필터는 `<include refid="accountFilter"/>`로 붙인다 — 집계 매퍼와 같은 조각을 쓴다. 스코프는 필터와 달리 항상 붙으므로 `<where>` 밖 고정 조건이다.
 
 서비스가 하는 일:
-1. 기준일 = `calendar.latestAsOf()` → `PeriodResolver.resolve(...)`
+1. 기준일 = `calendar.latestAsOf(scope)` → `PeriodResolver.resolve(...)`. **기준일이 사용자마다 다를 수 있다** — `THIS_YEAR` 같은 상대 기간이 그 사용자의 최신 스냅샷에서 계산된다
 2. 행을 종목으로 묶는다(`instrumentId` 기준). **접는 것이 아니라 중첩이다** — 체결 노드를 모두 남긴다.
 3. 종목 노드 합계는 **포함 대상 체결만**(`grade ∈ {VERIFIED, SEEDED}`) 더한다. `realized_pnl_pct = Σ실현손익 ÷ Σ취득원가`, 소수 1자리 HALF_UP.
 4. 종목 노드 `grade` = 포함 대상 체결 등급의 distinct가 1이면 그 값, 2 이상이면 `MIXED`.
@@ -4033,7 +4699,7 @@ git add -A && git commit -m "feat: 실현손익 뷰 — 2단계 중첩 · MIXED 
 
 ---
 
-### Task 10: 자산 변화 엔드포인트 (§2.9 · §8.4)
+### Task 11: 자산 변화 엔드포인트 (§2.9 · §8.4)
 
 **Files:**
 - Create: `view/AssetChangeViewService.java` · `api/dto/AssetChangeData.java`
@@ -4044,15 +4710,17 @@ git add -A && git commit -m "feat: 실현손익 뷰 — 2단계 중첩 · MIXED 
 **Interfaces:**
 - Produces:
   - `record ManualCashflowTotals(BigDecimal deposit, BigDecimal withdraw)` — 백엔드 소유 테이블에서 읽은 **실제 값**
-  - `ManualCashflowTotals ManualCashflowMapper.totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo, LineFilter)`
+  - `ManualCashflowTotals ManualCashflowMapper.totalsBetween(UserScope, LocalDate exclusiveFrom, LocalDate inclusiveTo, LineFilter)`
   - `enum EarningsCashflowType { DIVIDEND, FEE, TAX }` — **`DEPOSIT`·`WITHDRAW`가 없다.** 스펙 §9.1의 "`cln_cashflow`에 `DEPOSIT`·`WITHDRAW`가 있으면 거부"를 타입으로 강제한다
   - `record EarningsCashflowTotals(BigDecimal dividend, BigDecimal feeTax, Set<UUID> coveredAccountIds, Set<EarningsCashflowType> coveredTypes)`
-  - `EarningsCashflowTotals EarningsCashflowPort.totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo, Set<UUID> accountIds)`
-  - `Envelope<AssetChangeData> AssetChangeViewService.render(String period, LocalDate from, LocalDate to, LineFilter)`
+  - `EarningsCashflowTotals EarningsCashflowPort.totalsBetween(LocalDate exclusiveFrom, LocalDate inclusiveTo, Set<UUID> accountIds)` — 계좌 목록으로 좁히므로 스코프가 이미 반영된 인자를 받는다
+  - `Envelope<AssetChangeData> AssetChangeViewService.render(UserScope, String period, LocalDate from, LocalDate to, LineFilter)`
 
 **완료 조건**
-1. §C.11의 값을 낸다 — `opening 56,800,000` · `closing 58,000,000` · `deposited 2,000,000` · `investment_pnl −800,000` · `split_available false`.
-2. 항등식이 성립한다: `closing = opening + deposited + earned + included − excluded`.
+1. `yhr`에 §C.11의 값을 낸다 — `opening 56,800,000` · `closing 58,000,000` · `deposited 2,000,000` · `investment_pnl −800,000` · `split_available false`.
+2. 항등식이 성립한다: `closing = opening + deposited + earned + included − excluded`. **네 사용자 모두에서 성립한다.**
+2.1. `jdh`는 `13,400,000 → 14,000,000` · 넣은 돈 `500,000` · 번 돈 `+100,000`이다 — 자산이 늘고 벌기도 한 반대 사례다.
+2.2. **`hhj`는 기초 스냅샷이 없어 가장 이른 `2026-07-27`로 대체되고 `opening = closing = 2,000,000`, `breakdown`이 빈 배열이다.** 캘린더가 전역이면 여기서 `2026-07-24`가 잡혀 남의 세계에서 기간 손익이 계산된다.
 3. 값이 0인 `breakdown` 항목이 숨겨진다 (`WITHDRAW`·`DIVIDEND`·`FEE_TAX`).
 4. `PERIOD_TRUNCATED` · `BOUNDARY_CARRIED_FORWARD` · `CASHFLOW_UNCOVERED`가 뜨고, `CASHFLOW_UNCOVERED`의 `types`가 `["DIVIDEND","FEE","TAX"]`다 — **입출금은 입력됐으므로 여기 포함되지 않는다.**
 5. 기초·기말 스냅샷이 없으면 `200` + `NO_HOLDINGS`.
@@ -4107,7 +4775,7 @@ class AssetChangeViewServiceTest {
     }
 
     /**
-     * 현금흐름 구간은 요청 기간이 아니라 실제 스냅샷 구간이다(§A.6.3).
+     * 현금흐름 구간은 요청 기간이 아니라 실제 스냅샷 구간이다.
      * 기초가 2026-07-24로 대체됐으므로 그 이전 입출금은 더하지 않는다 — 안 그러면 항등식이 깨진다.
      */
     @Test
@@ -4181,7 +4849,8 @@ import java.time.LocalDate;
 @Mapper
 public interface ManualCashflowMapper {
 
-    ManualCashflowTotals totalsBetween(@Param("from") LocalDate exclusiveFrom,
+    ManualCashflowTotals totalsBetween(@Param("scope") UserScope scope,
+                                       @Param("from") LocalDate exclusiveFrom,
                                        @Param("to") LocalDate inclusiveTo,
                                        @Param("filter") LineFilter filter);
 }
@@ -4193,7 +4862,8 @@ public interface ManualCashflowMapper {
          coalesce(sum(CASE WHEN m.type = 'WITHDRAW' THEN m.amount END), 0) AS withdraw
     FROM manual_cashflow m
     JOIN account acct ON acct.account_id = m.account_id
-   WHERE m.occurred_on &gt;  #{from}
+   WHERE acct.user_id = #{scope.userId}
+     AND m.occurred_on &gt;  #{from}
      AND m.occurred_on &lt;= #{to}
   <include refid="accountFilter"/>
 </select>
@@ -4267,10 +4937,10 @@ public record AssetChangeData(PeriodDto period,
 - [ ] **Step 4: 서비스 구현**
 
 순서:
-1. 기준일 = `calendar.latestAsOf()`. `PeriodResolver.resolve(...)`로 `Period`를 얻는다.
-2. **기초 스냅샷**: `calendar.latestBefore(period.from())`. 없으면 `calendar.earliestOnOrAfter(period.from())`을 쓰고 그 날짜를 `PERIOD_TRUNCATED.actual_from`으로 남긴다. 둘 다 없으면 `NO_HOLDINGS`.
-3. **기말 스냅샷**: `calendar.latestOnOrBefore(period.to())`. 없으면 `NO_HOLDINGS`.
-4. `opening` · `closing` = 각 시점의 `totalAssetsKrwAt(asOf, filter)`.
+1. 기준일 = `calendar.latestAsOf(scope)`. `PeriodResolver.resolve(...)`로 `Period`를 얻는다.
+2. **기초 스냅샷**: `calendar.latestBefore(scope, period.from())`. 없으면 `calendar.earliestOnOrAfter(scope, period.from())`을 쓰고 그 날짜를 `PERIOD_TRUNCATED.actual_from`으로 남긴다. 둘 다 없으면 `NO_HOLDINGS`.
+3. **기말 스냅샷**: `calendar.latestOnOrBefore(scope, period.to())`. 없으면 `NO_HOLDINGS`.
+4. `opening` · `closing` = 각 시점의 `totalAssetsKrwAt(scope, asOf, filter)`.
 5. **계좌 편입·제외**: 기초·기말 스냅샷의 계좌 집합을 비교한다. 편입 = 기말에만 있는 계좌의 기말 총자산, 제외 = 기초에만 있는 계좌의 기초 총자산. (§2.9 경계 처리의 "첫/마지막 스냅샷 총자산"을 기간 양 끝 스냅샷으로 근사한다 — 기간 내 중간 스냅샷을 훑지 않는 단순화이며, 계좌 편입·제외가 기간 경계 밖에서 일어난 경우를 다루지 않는다. 이 근사를 코드 주석에 남긴다.)
 6. **현금흐름 구간을 `(기초 as_of, 기말 as_of]`로 잡는다** — 요청 기간이 아니다(§A.6.3). 기초가 대체됐어도 항등식이 성립하게 하는 핵심이다.
 7. `ManualCashflowMapper.totalsBetween(...)`으로 입출금을 읽는다. `deposited = deposit − withdraw`. **실제 값이다.**
@@ -4279,13 +4949,14 @@ public record AssetChangeData(PeriodDto period,
 10. `earned = investmentPnl + dividend − feeTax`.
 11. `breakdown` = `DEPOSIT`(deposit) · `WITHDRAW`(−withdraw) · `DIVIDEND` · `FEE_TAX`(−feeTax) · `INVESTMENT_PNL` 중 **0이 아닌 것만**.
 12. `investment_pnl.split_available = false`, `realized`·`unrealized_change` = `null` — 거래 원장 산출이 범위 밖이다.
-13. notice: `CASHFLOW_UNCOVERED`의 `types` = `EarningsCashflowType` 전체 − `coveredTypes`, `account_count` = 연동 유효 계좌 수 − `coveredAccountIds` 크기. **입출금은 `manual_cashflow`가 원천이므로 미확보 유형에 넣지 않는다.** 경계 이월 계좌 수 = 두 경계 스냅샷의 `is_carried_forward` distinct 계좌 수(있으면 기말 날짜를 `boundary`로).
+13. notice: `CASHFLOW_UNCOVERED`의 `types` = `EarningsCashflowType` 전체 − `coveredTypes`, `account_count` = **그 사용자의** 연동 유효 계좌 수 − `coveredAccountIds` 크기. **입출금은 `manual_cashflow`가 원천이므로 미확보 유형에 넣지 않는다.** 경계 이월 계좌 수 = 두 경계 스냅샷의 `is_carried_forward` distinct 계좌 수(있으면 기말 날짜를 `boundary`로).
 
 - [ ] **Step 5: 엔드포인트와 API 테스트**
 
 ```java
     @GetMapping("/views/asset-change")
     public Envelope<AssetChangeData> assetChange(
+            UserScope scope,                        // 인증 토큰에서 주입된다 — 요청이 정하지 않는다
             @RequestParam(defaultValue = "THIS_MONTH") String period,
             @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to,
@@ -4327,7 +4998,7 @@ git add -A && git commit -m "feat: 자산 변화 뷰 — 항등식 · 입출금 
 
 ---
 
-### Task 11: 도달점 검증 — 6개 응답 골든 테스트와 문서
+### Task 12: 도달점 검증 — 6개 응답 골든 테스트와 문서
 
 **Files:**
 - Create: `test/.../api/SixViewGoldenTest.java`
@@ -4336,14 +5007,15 @@ git add -A && git commit -m "feat: 자산 변화 뷰 — 항등식 · 입출금 
 - Modify: `back-end/README.md`
 
 **Interfaces:**
-- Consumes: Task 8·9·10의 엔드포인트 전부
+- Consumes: Task 9·10·11의 엔드포인트 전부
 
 **완료 조건**
-1. 샘플 SQL만 적재된 상태에서 6개 엔드포인트 응답이 골든 JSON과 **완전히 일치**한다(필드 순서 무시, 값·키 존재 모두 비교).
+1. 샘플 SQL만 적재된 상태에서 `yhr` 토큰으로 부른 6개 엔드포인트 응답이 골든 JSON과 **완전히 일치**한다(필드 순서 무시, 값·키 존재 모두 비교).
 2. 골든 JSON이 §C.5~C.11의 표와 일치한다.
-3. 불변식 4개를 응답 수준에서 다시 확인하는 교차 검증 테스트가 통과한다.
-4. `README.md`가 실행 절차·범위 경계·인증 없음을 적는다.
-5. `docs/decisions.md`가 §A.2의 네 결정(빌드·마이그레이션·데이터 접근·집계 위치)과 되돌리는 조건을 적는다.
+3. 불변식 다섯 개를 응답 수준에서 다시 확인하는 교차 검증 테스트가 통과한다.
+4. **같은 일곱 요청을 `jdh`·`hhj`·`test_empty` 토큰으로 부른 결과가 §C.12의 표와 일치한다.** 골든 파일은 `yhr`만 두고 나머지는 표의 핵심 수치만 단언한다 — 골든 네 벌을 두면 샘플을 손볼 때마다 네 벌을 고쳐야 한다.
+5. `README.md`가 실행 절차·범위 경계·로그인 방법을 적는다.
+6. `docs/decisions.md`가 §A.2의 네 결정(빌드·마이그레이션·데이터 접근·집계 위치)과 인증 방식, 그리고 각각을 되돌리는 조건을 적는다.
 
 **검증 방법**
 ```bash
@@ -4359,9 +5031,11 @@ for p in \
   'views/realized-pnl?period=THIS_YEAR' \
   'views/asset-change?period=CUSTOM&from=2026-07-01&to=2026-07-31' \
   'catalog' ; do
-  printf '%s -> %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' "localhost:8080/portfolio/$p")"
+  printf '%s -> %s\n' "$p" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+       "localhost:8080/portfolio/$p")"
 done
-# 기대: 전부 200
+# 기대: 전부 200. 토큰을 빼면 전부 401이다
 ```
 
 - [ ] **Step 1: 골든 테스트를 쓴다 (실패 확인)**
@@ -4395,7 +5069,7 @@ class SixViewGoldenTest {
         "/portfolio/views/asset-change?period=CUSTOM&from=2026-07-01&to=2026-07-31 | asset-change.json"
     })
     void 여섯_뷰_응답이_골든과_일치한다(String path, String goldenFile) throws Exception {
-        String actual = mockMvc.perform(get(path.trim()))
+        String actual = mockMvc.perform(get(path.trim()).header("Authorization", bearer(YHR)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         String expected = new ClassPathResource("golden/" + goldenFile.trim())
@@ -4526,13 +5200,13 @@ Run: `./gradlew test --tests '*SixViewGoldenTest'` → FAIL. 실패 메시지의
 - 데이터 접근을 MyBatis로 정한 결정, JPA를 기각한 여섯 가지 이유, jOOQ로 옮기는 조건.
 - 집계를 Java에서 하는 결정과, SQL 구현을 추가할 때 **두 구현 대조 테스트를 함께 넣는다**는 조건.
 - 인덱스·보관 기간·파티셔닝 트리거(§A.2.5).
-- 인증을 넣지 않은 이유와 언제 결정하는지.
+- 인증을 JWT Bearer로 정한 이유와, 세션 쿠키·소셜 로그인으로 옮기는 조건.
 
 - [ ] **Step 5: `README.md`**
 
 - 실행: `docker compose up -d --build` → 샘플 적재 → `curl` 6개.
 - 스택과 버전.
-- **인증이 없고 로컬 전용**이라는 경고.
+- **로그인 방법과 계정** — 팀원 셋의 계정이 마이그레이션에 들어 있고, 비밀번호 해시가 로컬 개발용이라 운영 배포 전에 교체해야 한다는 사실.
 - 소유 테이블 경계: `db/migration`(백엔드) vs `db/external`(데이터팀 미러, 운영 미적용).
 - 범위 밖 목록과 이유 링크(§A.9).
 - 스펙 링크.
@@ -4552,12 +5226,14 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 ## E.1 태스크 의존과 병렬화
 
 ```
-1 ─ 2 ─ 3 ─ 4 ─ 5 ─ 6 ─ 7 ─┬─ 8 ─┐
-                            ├─ 9 ─┼─ 11
-                            └─ 10 ┘
+1 ─ 2 ─ 3 ─ 4 ─ 5 ─ 6 ─ 7 ─ 8 ─┬─  9 ─┐
+                                ├─ 10 ─┼─ 12
+                                └─ 11 ─┘
 ```
 
-8·9·10은 서로 다른 서비스·DTO를 만들고 공유 상태가 없어 병렬로 진행할 수 있다. 단 셋 다 `api/ViewController.java`를 수정하므로, 병렬로 돌리면 그 파일에서 충돌한다 — 컨트롤러를 뷰별로 셋으로 쪼개거나(`SnapshotViewController` · `RealizedPnlController` · `AssetChangeController`) 순차로 처리한다. **쪼개는 쪽을 권한다** — 파일이 함께 바뀌는 이유가 없다.
+9·10·11은 서로 다른 서비스·DTO를 만들고 공유 상태가 없어 병렬로 진행할 수 있다. 단 셋 다 `api/ViewController.java`를 수정하므로, 병렬로 돌리면 그 파일에서 충돌한다 — 컨트롤러를 뷰별로 셋으로 쪼개거나(`SnapshotViewController` · `RealizedPnlController` · `AssetChangeController`) 순차로 처리한다. **쪼개는 쪽을 권한다** — 파일이 함께 바뀌는 이유가 없다.
+
+**인증(8)이 엔드포인트 앞에 서는 이유.** 4~7은 `UserScope`를 파라미터로 받기만 하므로 그 값이 어디서 오는지 몰라도 만들어지고 테스트된다. 값의 출처가 실제로 필요해지는 지점은 HTTP 요청이 들어오는 9~11이다. 그래서 스코프를 받는 타입은 4에서, 그것을 채우는 장치는 8에서 만든다.
 
 ## E.2 착수 전 확인 하나
 
@@ -4574,29 +5250,32 @@ git add -A && git commit -m "test: 6개 뷰 골든 테스트와 불변식 교차
 | 스펙 절 | 태스크 |
 |---|---|
 | §1.3 그레인 · §3.1 팩트 그레인 | 1(PK) · 4(검증기) |
+| §3.8 사용자 스코프 | 1(소유권 축·샘플) · 4(저장소·캘린더) · 5(CTE) · 6(집계) · 8(주입·소유 검사) |
+| §8.8 인증 | 8 |
 | §1.5 · §3.2 저장 규칙·가산성 | 1(린트) · 3(타입) · 6(집계 쿼리) |
 | §3.3 축과 필터 | 2(카탈로그) · 6(마스터 조인·필터) |
 | §3.4 렌즈 | 5 |
 | §3.5 뷰 사양 | 2 |
 | §3.6 파이프라인 2~6단계 | 4·5·6·7·8 |
 | §3.7 통화 표시 | 3(CurrencySet) · 7(정책) · 11(교차 검증) |
-| §5.1 테이블 | 1 |
-| §5.1 `manual_cashflow` (사용자 입력 입출금) | 1(마이그레이션·샘플) · 10(읽기 경로) |
+| §5.1 테이블 (`app_user` 포함) | 1 |
+| §5.1 `manual_cashflow` (사용자 입력 입출금) | 1(마이그레이션·샘플) · 11(읽기 경로) |
 | §5.2 예수금을 종목으로 | 1(샘플) · 3(2슬롯) · 7(응답 null) |
 | §5.3 원화 환산 머티리얼라이즈 | 1(컬럼) · 7(`FX_APPLIED`·`FX_STALE`) |
 | §5.5 타입 정책·반올림 | 1(numeric) · 3(비율 1자리) |
-| §6.1~6.4 카탈로그·서빙 계약 | 2 · 8(카탈로그 엔드포인트·요청 검증) |
-| §8.1 엔드포인트 | 8·9·10 |
+| §6.1~6.4 카탈로그·서빙 계약 | 2 · 9(카탈로그 엔드포인트·요청 검증) |
+| §8.1 엔드포인트 | 8·9·10·11 |
 | §8.2 봉투·notice·empty_reason | 7 |
-| §8.3 스냅샷 뷰 응답 | 7·8 |
-| §4.6 현금흐름 커버리지 (계좌, 유형) | 10 |
-| §8.4 실현손익·자산 변화 응답 | 9·10 |
-| §8.6 오류와 빈 상태 | 7·8 |
-| §9.1 런타임 검증(`position_line`·렌즈) | 4(검사 쿼리) · 5(총합 보존) |
+| §8.6 인증·권한 실패(`401`·`403`) | 8 |
+| §8.3 스냅샷 뷰 응답 | 7·9 |
+| §4.6 현금흐름 커버리지 (계좌, 유형) | 11 |
+| §8.4 실현손익·자산 변화 응답 | 10·11 |
+| §8.6 오류와 빈 상태 | 7·9 |
+| §9.1 런타임 검증(사용자 스코프·`position_line`·렌즈) | 4(검사 쿼리) · 5(총합 보존·CTE 스코프) · 8(매퍼 시그니처) |
 | §9.2 스키마 규약 | 1(린트) · 3(ArchUnit) |
-| §9.3 요청 검증·응답 조립 | 7·8 |
-| §10 화면 상태 전수 | 7·8·9·10 (빈 상태·경고·계좌 상태 세 표현 수단) |
-| §13이 계획에서 확정하라 한 것 | §A.2.5(인덱스·보관·파티셔닝) · §A.9(API 인증) |
+| §9.3 요청 검증·응답 조립 | 7·8(계좌 소유 검사) · 9 |
+| §10 화면 상태 전수 | 7·9·10·11 (빈 상태·경고·계좌 상태 세 표현 수단) |
+| §13이 계획에서 확정하라 한 것 | §A.2.5(인덱스·보관·파티셔닝) · 8(토큰 비밀키와 만료) |
 
 **이번 범위에서 다루지 않는 스펙 절**: §4.1~4.5(평단·등급 판정 — 1.5/1.6단계) · §7(계좌 연동·동기화) · §9.1의 평단·등급 묶음 · §11(역할 분담, 문서) · §12(YAGNI 경계, 의도적 제외).
 
