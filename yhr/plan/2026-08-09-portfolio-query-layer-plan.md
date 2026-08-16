@@ -662,6 +662,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 그 사용자의 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 | 검증기 — 그 사용자의 `account` 목록과 대조. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다 |
 | `is_carried_forward = true`이면 `source_as_of < as_of` | **검증기 전용.** `timestamptz AT TIME ZONE`이 immutable이 아니라 CHECK 제약으로 표현할 수 없다 |
 | CASH 행은 원가 = 평가금액 (§5.2) | 검증기 — `asset_class`가 다른 테이블에 있어 CHECK로 표현 불가 |
+| 모든 라인이 종목 마스터에 매칭된다 (§11.2) | **검증기 전용.** `instrument`에 FK를 걸지 않아(§A.2.5) DB가 막지 못하고, 집계가 `instrument`를 내부 조인하므로 미매칭 라인의 금액이 총자산에서 조용히 빠진다 — `Σ rows = total`은 양쪽이 함께 줄어 통과한다 |
 | look-through 전개 후 `Σ market_value_krw`가 전개 전과 일치 (총합 보존, 기타 버킷 포함) | 렌즈 CTE의 총합을 `position_line`의 총합과 대조하는 테스트 (Task 5) |
 | `etf_coverage.state = UNAVAILABLE`인 ETF는 전개하지 않고 ETF 행을 남긴다 | `AggregateMapper.xml`의 `targetLine` 조각, `LOOK_THROUGH` 분기 (§A.9) |
 | **`넣은 돈`은 `manual_cashflow`에서만 온다. `cln_cashflow`에 `DEPOSIT`·`WITHDRAW`가 있으면 거부** (§9.1 자산 변화) | **타입으로 강제** — `cln_cashflow`를 읽는 포트의 유형 enum이 `EarningsCashflowType { DIVIDEND, FEE, TAX }`라 두 값을 표현할 방법이 없다 |
@@ -2562,7 +2563,7 @@ git add -A && git commit -m "feat: 집계 결과 타입과 파생 지표 — 가
 1. `yhr` 스코프에서 `latestAsOf()`가 `2026-07-27`, `previousAsOf`가 `2026-07-24`, `totalAssetsKrwAt(2026-07-24)`가 `56800000`이다.
 2. **`hhj` 스코프에서 `latestAsOf()`가 `2026-07-27`이고 `previousAsOf`가 비어 있다** — `as_of` 캘린더가 사용자별이다(§3.8).
 3. `AccountRepository.findAll`이 `yhr`에 4행, `jdh`에 2행, `hhj`에 1행, `test_empty`에 0행을 낸다.
-4. `PositionLineInvariants.validate`가 §A.8의 5개 규칙을 **SQL 검사 쿼리**로 확인하고 위반 시 `FactInvariantViolation`을 던진다. 검사 범위는 그 사용자의 계좌다.
+4. `PositionLineInvariants.validate`가 §A.8의 6개 규칙을 **SQL 검사 쿼리**로 확인하고 위반 시 `FactInvariantViolation`을 던진다. 검사 범위는 그 사용자의 계좌다.
 5. 위반 데이터를 넣으면 실제로 실패한다 — 규칙마다 테스트가 있다. **남의 계좌를 깨뜨리면 내 검증은 통과한다.**
 6. `SchemaContractTest`가 데이터팀 소유 `instrument`의 컬럼 계약을 `information_schema`로 확인한다.
 7. `LineFilter`와 `UserScope`가 **별개 타입**이다. `LineFilter.NONE`으로 스코프까지 비워지는 경로가 없다(§A.3 불변식 5).
