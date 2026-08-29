@@ -349,7 +349,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 
 - **스냅샷 4개 뷰는 합계 블록을 공유한다**(§A.6.1). `total_assets_krw` · `securities_value_krw` · `deposit_krw` · `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` · `cash_ratio_pct` · `instrument_count` · `account_count` 아홉 개가 `group_by`와 무관하게 같은 묶음의 값이라 뷰가 달라도 키가 같고, 요약만 `daily_change_krw` · `daily_change_pct`를 더한다. 위 표의 지표 열은 그 뷰가 **행에** 싣는 것이며, 목적지 판정은 `Metric.scope`가 한다(불변식 4).
 - `realized-pnl`의 `sell_amount_krw` · `cost_basis_krw`는 카탈로그 지표 17개에 없다. 축으로 묶는 값이 아니라 체결 노드의 값이라 §A.6.2의 전용 스키마가 정의한다.
-- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at`을 갖고(§6.3 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다. 둘 다 축이 아니라 표시용이며 집계에 참여하지 않는다.
+- `rowFields[]` — 공통 행 스키마(§A.6.1)에 더해지는 필드. `accounts` 뷰는 `link_state` · `last_collection` · `last_synced_at` · `source_as_of` · `is_carried_forward`를 갖고(§6.3 · §7.4 · §8.2), `positions` 뷰는 시장 배지용 `market`을 갖는다. 둘 다 축이 아니라 표시용이며 집계에 참여하지 않는다.
 - `filters` — 렌즈 상태별 허용 필터 맵. `LOOK_THROUGH`에서 `lensSensitive` 축이 빠진다. `positions`에서 `market`·`asset_class`가 사라지는 게 이 규칙의 실체다 — 전개 후 ETF가 존재하지 않아 `자산군=ETF` 필터는 항상 빈 목록이 된다(§3.6).
 - `subBlocks[]` — 한 응답에 `group_by`·렌즈 조합이 둘 이상 필요한 뷰. **요약만 해당**하며 미니차트 블록은 `groupBy: [market]` 또는 `[asset_class]`, `lensPolicy: OPTIONAL`, 지표 `market_value_krw` · `weight_pct`.
 - **정렬은 평가금액 내림차순 고정**이며 요청 파라미터로 받지 않는다. `기타` 버킷은 항상 맨 끝(§3.6 6단계).
@@ -1069,11 +1069,11 @@ CASH-USD 행은 CASH지만 단일 통화 USD이므로 `market_value_local`은 �
 | 노드 | key / label | mv_krw | deposit_krw | cost_krw | pnl_krw | pnl_pct | weight_pct | 행 필드 |
 |---|---|---|---|---|---|---|---|---|
 | 1 | `GENERAL` / 일반 | 40,960,000 | 3,560,000 | 34,600,000 | 2,800,000 | 8.1 | 70.6 | – |
-| 1.1 | `…0001` / 한국투자 위탁 | 31,960,000 | 2,560,000 | 25,600,000 | 3,800,000 | 14.8 | 55.1 | `link_state: CONNECTED`, `last_collection: null`, `last_synced_at: null` |
+| 1.1 | `…0001` / 한국투자 위탁 | 31,960,000 | 2,560,000 | 25,600,000 | 3,800,000 | 14.8 | 55.1 | `link_state: CONNECTED` · `last_collection: null` · `last_synced_at: null` · `source_as_of: 2026-07-27` · `is_carried_forward: false` |
 | 1.2 | `…0002` / 삼성증권 | 9,000,000 | 1,000,000 | 9,000,000 | −1,000,000 | −11.1 | 15.5 | 동일 |
 | 2 | `PENSION` / 연금 | 17,040,000 | 1,140,000 | 14,200,000 | 1,700,000 | 12.0 | 29.4 | – |
 | 2.1 | `…0003` / 한국투자 IRP | 12,000,000 | 1,000,000 | 10,000,000 | 1,000,000 | 10.0 | 20.7 | 동일 |
-| 2.2 | `…0004` / 미래에셋 연금 | 5,040,000 | 140,000 | 4,200,000 | 700,000 | 16.7 | 8.7 | 동일 + `currency: USD` |
+| 2.2 | `…0004` / 미래에셋 연금 | 5,040,000 | 140,000 | 4,200,000 | 700,000 | 16.7 | 8.7 | 동일 + `currency: USD` · **`source_as_of: 2026-07-24` · `is_carried_forward: true`** |
 
 `Σ 최상위 mv_krw = 58,000,000` ✔ · 자식 합 = 부모 ✔ · `Σ 최상위 weight_pct = 100.0` ✔
 
@@ -2041,7 +2041,7 @@ public record ViewSpec(ViewKey key, String question, String grain,
                        List<String> ledgers) { }
 ```
 
-`Catalog`에 6개를 상수로 둔다. `allocation`은 `groupBy`가 요청의 `axis` 하나로 결정되므로 `groupBy = []`, `axisOptions = [INSTRUMENT, SECTOR, MARKET, CURRENCY, ASSET_CLASS, IS_LEVERAGED]`로 둔다. `accounts`는 `groupBy = [ACCOUNT_TYPE, ACCOUNT]`, `rowFields = ["link_state","last_collection","last_synced_at"]`. `summary`는 `subBlocks = [new SubBlockSpec("mini_chart", List.of(MARKET), LensPolicy.OPTIONAL, List.of(MARKET_VALUE_KRW, WEIGHT_PCT))]`.
+`Catalog`에 6개를 상수로 둔다. `allocation`은 `groupBy`가 요청의 `axis` 하나로 결정되므로 `groupBy = []`, `axisOptions = [INSTRUMENT, SECTOR, MARKET, CURRENCY, ASSET_CLASS, IS_LEVERAGED]`로 둔다. `accounts`는 `groupBy = [ACCOUNT_TYPE, ACCOUNT]`, `rowFields = ["link_state","last_collection","last_synced_at","source_as_of","is_carried_forward"]`. `summary`는 `subBlocks = [new SubBlockSpec("mini_chart", List.of(MARKET), LensPolicy.OPTIONAL, List.of(MARKET_VALUE_KRW, WEIGHT_PCT))]`.
 
 - [ ] **Step 5: 카탈로그 불변식 테스트**
 
@@ -3985,7 +3985,9 @@ public class RowValuePolicy {
 1. `totalMetrics` — `view.metrics()` 중 `scope != ROW`인 것을 `Derived`로 계산해 `Map`에 담는다. `market_value_krw`는 절대 넣지 않는다.
 2. `rows` — `agg.rows()`를 `RowDto`로 바꾼다. 지표는 `RowValuePolicy.rowMetrics(...)`가 결정하고, 현지 통화는 `CurrencyDisplayPolicy.localOf(node.measures())`가 결정한다(축을 넘기지 않는다 — 불변식 3). 자식이 있으면 재귀.
 3. `lens == LOOK_THROUGH`이면 `omittedRowMetrics`를 `AssemblyContext`에 넣어 `LENS_METRICS_OMITTED`가 뜨게 한다.
-4. `accounts` 뷰이면 자식 노드에 `rowFields`(`link_state`·`last_collection`·`last_synced_at`)를, `positions` 뷰이면 `market`을 더한다.
+4. `accounts` 뷰이면 자식 노드에 `rowFields`(`link_state`·`last_collection`·`last_synced_at`·`source_as_of`·`is_carried_forward`)를, `positions` 뷰이면 `market`을 더한다. **계좌유형 그룹 노드에는 붙이지 않는다** — 접힌 헤더의 경고 수는 화면이 자식 행에서 센다.
+
+`source_as_of`와 `is_carried_forward`는 스펙 §7.4의 두 번째 층이다. 전역 배너(`STALE_ACCOUNTS`)가 "몇 개가 낡았다"까지만 말하므로, 어느 계좌인지는 행이 가리킨다. 한 계좌 안에서 종목마다 값이 갈리면 **낡은 쪽을 대표로 잡는다** — `min(source_as_of)` · `bool_or(is_carried_forward)`. 일부만 이월된 계좌를 최신으로 보이게 하면 낡은 값이 숨는다.
 
 - [ ] **Step 9: 테스트 통과 → 커밋**
 
