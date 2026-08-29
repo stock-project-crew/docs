@@ -41,7 +41,7 @@
 
 ```
 1. 앱 실행 → 로그인 화면
-2. yhr@stock-project.local / local-dev-password 로 로그인 → 요약 화면
+2. yhr@a.com / local-dev-password 로 로그인 → 요약 화면
 3. 요약: 총자산 58,000,000원 · 평가손익 +4,500,000 (+9.2%) · 타일 4개 ·
          이번 달 자산 +1,200,000원 · 자산 구성 막대(국내 80.7 / 미국 19.3)
 4. 종목 탭 → 8행(종목 6 + 예수금 2)이 2줄 카드로 표시
@@ -130,7 +130,7 @@ E2E(Detox·Maestro)는 넣지 않는다. 실기기 확인이 §A.1 도달점의 
 │                                     │
 │   이메일                             │  Label 14
 │  ┌───────────────────────────────┐  │  h 52
-│  │ yhr@stock-project.local       │  │
+│  │ yhr@a.com       │  │
 │  └───────────────────────────────┘  │
 │   이메일을 입력해 주세요              │  Caption 12 · 오류색
 │                                     │
@@ -545,7 +545,7 @@ docker compose up -d db
 docker compose exec -T db psql -U portfolio -d portfolio -f /sample/sample_portfolio.sql
 ```
 
-로그인 계정: `yhr@stock-project.local` / `local-dev-password`
+로그인 계정: `yhr@a.com` / `local-dev-password`
 
 ### A.7.2 API 주소
 
@@ -870,7 +870,7 @@ npx tsc --noEmit
 # 백엔드를 띄운 상태에서 토큰 발급이 실제로 되는지 확인
 curl -s -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"yhr@stock-project.local","password":"local-dev-password"}'
+  -d '{"email":"yhr@a.com","password":"local-dev-password"}'
 # 기대: {"access_token":"eyJ...","expires_at":"..."}
 ```
 

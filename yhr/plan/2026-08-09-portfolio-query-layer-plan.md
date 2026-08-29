@@ -831,10 +831,10 @@ back-end/
 
 | user_id 끝자리 | email | display_name | 출처 | 노리는 것 |
 |---|---|---|---|---|
-| `…0001` | yhr@stock-project.local | yhr | `V1__initial_schema.sql` | 주 사용자. §C.5~C.11의 골든 값 |
-| `…0002` | jdh@stock-project.local | jdh | `V1__initial_schema.sql` | 겹치는 종목을 보유한 두 번째 사용자 |
-| `…0003` | hhj@stock-project.local | hhj | `V1__initial_schema.sql` | `as_of`가 하나뿐인 사용자 |
-| `…0004` | test_empty@stock-project.local | test_empty | 샘플 SQL | 계좌 0개 → `NO_ACCOUNTS` |
+| `…0001` | yhr@a.com | yhr | `V1__initial_schema.sql` | 주 사용자. §C.5~C.11의 골든 값 |
+| `…0002` | jdh@a.com | jdh | `V1__initial_schema.sql` | 겹치는 종목을 보유한 두 번째 사용자 |
+| `…0003` | hhj@a.com | hhj | `V1__initial_schema.sql` | `as_of`가 하나뿐인 사용자 |
+| `…0004` | test_empty@a.com | test_empty | 샘플 SQL | 계좌 0개 → `NO_ACCOUNTS` |
 
 UUID는 `40000000-0000-0000-0000-00000000000N` 꼴. `password_hash`는 BCrypt이며 셋 다 로컬 개발용 같은 비밀번호다 — 운영 전 교체 대상임을 README에 적는다.
 
@@ -1143,7 +1143,7 @@ notices: SEEDED_ROWS { count: 1 }
 
 ```bash
 TOKEN=$(curl -s localhost:8080/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"jdh@stock-project.local","password":"…"}' | jq -r .access_token)
+  -d '{"email":"jdh@a.com","password":"…"}' | jq -r .access_token)
 curl -s localhost:8080/portfolio/views/summary -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
@@ -1372,11 +1372,11 @@ COMMENT ON COLUMN app_user.password_hash IS
 
 -- 비밀번호 해시는 로컬 개발용 값이다. 운영 배포 전에 교체한다.
 INSERT INTO app_user (id, email, password_hash, display_name) VALUES
- ('40000000-0000-0000-0000-000000000001','yhr@stock-project.local',
+ ('40000000-0000-0000-0000-000000000001','yhr@a.com',
    '$2y$10$JJQvq3uLIY63DiNMRghXPeqrhqzfEPZZHjHTT3PXqCzyK6XY7YK8G','yhr'),
- ('40000000-0000-0000-0000-000000000002','jdh@stock-project.local',
+ ('40000000-0000-0000-0000-000000000002','jdh@a.com',
    '$2y$10$3G5stjp8OaLSEjyPiRpVh.VFOCyEMhSCClFc/zbf2W2wmIcETVOwO','jdh'),
- ('40000000-0000-0000-0000-000000000003','hhj@stock-project.local',
+ ('40000000-0000-0000-0000-000000000003','hhj@a.com',
    '$2y$10$uvxd.nOL0RT7hOgHKaxO4e5oWVWUSL7iiIZTpVbHvPA3j3l5BBUlm','hhj');
 
 -- 계좌. user_id가 소유권 축이며, 보유 스냅샷·실현손익·입출금은 계좌를 통해
@@ -1705,7 +1705,7 @@ TRUNCATE realized_pnl_line, manual_cashflow, position_line, account, instrument;
 -- 계좌가 하나도 없는 사용자. 요약 뷰의 온보딩 상태(NO_ACCOUNTS)를 재현하기 위한
 -- 픽스처이며 사람이 아니다 — 그래서 마이그레이션이 아니라 여기서 만든다.
 INSERT INTO app_user (id, email, password_hash, display_name) VALUES
- ('40000000-0000-0000-0000-000000000004','test_empty@stock-project.local','<bcrypt>','test_empty')
+ ('40000000-0000-0000-0000-000000000004','test_empty@a.com','<bcrypt>','test_empty')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, currency, sector, is_leveraged) VALUES
@@ -4033,7 +4033,7 @@ git add -A && git commit -m "feat: 응답 조립 — 봉투 · notice 16종 · e
 ./gradlew test --tests '*auth.*' --tests '*ArchitectureRulesTest'
 
 TOKEN=$(curl -s localhost:8080/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"yhr@stock-project.local","password":"…"}' | jq -r .access_token)
+  -d '{"email":"yhr@a.com","password":"…"}' | jq -r .access_token)
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/portfolio/views/summary          # 401
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/portfolio/views/summary \
   -H "Authorization: Bearer $TOKEN"                                                      # 200
@@ -4067,8 +4067,8 @@ portfolio:
     /** 스펙 §8.8 — 가입 여부가 응답으로 새지 않는다. */
     @Test
     void 없는_이메일과_틀린_비밀번호가_같은_응답을_낸다() throws Exception {
-        var noSuchUser = login("nobody@stock-project.local", "whatever");
-        var wrongPassword = login("yhr@stock-project.local", "whatever");
+        var noSuchUser = login("nobody@a.com", "whatever");
+        var wrongPassword = login("yhr@a.com", "whatever");
 
         assertThat(noSuchUser.getStatus()).isEqualTo(401).isEqualTo(wrongPassword.getStatus());
         assertThat(noSuchUser.getContentAsString()).isEqualTo(wrongPassword.getContentAsString());
@@ -4076,7 +4076,7 @@ portfolio:
 
     @Test
     void 비밀번호가_응답에_나오지_않는다() throws Exception {
-        assertThat(login("yhr@stock-project.local", "…").getContentAsString())
+        assertThat(login("yhr@a.com", "…").getContentAsString())
                 .doesNotContain("password", "hash");
     }
 ```
