@@ -148,7 +148,7 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | 항목 | 결정 | 근거 |
 |---|---|---|
 | `app_user` 인덱스 | PK `user_id`, `email` UNIQUE | 로그인이 이메일로 한 행을 찾는다. UNIQUE가 곧 로그인 ID 유일성이다 |
-| `account` 인덱스 | `(user_id)` | 모든 조회가 계좌를 통해 사용자로 좁혀진다(§3.8). 계좌 수가 사용자당 한 자릿수라 이 인덱스 하나면 스코프 비용이 사라진다 |
+| `account` 인덱스 | `(user_id)` + `account_ref` UNIQUE | 모든 조회가 계좌를 통해 사용자로 좁혀진다(§3.8). 계좌 수가 사용자당 한 자릿수라 이 인덱스 하나면 스코프 비용이 사라진다. `account_ref`의 UNIQUE는 유일성 강제이자 인덱스다 — 1단계가 `cln_*`을 이 값으로 조인해 `account_id`를 찾는다 |
 | `account.user_id` FK | **건다** — `app_user` 참조 | `instrument`와 달리 같은 팀이 소유해 배포 순서가 묶이지 않는다. 소유자 없는 계좌는 스코프가 성립하지 않으므로 DB가 막는 편이 맞다 |
 | `position_line` PK | `(as_of, account_id, instrument_id)` | 그레인 유일성을 DB가 1차 보증(§9.1) |
 | `position_line` 보조 인덱스 | `(account_id, as_of)` | 자산 변화 뷰의 계좌 필터 + 기간 경계 조회 |
@@ -158,6 +158,7 @@ sum(t.cost_amount_krw)  FILTER (WHERE i.asset_class <> 'CASH')   AS cost_amount_
 | enum 표현 | **`text` + `CHECK`** (PostgreSQL ENUM 타입 아님) | ENUM 타입은 값 추가·삭제 마이그레이션이 번거롭고 매핑에서 이득이 없다 |
 | 테스트 DB | compose의 **`portfolio_test`** 데이터베이스. 개발용 `portfolio`와 같은 인스턴스, 다른 DB | 테스트가 개발 데이터를 지우지 않는다. 시드 스크립트가 매 테스트 `TRUNCATE` 후 채우므로 격리는 그것으로 충분하고, Java에서 Docker API를 부르지 않아 도구 버전에 묶이지 않는다 |
 | 마이그레이션 번호 | `db/migration`과 `db/external`을 통틀어 **하나의 순열**. 새 파일은 폴더와 무관하게 다음 번호 | 두 폴더가 이력 테이블 하나를 공유하므로 번호대를 예약하면 낮은 번호가 뒤늦게 나타나 순서 검증에 걸린다. 파일을 쓰는 쪽이 백엔드 하나뿐이라 예약이 막을 충돌도 없다. 운영에서는 미러 번호가 비지만, 번호가 비는 것은 순서 위반이 아니다 |
+| 스키마 변경 방식 | 첫 운영 배포 전까지는 **기존 파일을 고치고 DB를 재생성**한다 | 지금 이 스키마가 도는 곳은 로컬과 테스트뿐이라 체크섬을 지킬 대상이 없고, 재생성 비용이 `docker compose down -v` 한 번이다. 번호를 더해 나가면 계획서 §C가 "최종 스키마"가 아니라 변경 누적본이 되어 읽는 사람이 여러 파일을 합성해야 한다. 운영에 처음 올리는 시점에 이 규칙을 닫고 그 뒤로는 새 번호만 더한다 |
 | 참조 테이블 스키마 | SQL 무자격 + JDBC `currentSchema` | `instrument`는 데이터팀 소유라(§11.2) 스키마 배치를 이쪽이 정하지 않는다. SQL에 박으면 배치가 바뀔 때 코드를 고쳐야 한다 |
 | `instrument` FK | **걸지 않는다** | 소유 팀이 달라(§11.2) 교차 소유 FK는 배포 순서를 묶는다. 미매칭은 조인 결과 null로 드러나고 검증기가 잡는다 |
 
@@ -586,6 +587,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 |---|---|---|
 | `account_id` | `uuid` PK | |
 | `user_id` | `uuid` NOT NULL | → `app_user` FK. 생성 후 변경 불가(§9.1) |
+| `account_ref` | `text` NOT NULL UNIQUE | 데이터팀에 넘기는 불투명 문자열. `기관코드 + 계좌번호` 해시라 재연동해도 같은 값이다(§7.1). 생성 후 변경 불가(§9.1) |
 | `broker` | `text` | 기관명 (`한국투자증권`) |
 | `label` | `text` | 표시명. §8.5의 `by_account[].label`과 §2.7의 계좌 컬럼이 쓴다. 같은 기관에 계좌가 여럿이라(위탁·IRP) `broker`로는 구분되지 않는다 |
 | `account_type` | `text` CHECK | `GENERAL` · `PENSION` |
@@ -660,6 +662,7 @@ PK `(as_of, account_id, instrument_id)`. **비율 컬럼이 없다** — 자리�
 | 사용자 소유 테이블 조회는 `UserScope`로 좁혀진다 | **구조로 강제**(§A.3 불변식 5) — 매퍼 시그니처 리플렉션 테스트 + `targetLine` CTE + ArchUnit |
 | `as_of` 후보는 그 사용자의 계좌에 라인이 있는 날짜뿐 (§3.8) | `SnapshotCalendarMapper`의 다섯 쿼리 전부가 `account` 조인 + `user_id` 조건 |
 | `account.user_id`는 생성 후 변경 불가 | 이번 범위에 계좌 쓰기 경로가 없어 발생하지 않는다. 연동(§A.9)에서 강제 |
+| `account.account_ref`는 생성 후 변경 불가 | 상동. UNIQUE 제약이 유일성만 1차 보증하고, 불변성은 연동에서 강제 |
 | `position_line`은 `(as_of, account, instrument)`마다 **정확히 1행** — 그레인 유일성 | PK(1차) + `PositionLineInvariants`(적재된 라인 집합 재검사) |
 | `market_value_krw`가 있으면 `fx_rate`·`fx_as_of` 필수 | `NOT NULL` 3개(1차) + 검증기(렌즈 산출 라인까지 커버) |
 | 그 사용자의 연동이 유효한(`DISCONNECTED`가 아닌) 모든 계좌는 해당 `as_of`에 라인 존재 | 검증기 — 그 사용자의 `account` 목록과 대조. 빠뜨리면 그날만 총자산이 급락해 손실처럼 보인다 |
@@ -1384,6 +1387,7 @@ INSERT INTO app_user (id, email, password_hash, display_name) VALUES
 CREATE TABLE account (
     account_id     uuid PRIMARY KEY,
     user_id        uuid NOT NULL REFERENCES app_user (id),
+    account_ref    text NOT NULL UNIQUE,
     broker         text NOT NULL,
     label          text NOT NULL,
     account_type   text NOT NULL CHECK (account_type IN ('GENERAL', 'PENSION')),
@@ -1398,6 +1402,8 @@ CREATE INDEX idx_account_user ON account (user_id);
 
 COMMENT ON COLUMN account.user_id IS
   '소유자. 생성 후 바뀌지 않는다 — 계좌 소유자 이전을 지원하지 않는다. 설계 스펙 §9.1 · §12';
+COMMENT ON COLUMN account.account_ref IS
+  '데이터팀에 넘기는 불투명 문자열. 기관코드+계좌번호 해시라 재연동해도 같은 값이다 — 설계 스펙 §7.1 · §11.2';
 COMMENT ON COLUMN account.credential_ref IS
   '시크릿 매니저 키만 저장한다. 자격증명 값 자체를 저장하지 않는다 — 설계 스펙 §5.1';
 COMMENT ON COLUMN account.label IS
@@ -1718,14 +1724,14 @@ INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, 
  ('10000000-0000-0000-0000-000000000007',NULL,'CASH-KRW','KRW 예수금','CASH','KR','KRW',NULL,NULL),
  ('10000000-0000-0000-0000-000000000008',NULL,'CASH-USD','USD 예수금','CASH','US','USD',NULL,NULL);
 
-INSERT INTO account (account_id, user_id, broker, label, account_type, source, credential_ref, link_state, last_synced_at) VALUES
- ('20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001','삼성증권','삼성증권','GENERAL','CODEF',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001','한국투자증권','한국투자 IRP','PENSION','KIS',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000004','40000000-0000-0000-0000-000000000001','미래에셋증권','미래에셋 연금','PENSION','CODEF',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000005','40000000-0000-0000-0000-000000000002','키움증권','키움 위탁','GENERAL','CODEF',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000006','40000000-0000-0000-0000-000000000002','미래에셋증권','미래에셋 IRP','PENSION','CODEF',NULL,'CONNECTED',NULL),
- ('20000000-0000-0000-0000-000000000007','40000000-0000-0000-0000-000000000003','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL);
+INSERT INTO account (account_id, user_id, account_ref, broker, label, account_type, source, credential_ref, link_state, last_synced_at) VALUES
+ ('20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','ar_7f3a91c4','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000002','40000000-0000-0000-0000-000000000001','ar_2b8e05da','삼성증권','삼성증권','GENERAL','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000001','ar_c41d6e70','한국투자증권','한국투자 IRP','PENSION','KIS',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000004','40000000-0000-0000-0000-000000000001','ar_9a52f3b1','미래에셋증권','미래에셋 연금','PENSION','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000005','40000000-0000-0000-0000-000000000002','ar_53c0ab29','키움증권','키움 위탁','GENERAL','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000006','40000000-0000-0000-0000-000000000002','ar_e6740f8c','미래에셋증권','미래에셋 IRP','PENSION','CODEF',NULL,'CONNECTED',NULL),
+ ('20000000-0000-0000-0000-000000000007','40000000-0000-0000-0000-000000000003','ar_18d9b642','한국투자증권','한국투자 위탁','GENERAL','KIS',NULL,'CONNECTED',NULL);
 
 -- as_of 2026-07-27 (확정 전, is_final = false)
 INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
