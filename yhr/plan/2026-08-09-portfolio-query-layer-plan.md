@@ -384,7 +384,7 @@ View { viewKey, question, grain, groupBy[], metrics[], rowFields[],
 | 1 | `FX_APPLIED` | info | 원화 환산에 적용한 환율 (§2.3) | 통화쌍별 배열 `[{pair, rate, fx_as_of}]` + 최고령 `oldest_fx_as_of`. **통화쌍마다 한 항목**이며 기준일이 여럿이면 가장 오래된 것을 싣는다 — 화면이 "언제 환율인가"에 답할 때 가장 뒤처진 값을 말하는 편이 정직하다 | **발화** |
 | 2 | `STALE_ACCOUNTS` | warn | 캐리포워드된 계좌 존재 (§7.3) | `count` · 최고령 `source_as_of` | **발화** |
 | 3 | `CONSTITUENT_AS_OF` | info | 렌즈 적용 시 구성비중 기준일 (§3.4) | 최고령 기준일 `oldest` + 대상 ETF 수 `count` | 미발화 — 전개된 ETF가 0이면 생략(§A.9) |
-| 4 | `CONSTITUENT_UNAVAILABLE` | warn | 구성종목 미확보 ETF 존재 (§3.4) | `count` · 미분해 평가금액 `undecomposed_krw` | **발화** |
+| 4 | `CONSTITUENT_UNAVAILABLE` | warn | 구성종목 미확보 ETF 존재 (§3.4) | `count` · 미분해 평가금액 `undecomposed_krw` · 종목 심볼 `keys` | **발화** |
 | 5 | `LENS_METRICS_OMITTED` | info | `TOTAL_ONLY` 지표가 행에서 빠짐 (§6.2) | 생략된 지표 키 배열 `metrics` | **발화** |
 | 6 | `EXCLUDED_ACCOUNTS` | warn | 실현손익 합계에서 빠진 계좌 (§2.8) | `count` | 규칙 구현·샘플 미발화 |
 | 7 | `SEEDED_ROWS` | warn | 추정 등급 행 존재 (§4.5) | `count` | **발화** (`realized_pnl_line.grade`에서) |
@@ -1030,14 +1030,18 @@ yhr의 한 행이 자산 변화 뷰의 존재 이유를 샘플에서 재현한�
 
 ```json
 { "code": "CONSTITUENT_UNAVAILABLE", "severity": "warn",
-  "message": "1개 ETF는 구성종목 데이터가 없어 분해하지 않았습니다 (11,000,000원)",
-  "params": { "count": 1, "undecomposed_krw": 11000000 } },
+  "message": "1개 ETF는 구성종목 데이터가 없어 분해하지 않았습니다",
+  "params": { "count": 1, "undecomposed_krw": 11000000, "keys": ["133690"] } },
 { "code": "LENS_METRICS_OMITTED", "severity": "info",
   "message": "구성종목 기준 보기에서는 매입금액·평가손익을 행에 표시할 수 없습니다",
   "params": { "metrics": ["cost_amount_krw", "unrealized_pnl_krw", "unrealized_pnl_pct"] } }
 ```
 
 `CONSTITUENT_AS_OF`는 전개된 ETF가 0이라 생략한다.
+
+**`keys`는 종목 심볼이다.** 종목 축(`positions` · `allocation?axis=instrument`)의 행 `key`와 같은 값이라 화면이 어느 행이 분해되지 않았는지 짚을 수 있다. 섹터·시장처럼 여러 종목이 한 행에 뭉치는 축에서는 행이 특정되지 않으므로 경고 줄로만 쓴다.
+
+**금액은 `message`에 넣지 않는다.** 모바일 경고 줄에서 두 줄이 되어 읽히지 않는다. 화면이 필요하면 `params.undecomposed_krw`에서 꺼낸다.
 
 `IT서비스` 행의 `currency` · `market_value_local`은 남는다 — 통화 병기는 지표가 아니라 표시 규칙이고 평가금액은 `ROW_AND_TOTAL`이다. 사라지는 것은 `cost_amount_local`뿐이다(원가 계열이 행에서 빠지므로).
 
@@ -2954,7 +2958,7 @@ git add -A && git commit -m "feat: 계좌·달력 조회와 팩트 정합성 검
 **Interfaces:**
 - Produces:
   - `BigDecimal AggregateMapper.sumMarketValueKrw(UserScope scope, LocalDate asOf, Lens lens)` — 렌즈 CTE의 총합
-  - `record UndecomposedEtf(int count, BigDecimal marketValueKrw)`
+  - `record UndecomposedEtf(int count, BigDecimal marketValueKrw, List<String> keys)`
   - `UndecomposedEtf EtfCoverageMapper.undecomposedAt(UserScope scope, LocalDate asOf, LineFilter filter)`
 
 **완료 조건**
@@ -3099,10 +3103,12 @@ class LensPreservationTest {
 - [ ] **Step 4: `EtfCoverageMapper`**
 
 ```xml
-<!-- 전개되지 않은 ETF의 건수와 평가금액 — CONSTITUENT_UNAVAILABLE notice 재료(§8.2). -->
-<select id="undecomposedAt" resultType="UndecomposedEtf">
+<!-- 전개되지 않은 ETF의 건수·평가금액과 종목 심볼 — CONSTITUENT_UNAVAILABLE notice 재료(§8.2).
+     심볼은 종목 축의 행 key와 같은 값이라 화면이 행을 짚을 수 있다. -->
+<select id="undecomposedAt" resultMap="undecomposedEtf">
   SELECT count(DISTINCT pl.instrument_id) AS count,
-         coalesce(sum(pl.market_value_krw), 0) AS marketValueKrw
+         coalesce(sum(pl.market_value_krw), 0) AS market_value_krw,
+         array_agg(DISTINCT i.symbol) AS keys
     FROM position_line pl
     JOIN instrument i ON i.instrument_id = pl.instrument_id
     JOIN account acct ON acct.account_id = pl.account_id
