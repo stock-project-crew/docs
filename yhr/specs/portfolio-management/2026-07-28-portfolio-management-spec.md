@@ -4,7 +4,7 @@
 - **상태**: 설계 합의 완료 → 구현 계획 착수 전
 - **범위**: 뷰 정의 및 화면 UX, 집계 모델, 데이터 모델(DB 저장 구조), 3원장과 신뢰도 등급, 계좌 연동·동기화 흐름과 상태, 인증과 사용자 스코프, 검증 규칙
 - **비범위(이번 스펙에서 다루지 않음)**: 데이터 수집 구현 상세(KIS TR·CODEF 엔드포인트별 호출 방식), 인프라·파이프라인 구현, 알림 발송, PER/PBR 섹터 분위수, 벤치마크 비교
-- **관련 자료**: [`wireflow.drawio`](./wireflow.drawio) / [`wireflow.png`](./wireflow.png) / [`wireflow_src.py`](./wireflow_src.py)(두 산출물 생성기) · [1차 기능 명세·기술 검토](../2026-06-28-feature-spec-and-tech-review.md) · [매수·매도 타이밍 알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) · [팀 아키텍처 합의](../../../team-architecture-agreement.md)
+- **관련 자료**: [`wireflow.drawio`](./wireflow.drawio) / [`wireflow.png`](./wireflow.png) / [`wireflow_src.py`](./wireflow_src.py)(두 산출물 생성기) · [1차 기능 명세·기술 검토](../2026-06-28-feature-spec-and-tech-review.md) · [매수·매도 타이밍 알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) · [앱 정보 구조](../app-information-architecture.md) · [팀 아키텍처 합의](../../../team-architecture-agreement.md)
 
 ---
 
@@ -139,9 +139,9 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 ### 2.2 네비게이션
 
-하단 탭바는 **5개**다 — 요약 · 종목 · 비중 · 계좌 · 손익(실현손익). **자산 변화는 탭이 아니다.**
+이 기능의 탭은 **5개**다 — 요약 · 종목 · 비중 · 계좌 · 손익(실현손익). 앱의 하단 탭바에는 여기에 매수·매도 타이밍 알림의 `알림` 탭이 더해지며, 앱 전체의 탭과 진입 경로는 [앱 정보 구조](../app-information-architecture.md)가 정의한다.
 
-탭 6개는 하단바에 과밀하고, 무엇보다 자산 변화는 **질문이 생긴 순간에 도달해야 의미가 있는 화면**이다. 진입 경로를 두 곳의 맥락 링크로 고정한다.
+**자산 변화는 탭이 아니다.** 자산 변화는 **질문이 생긴 순간에 도달해야 의미가 있는 화면**이다. 진입 경로를 두 곳의 맥락 링크로 고정한다.
 
 | 진입점 | 링크 |
 |---|---|
@@ -400,7 +400,9 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 ### 2.10 종목 상세 (하위 화면)
 
-보유 요약 · **계좌별 분해**(계좌마다 다른 평단) · 해당 종목 거래내역과 실현손익 · 기업행위 이력.
+보유 요약 · **계좌별 분해**(계좌마다 다른 평단) · 해당 종목 거래내역과 실현손익 · 기업행위 이력 · `알림 걸기`.
+
+`알림 걸기`는 이 종목이 채워진 채 새 알림 흐름을 연다([앱 정보 구조](../app-information-architecture.md) §2.5).
 
 보유 요약과 계좌별 평단은 잔고 기준, 실현손익의 취득원가는 재구성 기준이다. 같은 화면에 놓이지만 원가가 다르므로 실현손익 영역에 그 사실을 표기한다(§4.1).
 
@@ -1004,6 +1006,8 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 
 평가손익은 파생 지표이지만 가산 가능하다. 저장하지 않는 이유는 가산 불가여서가 아니라 중복 저장을 피하기 위해서다.
 
+매수·매도 타이밍 알림의 사용자 상태 지표는 종목별 뷰의 종목 한 행이 내는 `unrealized_pnl_pct` · `weight_pct`를 그대로 읽는다. 기준은 그 거래일의 확정 스냅샷이다([알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) §5.1).
+
 ### 6.3 뷰
 
 ```
@@ -1180,6 +1184,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | | `GET /portfolio/views/realized-pnl?period=&account=` |
 | | `GET /portfolio/views/asset-change?period=&account=` |
 | 하위 화면 | `GET /portfolio/instruments/{id}` |
+| 종목 검색 | `GET /instruments?q=&held=` — 앱 공통 ([알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) §11.1) |
 | 계좌 | `GET /accounts` · `POST /accounts` · `POST /accounts/{id}/reauth` · `DELETE /accounts/{id}` |
 | 동기화 | `POST /sync` → `202` · `GET /sync/{run_id}` |
 | 카탈로그 | `GET /portfolio/catalog` |
@@ -1621,7 +1626,6 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 레버리지 구분 | 원천 확보 시 `instrument.is_leveraged` 축 활성화 |
 | 종목 마스터 인터페이스 | 스키마·갱신 주기·미매칭 처리 규칙 합의 (§11.2) |
 | ETF 구성비중 평탄화 제공 | 중첩 분해를 데이터 측에서 처리하는 형태 합의 (§11.2) |
-| 알림 엔진과의 접점 | 알림 규칙이 평가손익률·비중을 읽는 인터페이스는 알림 스펙에서 정의 |
 
 ---
 

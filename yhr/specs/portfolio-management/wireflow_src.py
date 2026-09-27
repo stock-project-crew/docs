@@ -352,12 +352,13 @@ def tabbar(x, y, active):
     ty = y + PH - 45
     rect(x, ty, PW, 1, BORDER)
     rect(x, ty + 1, PW, 44, '#FFFFFF')
-    for i, lb in enumerate(['요약', '종목', '비중', '계좌', '손익']):
+    tw = PW / 6
+    for i, lb in enumerate(['요약', '종목', '비중', '계좌', '손익', '알림']):
         on = (lb == active)
-        text(x + i * 60, ty + 1, 60, 44, lb, 10, PRI if on else DIM,
+        text(x + i * tw, ty + 1, tw, 44, lb, 10, PRI if on else DIM,
              align='center', bold=on)
         if on:
-            rect(x + i * 60 + 26, ty + 36, 8, 3, PRI, arc=50)
+            rect(x + i * tw + tw / 2 - 4, ty + 36, 8, 3, PRI, arc=50)
 
 
 def card(x, y, w, h, fill='#FFFFFF', stroke=CARD_ST):
