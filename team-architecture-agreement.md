@@ -140,7 +140,7 @@
 
 - CODEF는 **스크래핑 기반이라 느리고 실패 가능** → KIS REST(초당 20건, 준안정)와 신뢰도가 다르므로 **같은 배치 파이프라인 안에서도 재시도 정책을 분리**한다(CODEF는 지수 백오프 + 부분 실패 허용, KIS는 레이트리밋 스로틀 중심).
 - 인증정보 비저장 원칙은 KIS(본인 앱키·토큰)와 CODEF(Connected ID) 모두 동일하게 적용 — 시크릿 관리는 `.env`+파일권한 수준 유지(팀·계정 규모상 KMS 등은 과설계, [tech-stack.md](./hhj/tech-stack.md) §1 동일 결론).
-- CODEF 응답 스키마(기관별로 상이)를 다루는 정규화 로직은 데이터 담당(전대홍) 영역이나, **저장소는 인프라가 제공하는 Postgres `raw_codef_*` 스키마**를 그대로 쓴다 — 별도 데이터 레이크 도입은 하지 않는다(트래픽 근거는 여전히 유효, [architecture.md §6](./hhj/architecture.md#6-1차-범위에서-제외한-것-근거-명시)).
+- CODEF 응답 스키마(기관별로 상이)를 다루는 정규화 로직은 데이터 담당(전대홍) 영역이다. **정정(2026-09-27)**: 이 항목 작성 시점엔 "별도 데이터 레이크 도입은 하지 않는다"고 봤으나, 이후 팀 논의로 뒤집혔다 — S3 Iceberg 기반 레이크(Bronze `raw_codef_*`/`raw_kis_*` → Silver `cln_*` → Gold `mart_*`)를 실제로 구축했고, CODEF·KIS 원본은 Postgres가 아니라 이 레이크의 Bronze 계층에 append된다. 백엔드가 쓰는 건 그중 일부를 Postgres `data` 스키마로 리버스ETL한 결과뿐이다 — 상세는 §3.3.
 
 **2) 배포 인프라 (기존 유지)**
 
@@ -154,4 +154,38 @@ EC2 + kubeadm 자체 구축 클러스터(master×3 + worker×2 + storage×1, AWS
 
 ### 3.3. 전대홍
 
-> _(작성 예정 — 지표 계산·수급 데이터 조인·ETF 구성종목 파이프라인은 [hhj/alert.md](./hhj/alert.md) §4, [ETF 조사](./yhr/research/etf-constituent-sources.md), [섹터 조사](./yhr/research/sector-classification-sources.md) 참고. **종목별 수급 데이터 원천은 KIS TR로 해결됨**(§2.1.2) — 남은 과제는 **국내 ETF 구성종목 확보 방법 확정**뿐(§0 남은 팀 결정 사항 #2).)_
+**전체 그림**: 레이크는 Bronze(`raw_*`, 원천 응답 그대로) → Silver(`cln_*`, 정제·정규화) → Gold(`mart_*`, 집계) 3계층(S3 + Apache Iceberg)이고, 백엔드는 이 중 일부를 Postgres `data` 스키마로 리버스ETL 받은 것만 읽는다 — `raw_*`와 `mart_portfolio_daily`/`mart_allocation_daily`/`mart_asset_change_monthly`(user_id 포함) 등은 레이크 전용이라 백엔드가 직접 접근하지 않는다. 인프라는 §3.2와 같은 kubeadm 클러스터 안에서 ArgoCD(GitOps)로 관리한다 — 매니페스트는 `stock-project-crew/argocd` 저장소, 파이프라인 코드는 `stock-project-crew/dataeng`.
+
+**1) 파이프라인 우선순위 — 화면이 실데이터로 도는 순서부터**
+
+화면 6개가 지금 백엔드 샘플 데이터로 돌아가고 있어서, 계좌 수집·종목 마스터·환율처럼 화면에 직결되는 파이프라인이 최우선이고, 시세·알림·백테스트(원래 1차 설계에서 먼저 만들었던 것)는 후순위로 재배열했다.
+
+| # | 파이프라인 | 수집할 데이터 | 소스/API | 상태 |
+|---|---|---|---|---|
+| 1 | 계좌 수집 | 잔고·체결·배당·예수금 | KIS Open API / CODEF API | KIS 부분 구현, CODEF 미구현 |
+| 2 | 종목 마스터 | KRX 상장목록, 미국 종목·섹터 | FinanceDataReader + yfinance + Naver WICS | 미착수 |
+| 3 | 환율 | 날짜별 원화 환산 환율 | 한국수출입은행 API / KIS | 미착수(스키마만 있음) |
+| 4 | ETF 구성종목 | ETF별 구성종목·비중 | SPDR(미국) + KRX/pykrx(국내, 약관 미정) | 미착수 |
+| 5 | 기업행위 | 액면분할·유상증자·합병 | DART Open API | 미착수, 소스 확정 필요 |
+| 6 | 거래일 캘린더 | KRX/NYSE 휴장일 | KRX/NYSE | 미착수 |
+| 7 | CDC 소비 | `account`/`position_line`/`realized_pnl_line`/`manual_cashflow` 변경 이벤트 | portfolio-db → Debezium → Kafka | 배선만 있음, 소비 잡 없음 |
+| 8 | 시세 | 일봉 OHLCV, 현재가·52주 고저 | KIS 기간별시세·현재가조회 API | Bronze/Silver/Gold 있음(알림·백테스트 전용, 서비스 미사용) |
+| 9 | 알림·백테스트·뉴스 | 실시간 체결틱, 조정종가, 뉴스 | KIS WebSocket / Naver·RSS / LLM API | 전부 후순위 |
+
+1~3번(카탈로그 정비 포함)이 끝나야 서비스가 처음으로 실데이터로 돈다. 표 배경과 컬럼 단위 스키마는 데이터팀 Notion "🗂️ 필요 데이터 재정리" 문서 참고.
+
+**2) 기술 스택 요약**
+- 저장: S3 + Apache Iceberg — 카탈로그는 지금 SQLite-on-S3(Glue 권한 없어 임시)라 동시 실행 시 충돌 위험이 있어 Postgres JDBC 카탈로그로 전환 예정
+- 배치: Airflow(KubernetesPodOperator, 검증 완료) + Python/pyiceberg(소량 파이프라인) + Spark 3.5.9 standalone(대량 재계산·백테스트)
+- 스트리밍: Debezium(Postgres CDC, `wal_level=logical`) → Kafka(Strimzi) — Flink 소비 잡은 아직 0개
+- 조회: Trino — 카탈로그 미설정
+- 리버스ETL: 소스 파이프라인별로 Iceberg → Postgres `data` 스키마 upsert, 일 1회. 백엔드는 이 스키마에 읽기 권한만(§4.2 순환 금지와 일치)
+
+**3) 남은 열린 질문**
+
+1. **국내 ETF 구성종목 확보 방법** — §0 남은 팀 결정 사항 #2, 여전히 미해결. pykrx는 약관 문제로 국내 소스 확정을 못 했다([ETF 조사](./yhr/research/etf-constituent-sources.md) 참고).
+2. **`collection_run` 쓰기 권한 분리** — 백엔드는 `REQUESTED` 행 INSERT만, 데이터팀 워커는 상태 전이 UPDATE만 하는 방식을 제안 중.
+3. **`fx_rate.rate_type`** — 평가·원가·실현손익에 타입을 나눌지 단일화할지 팀 확인 필요.
+4. **ETF 펼치는 깊이·순환 처리 규칙** — 실제 SPDR 데이터를 받아본 뒤 정할 사안.
+
+나머지 열린 질문과 근거는 데이터팀 리뷰 문서([2026-08-30 OLAP 스키마 검토](./yhr/reviews/2026-08-30-data-team-olap-schema-review.md)) §5, 데이터팀 Notion "🗂️ 필요 데이터 재정리" 참고.
