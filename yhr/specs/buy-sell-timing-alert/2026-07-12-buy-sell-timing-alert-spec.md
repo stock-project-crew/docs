@@ -85,7 +85,7 @@ v1 지표 목록은 §5.1.
 | L4 | 연속성 | modifier=streak(N) / persist_min(N) | 이력 재계산 (종가) · 당일 스냅샷 재계산 (장중) |
 | L5 | 상태 전이 | — | v1에 없음. 네이티브 프리셋의 자리 (§5.3) |
 
-**평가기는 매번 저장된 이력을 다시 읽어 계산한다.** 윈도우·변화량·교차·연속은 전부 시세 이력의 함수이므로, 알림마다 링버퍼나 연속 카운터를 들고 있을 이유가 없다. 알림마다 저장하는 상태는 엣지 기준과 마지막으로 평가한 데이터 시점뿐이다(§6.4). 그래서 재시작해도 복구할 것이 없고, 장 시작 시 예열도 필요 없다.
+**평가기는 매번 저장된 이력을 다시 읽어 계산한다.** 윈도우·변화량·교차·연속은 전부 시세 이력의 함수이므로, 알림마다 링버퍼나 연속 카운터를 들고 있을 이유가 없다. 알림마다 저장하는 상태는 엣지 기준·평가한 데이터 시점 같은 몇 개의 값뿐이다(§6.4). 그래서 재시작해도 복구할 것이 없고, 장 시작 시 예열도 필요 없다.
 
 ### 축 3 — 비교 방식 (Comparison: 무엇과 견주나)
 - 상수 기준값 (예: 가격 ≥ 70,000)
@@ -109,6 +109,8 @@ v1 지표 목록은 §5.1.
 
 **장중 조건은 확정된 과거를 기준선으로 쓸 수 있다.** "현재가가 직전 20일 최고가를 넘음"은 왼쪽이 장중 가격, 오른쪽이 어제까지 확정된 윈도우 값이다. 두 값의 시점이 달라도 오른쪽이 이미 확정돼 있으므로 판정이 흔들리지 않는다.
 
+**장중 알림의 피연산자가 장중 값인지 이력인지는 이렇게 가른다.** `intraday_left` 지표(§5.1)가 `identity`로 오면 장중 값이다. 그 밖의 피연산자 — 종가 전용 지표, 변형이 붙은 피연산자 — 는 직전 거래일까지의 일봉 이력으로 계산하며, 이때 현재 봉은 직전 거래일 봉이다. 직전 거래일의 `DAILY_BAR`가 아직 `DONE`이 아니면 이력 피연산자는 `UNKNOWN(DATA_MISSING)`이다(§7.2).
+
 평가는 평가 시점이 정한 순간에만 일어나므로 장 운영 시간을 따로 지정하는 설정이 없다. 장중 평가는 장중 스냅샷이 있을 때만, 종가 평가는 마감 데이터가 있을 때만 일어난다.
 
 ### 3.2 시장별 지원
@@ -126,10 +128,12 @@ v1 지표 목록은 §5.1.
 
 | cadence | 재개 후 동작 | 근거 |
 |---|---|---|
-| `CLOSE` | 밀린 거래일을 **날짜 순서대로** 모두 평가한다. 발화 문구에 기준일을 넣는다(`9/26 종가 기준`) | "3거래일 연속" 같은 조건이 날짜를 건너뛰면 판정이 틀린다. 종가 조건의 발화는 하루 늦어도 뜻이 남는다 |
+| `CLOSE` | 이미 감시 중이던 알림(`evaluated_as_of`가 있음)은 밀린 거래일을 **날짜 순서대로** 모두 평가한다. 발화 문구에 기준일을 넣는다(`9/26 종가 기준`) | "3거래일 연속" 같은 조건이 날짜를 건너뛰면 판정이 틀린다. 종가 조건의 발화는 하루 늦어도 뜻이 남는다 |
 | `INTRADAY` | 가장 최근 스냅샷 하나만 평가한다. 그 스냅샷도 허용 지연(§16.2)을 넘었으면 평가하지 않는다 | "10시에 7만원을 넘었다"를 오후에 받으면 쓸모가 없고 지금 가격으로 오해된다 |
 
-데이터 시점은 앞으로만 간다. 이미 평가한 데이터 시점보다 오래된 시점은 평가하지 않는다(§8.2).
+데이터 시점은 앞으로만 간다. 이미 평가한 데이터 시점보다 오래된 시점은 평가하지 않는다(§8.2). 새로 만들거나 다시 켜거나 수정한 알림은 최신 시점 하나에서 시작한다(§6.3).
+
+만료는 데이터 시점이 아니라 실제 시각으로 판정한다. 만료된 알림은 밀린 거래일도 평가하지 않는다.
 
 ---
 
@@ -158,9 +162,9 @@ spec = {
 
 - `Operand = 지표 + 지표 파라미터 + 변형`. 지표 자체가 파라미터를 가진다(RSI 기간, 이동평균 기간 등).
 - `transform`: `{type:"identity"}` | `{type:"window", fn:"max|min|avg|sum", n:<N>, lag:<L>}` | `{type:"delta", n:<N>}` | `{type:"pct", n:<N>}`
-- `window.lag`은 윈도우의 끝을 L봉 앞으로 당긴다. 기본값 0. `lag: 1`이면 오늘을 뺀 직전 N봉이다.
-- 윈도우·변화량의 N은 **봉(거래일) 단위**다. `streak`의 N도 거래일, `persist_min`의 N은 분이다.
-- 장중 알림의 오른쪽에 종가 지표를 쓰면, 그 값은 직전 거래일까지의 이력으로 계산된다(§3.1).
+- `window.lag`은 윈도우의 끝을 L봉 앞으로 당긴다. 기본값 0. `lag: 1`이면 현재 봉을 뺀 직전 N봉이다. 현재 봉은 종가 알림에서 그 거래일 봉, 장중 알림의 이력 피연산자에서 직전 거래일 봉이다(§3.1).
+- 윈도우·변화량의 N은 **봉 단위**다. `streak`의 N도 봉, `persist_min`의 N은 분이다. 봉은 그 종목이 거래된 날의 일봉이다(§7.2).
+- **`persist_min`의 판정**: 조건이 참인 당일 스냅샷이 끊김 없이 이어진 구간의 시작부터 현재 스냅샷까지가 N분 이상이면 참이다. 구간 안에 스냅샷 간격이 허용 지연(§16.2)을 넘는 공백이 있으면 `UNKNOWN`이다. N은 스냅샷 주기 이상(5분 이상)이어야 뜻이 있다.
 
 ### 4.3 trigger_spec — PRESET
 
@@ -213,31 +217,42 @@ Indicator {
   allowed_operators: [...],
   scope: "market" | "user",
   requires: [ 데이터 종류 ],               // §5.4
-  history: (params) -> 필요 봉 수
+  history: (params) -> 필요 봉 수         // 현재 봉 포함 (§5.4)
 }
 ```
 
-| key | 라벨 | 파라미터 | 값 (장중 / 종가) | 장중 왼쪽 | 시장 | 필요 데이터 | 필요 이력 |
+| key | 라벨 | 파라미터 | 값 (장중 / 종가) | 장중 왼쪽 | 시장 | 필요 데이터 | 필요 봉 수 |
 |---|---|---|---|---|---|---|---|
-| `price` | 가격 | — | 현재가 / 종가 | ○ | KR · US | 장중 시세 / 일봉 | 0 |
-| `change_pct` | 등락률 | — | 직전 거래일 종가 대비 % | ○ | KR · US | 장중 시세 + 일봉 / 일봉 | 1 |
-| `volume` | 거래량 | — | 당일 누적 / 일 거래량 | ○ | KR · US | 장중 시세 / 일봉 | 0 |
-| `volume_ratio` | 거래량 배수 | `n`=20 (5~120) | 당일(누적) 거래량 ÷ 직전 n거래일 평균 거래량 | ○ | KR · US | 장중 시세 + 일봉 / 일봉 | n |
-| `high` · `low` | 고가 · 저가 | — | — / 일 고가·저가 | ✕ | KR · US | 일봉 | 0 |
-| `range_pct` | 가격 폭 | `n`=20 (5~120) | — / 직전 n봉의 (최고 고가 − 최저 저가) ÷ 최저 저가 × 100 | ✕ | KR · US | 일봉 | n |
+| `price` | 가격 | — | 현재가 / 종가 | ○ | KR · US | 장중 시세 / 일봉 | 1 |
+| `change_pct` | 등락률 | — | 직전 거래일 종가 대비 % | ○ | KR · US | 장중 시세 + 일봉 / 일봉 | 2 |
+| `volume` | 거래량 | — | 당일 누적 / 일 거래량 | ○ | KR · US | 장중 시세 / 일봉 | 1 |
+| `volume_ratio` | 거래량 배수 | `n`=20 (5~120) | 당일(누적) 거래량 ÷ 직전 n거래일 평균 거래량 | ○ | KR · US | 장중 시세 + 일봉 / 일봉 | n+1 |
+| `high` · `low` | 고가 · 저가 | — | — / 일 고가·저가 | ✕ | KR · US | 일봉 | 1 |
+| `range_pct` | 가격 폭 | `n`=20 (5~120) | — / 현재 봉을 뺀 직전 n봉의 (최고 고가 − 최저 저가) ÷ 최저 저가 × 100 | ✕ | KR · US | 일봉 | n+1 |
 | `sma` | 이동평균 | `n`=20 (2~120) | — / 종가 n봉 단순평균 | ✕ | KR · US | 일봉 | n |
-| `rsi` | RSI | `n`=14 (2~30) | — / Wilder 방식 | ✕ | KR · US | 일봉 | n+1 |
+| `rsi` | RSI | `n`=14 (2~30) | — / Wilder 방식 | ✕ | KR · US | 일봉 | 250 (최소 n+1) |
 | `disparity` | 이격도 | `n`=20 (2~120) | — / 종가 ÷ n봉 이동평균 × 100 | ✕ | KR · US | 일봉 | n |
-| `foreign_net_buy` | 외국인 순매수 | — | — / 순매수 금액(원) | ✕ | KR | 수급 | 0 |
-| `institution_net_buy` | 기관 순매수 | — | — / 순매수 금액(원) | ✕ | KR | 수급 | 0 |
-| `unrealized_pnl_pct` | 평가손익률 | — | — / 이 종목의 평가손익률 | ✕ | KR · US | 보유 스냅샷 | 0 |
-| `weight_pct` | 비중 | — | — / 이 종목의 비중 | ✕ | KR · US | 보유 스냅샷 | 0 |
+| `foreign_net_buy` | 외국인 순매수 | — | — / 순매수 금액(원) | ✕ | KR | 수급 | 1 |
+| `institution_net_buy` | 기관 순매수 | — | — / 순매수 금액(원) | ✕ | KR | 수급 | 1 |
+| `unrealized_pnl_pct` | 평가손익률 | — | — / 이 종목의 평가손익률 | ✕ | KR · US | 보유 스냅샷 | — |
+| `weight_pct` | 비중 | — | — / 이 종목의 비중 | ✕ | KR · US | 보유 스냅샷 | — |
 
-- `allowed_transforms`·`allowed_operators`로 말이 안 되는 조합을 UI에서 원천 차단한다. 사용자 상태 지표는 `identity`만, `range_pct`·`rsi`·`disparity`는 `identity`와 `delta`만 허용한다.
-- 장중 알림의 왼쪽은 `intraday_left = ○`인 지표의 `identity`뿐이다. 오른쪽에 오는 종가 지표는 변형을 모두 쓸 수 있다.
-- **RSI는 Wilder 평활을 `10 × n`봉(이력이 그보다 짧으면 있는 만큼, 최소 `n+1`봉) 위에서 계산한다.** Wilder 평활은 전체 이력에 의존하므로 계산 창을 고정해야 같은 데이터에서 같은 값이 나온다. 증권사 앱의 RSI와 소수점 아래에서 다를 수 있다.
+- `allowed_transforms`·`allowed_operators`로 말이 안 되는 조합을 UI에서 원천 차단한다. 지표별 허용 변형은 다음과 같다.
+
+  | 지표 | 허용 변형 |
+  |---|---|
+  | 시세(`price` · `change_pct` · `volume` · `volume_ratio` · `high` · `low`) · `sma` | 전부 (n 1~120) |
+  | `range_pct` · `disparity` | `identity` · `delta`(n 1~120) |
+  | `rsi` | `identity` · `delta`(n 1~5) |
+  | 수급 | `identity` · `delta`(n 1~5) · `window`(`sum`·`avg`·`max`·`min`, n 1~10) |
+  | 사용자 상태 | `identity` |
+
+  수급과 RSI의 상한은 필요 이력이 데이터 요구(§16.2)를 넘지 않게 하기 위해서다.
+- 장중 알림의 왼쪽은 `intraday_left = ○`인 지표의 `identity`뿐이다. 오른쪽에 오는 이력 피연산자는 위 표의 변형을 쓸 수 있다.
+- **RSI는 각 봉에서 끝나는 250봉 위에서 Wilder 평활로 계산한다(이력이 그보다 짧으면 있는 만큼, 최소 `n+1`봉).** Wilder 평활은 전체 이력에 의존하므로 계산 창을 고정해야 같은 데이터에서 같은 값이 나온다. 증권사 앱의 RSI와 소수점 아래에서 다를 수 있다.
 - **사용자 상태 지표는 포트폴리오의 종목별 화면과 같은 값이다.** 모든 계좌를 합산한 그 종목 한 행의 `unrealized_pnl_pct`와 `weight_pct`이며, 비중의 분모는 예수금을 포함한 총자산이다(포트폴리오 스펙 §6.2). 기준은 그 거래일의 확정 스냅샷(`is_final = true`)이다.
 - `scope = "user"` 지표를 쓰는 알림은 `CLOSE`만 가능하다. 보유 스냅샷이 하루 한 벌이기 때문이다.
+- **사용자 상태 지표와 시장 지표는 한 알림에 섞지 않는다.** 사용자 상태 지표의 데이터 시점은 보유 스냅샷의 `as_of`(국내 영업일)이고 시장 지표는 그 종목 시장의 거래일이라, 두 달력을 한 평가에 맞출 수 없다(§7.1).
 
 ### 5.2 변형 / 연산자 카탈로그
 
@@ -264,7 +279,7 @@ Preset {
 }
 ```
 
-v1 프리셋은 9종이며 모두 템플릿이다.
+v1 프리셋은 9종이며 모두 템플릿이다. 파라미터의 범위는 컴파일 결과가 쓰는 지표·변형·유지 조건의 범위(§5.1 · §14.2)를 따른다.
 
 | key | 라벨 | 파라미터 | 평가 시점 | 컴파일 결과 |
 |---|---|---|---|---|
@@ -274,7 +289,7 @@ v1 프리셋은 9종이며 모두 템플릿이다.
 | `ma_cross` | 골든·데드크로스 | `short`=5 · `long`=20 · `direction` | 종가 | `sma(short) crosses_above sma(long)` / `crosses_below` |
 | `rsi_zone` | RSI 과매수·과매도 | `n`=14 · `zone`(overbought 70 / oversold 30) · `level` | 종가 | `rsi(n) gte level` / `rsi(n) lte level` |
 | `box_breakout` | 박스권 돌파 | `window_days`=20 · `max_range_pct`=15 · `direction` | 종가 | `range_pct(window_days) lte max_range_pct` AND `price gt window(max, high, window_days, lag 1)` (up) / `price lt window(min, low, window_days, lag 1)` (down) |
-| `investor_streak` | 외국인·기관 연속 순매수 | `investor`(foreign/institution) · `side`(buy/sell) · `days`=3 | 종가 | `<investor>_net_buy gt 0` + `streak: days` (sell은 `lt 0`) |
+| `investor_streak` | 외국인·기관 연속 순매수 | `investor`(foreign/institution) · `side`(buy/sell) · `days`=3 (1~20) | 종가 | `<investor>_net_buy gt 0` + `streak: days` (sell은 `lt 0`) |
 | `investor_turn` | 외국인·기관 순매수 전환 | `investor` · `side` | 종가 | `<investor>_net_buy gt 0` AND `<investor>_net_buy window(max, 1, lag 1) lte 0` (sell은 부호 반대) |
 | `pnl_reach` | 수익률 도달 | `pct` · `direction` | 종가 | `unrealized_pnl_pct gte pct` / `lte pct` (보유 종목만) |
 
@@ -292,14 +307,25 @@ v1 프리셋은 9종이며 모두 템플릿이다.
 | `INTRADAY_QUOTE` | 장중 스냅샷(현재가·당일 누적 거래량) | 데이터 |
 | `DAILY_BAR` | 수정주가 일봉 | 데이터 |
 | `DAILY_FLOW` | 투자자별 순매수 | 데이터 |
-| `PORTFOLIO_SNAPSHOT` | 확정 보유 스냅샷(`position_line.is_final`) | 백엔드 |
+| `PORTFOLIO_SNAPSHOT` | 확정 보유 스냅샷 (`snapshot_run`, §7.1) | 백엔드 |
 
-알림 하나가 필요로 하는 데이터 = 그 알림 모든 피연산자의 `requires` 합집합. 필요한 이력 길이 = 피연산자별 `history` 최댓값 + `window.lag` + `streak − 1`. 평가기는 이 두 값으로 무엇을 기다리고 몇 봉을 읽을지 정한다.
+알림 하나가 필요로 하는 데이터 = 그 알림 모든 피연산자의 `requires` 합집합.
+
+필요한 봉 수는 현재 봉을 포함해 센다.
+
+```
+피연산자의 필요 봉 수 = history(params)
+                      + 변형분     window: n − 1 + lag · delta·pct: n · identity: 0
+                      + 교차분     crosses_* 이면 1
+알림의 필요 봉 수     = 피연산자별 최댓값 + (streak − 1)
+```
+
+평가기는 이 두 값으로 무엇을 기다리고 몇 봉을 읽을지 정한다. 읽은 봉이 필요 봉 수보다 적으면 `UNKNOWN(INSUFFICIENT_HISTORY)`다. 카탈로그 상한 안의 모든 조합은 300봉 안에 든다 — 최대는 RSI 250 + `delta` 5 + 교차 1 + 연속 19 = 275봉이다.
 
 ### 5.5 버전과 폐기
 
 - **카탈로그는 append-only다.** 지표·프리셋을 지우지 않고 `deprecated`로 표시한다. 폐기된 항목은 새 알림에서 고를 수 없고, 기존 알림은 계속 평가된다.
-- **`spec_version`은 `trigger_spec`의 포맷 버전이다.** 읽을 때 코드가 최신 버전으로 업캐스팅하고, 저장할 때 최신 버전으로 쓴다.
+- **`spec_version`은 `trigger_spec`의 포맷 버전이다.** 읽을 때 코드가 최신 버전으로 업캐스팅하고, 저장할 때 최신 버전으로 쓴다. 서버가 정하는 값이며 요청에서 받지 않는다.
 - **업캐스팅은 뜻을 바꾸지 않는다.** 계산이 달라지는 변경은 새 지표·프리셋 키로 추가한다. 템플릿의 컴파일 결과를 고치는 것은 예외이며, 그때는 평가 상태를 다시 기준 잡는다(§6.6).
 
 ---
@@ -324,7 +350,7 @@ AND 결합은 다음 순서로 판정한다.
 |---|---|---|---|
 | **EDGE_REARM** (기본) | 돌파할 때마다 | 결과가 `TRUE`이고 엣지 기준이 `FALSE` | 계속 감시. 거짓으로 내려갔다 다시 참이 되면 재발화 |
 | **ONE_SHOT** | 한 번만 | EDGE_REARM과 같음 | `status = ENDED` |
-| **COOLDOWN** | N분마다 다시 | 결과가 `TRUE`이고, 엣지 기준이 `FALSE`이거나 마지막 발화 후 `cooldown_min`분이 지남 | 계속 감시 |
+| **COOLDOWN** | N분마다 다시 | 결과가 `TRUE`이고, 엣지 기준이 `FALSE`이거나 마지막 발화의 데이터 시점(`as_of`)부터 `cooldown_min`분이 지남 | 계속 감시 |
 
 - **COOLDOWN은 장중 알림에만 있다.** 종가 알림은 하루에 한 번 평가되므로 분 단위 억제가 뜻이 없다. 종가 알림의 발화 방식은 `돌파할 때마다` · `한 번만` 둘이다.
 - 계속 참인 동안 평가마다 발화하는 것을 막기 위해 **엣지 발화**가 기본이다.
@@ -333,6 +359,8 @@ AND 결합은 다음 순서로 판정한다.
 ### 6.3 첫 평가
 
 알림을 만들거나, 다시 켜거나, 수정하면 **엣지 기준을 `FALSE`로 두고 시작한다.** 그래서 이미 조건을 충족 중이면 첫 평가에서 발화한다.
+
+이때 `evaluated_as_of`는 비운다. **비어 있는 알림은 그 순간 기다리는 데이터의 최신 `DONE` 시점 하나만 평가하고, 그 이전 시점은 평가하지 않는다.** 몇 주 꺼져 있던 알림을 다시 켰을 때 지난 날짜로 울리지 않게 하기 위해서다. 밀린 거래일의 따라잡기(§3.3)는 이미 감시 중이던 알림에만 적용된다.
 
 이 사실을 저장 전에 알린다. 미리보기(`POST /alerts/preview`)가 지금 충족 여부를 돌려주고, 충족 중이면 공통 설정 화면이 `지금 이미 조건을 충족하고 있어 곧 알림이 와요`를 표시한다(§15). 알림을 만든 사용자는 현재 상태를 알고 싶어 하므로, 침묵하는 쪽보다 알리는 쪽이 낫다.
 
@@ -347,6 +375,7 @@ AND 결합은 다음 순서로 판정한다.
 | `unknown_reason` | `last_result = UNKNOWN`일 때 사유 코드 |
 | `evaluated_as_of` | 마지막으로 평가한 데이터 시점. 중복 평가 방지의 기준 (§8.2) |
 | `spec_hash` | 평가에 쓴 컴파일 결과의 해시 (§6.6) |
+| `version` | 사용자 변경(수정·끄기·다시 켜기·삭제)마다 1씩 오른다. 평가와 사용자 변경의 경쟁을 가른다 (§8.2) |
 
 마지막 발화 시각은 저장하지 않는다. 발화 기록(`alert_event`)에서 구한다. 같은 사실을 두 곳에 두면 어긋날 자리가 생긴다.
 
@@ -371,10 +400,10 @@ AND 결합은 다음 순서로 판정한다.
 | `ACTIVE` · `last_result = FALSE` 또는 평가 전 | `감시 중` |
 | `ACTIVE` · `last_result = UNKNOWN` | `확인 불가 · <사유>` (§7.2) |
 | `PAUSED` | `꺼짐` |
-| `ENDED` | `발화 후 종료` |
+| `ENDED` | `울린 뒤 종료` |
 | `EXPIRED` | `만료` |
 
-카드 둘째 줄의 `최근 발화 · 2시간 전`은 그 알림의 가장 최근 발화에서 온다.
+카드 둘째 줄의 `최근 울림 · 2시간 전`은 그 알림의 가장 최근 발화에서 온다.
 
 ### 6.6 조건 모양이 바뀔 때
 
@@ -389,7 +418,7 @@ AND 결합은 다음 순서로 판정한다.
 
 ### 6.7 중복 경고
 
-같은 사용자에게 **같은 종목 · 같은 평가 시점 · 같은 `spec_hash`**를 가진 `ACTIVE` 알림이 있으면 미리보기가 경고를 돌려준다. 저장은 막지 않는다. 프리셋으로 만든 것과 조립형으로 만든 것도 컴파일 결과가 같으면 중복이다.
+같은 사용자에게 **같은 종목 · 같은 평가 시점 · 같은 `spec_hash`**를 가진 `ACTIVE` 알림이 있으면 미리보기가 경고를 돌려준다. 저장은 막지 않는다. 프리셋으로 만든 것과 조립형으로 만든 것도 컴파일 결과가 같으면 중복이다. 수정 중인 알림의 미리보기는 요청의 `alert_id`로 자기 자신을 검사에서 뺀다.
 
 ### 6.8 삭제
 
@@ -408,6 +437,11 @@ AND 결합은 다음 순서로 판정한다.
 제목  카카오 · RSI 과매수
 본문  RSI(14) 71.3 ≥ 70 · 9/26 종가 기준
 ```
+
+| 부분 | 규칙 |
+|---|---|
+| 제목 | 프리셋 알림은 `종목명 · 프리셋 라벨`, 조립형 알림은 `종목명 · 알림 이름` |
+| 본문 | 조건마다 관측값 문장(`지표 관측값 연산자 기준값`)을 ` · `로 잇고 끝에 데이터 시점을 붙인다 |
 
 본문은 관측값과 데이터 시점을 반드시 담는다. 밀린 종가를 따라잡아 발화한 경우(§3.3)에도 기준일이 문구에 있어 오해가 없다. 계좌번호·금액 등 계좌 정보는 문구에 넣지 않는다. 푸시는 잠금 화면에 보인다.
 
@@ -429,23 +463,27 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
 
 - `INTRADAY` 알림은 그 시장의 새 `INTRADAY_QUOTE` 신호마다 평가한다.
 - `CLOSE` 알림은 **자기에게 필요한 데이터 종류(§5.4)가 그 거래일에 모두 `DONE`일 때** 평가한다. 가격만 보는 알림은 수급 도착을 기다리지 않는다.
-- `PORTFOLIO_SNAPSHOT`은 백엔드 안의 사실이다. 그 거래일의 `position_line`이 확정(`is_final`)되면 준비된 것으로 본다.
+- `PORTFOLIO_SNAPSHOT`은 백엔드가 남기는 신호다. EOD 스냅샷 생성(포트폴리오 스펙 §3.6 1단계)이 그 `as_of`의 전 계좌에 대해 끝나면 `snapshot_run`에 한 행을 쓴다. 사용자 상태 조건의 데이터 시점은 이 스냅샷의 `as_of`(국내 영업일)이며 미국 종목도 같다 — 스냅샷이 담은 미국 가격은 직전 미국 종가다(포트폴리오 스펙 §5.4). 그래서 사용자 상태 지표는 시장 지표와 한 알림에 섞지 않는다(§5.1).
 - 종류마다 신호를 나누는 것은 도착 시각이 다를 수 있어서다. 하나로 묶으면 가장 늦는 데이터가 모든 알림을 붙잡는다.
+- `FAILED` 신호는 `DONE`이 아닌 것으로 본다. 그 시점의 데이터는 아래 규칙으로 넘어간다.
 
 **영원히 오지 않는 데이터로 멈추지 않는다.** 어떤 거래일 D의 신호가 `DONE`이 되기 전에 다음 거래일의 같은 종류가 `DONE`이 되면, D는 그 데이터 없이 평가한다. 그 데이터에 의존하는 조건은 `UNKNOWN(DATA_MISSING)`이 된다.
+
+**종가의 데이터 시점은 `dim_market_calendar.close_at`에서만 읽는다.** 두 팀이 마감 시각을 각자 계산하면 조기 폐장일에 값이 어긋난다.
 
 ### 7.2 확인 불가 사유
 
 | 코드 | 판정 | 카드 문구 |
 |---|---|---|
-| `DATA_MISSING` | 필요한 데이터가 그 시점에 없음(§7.1), 또는 보유 스냅샷의 해당 종목 행이 이월값 | `데이터 없음` |
-| `INSUFFICIENT_HISTORY` | 필요한 이력 길이(§5.4)보다 봉이 적음 — 신규 상장 등 | `이력 부족` |
-| `NO_TRADE` | 영업일인데 그 종목 봉이 없음 — 거래정지 등 | `거래 없음` |
+| `DATA_MISSING` | 필요한 데이터가 그 시점에 없음(§7.1), 계산 창 안에 데이터 전체 누락일이 있음, 장중 평가에 필요한 직전 거래일 `DAILY_BAR`가 `DONE`이 아님(§3.1), 또는 보유 스냅샷의 해당 종목 행이 이월값 | `데이터 없음` |
+| `INSUFFICIENT_HISTORY` | 필요한 봉 수(§5.4)보다 봉이 적음 — 신규 상장 등 | `이력 부족` |
+| `NO_TRADE` | 영업일인데 그 종목의 현재 봉이 없음 — 거래정지 등 | `거래 없음` |
 | `PRICE_ADJUSTMENT_SUSPECTED` | 수정주가 미반영 의심 (§7.3) | `가격 보정 대기` |
 | `NOT_HELD` | 사용자 상태 조건인데 그 거래일 스냅샷에 그 종목이 없음 | `미보유` |
 | `INSTRUMENT_UNKNOWN` | 종목 마스터에서 종목을 찾을 수 없음 | `종목 정보 없음` |
 
-- **연속 N거래일은 영업일 캘린더로 센다.** 영업일인데 봉이 없으면 연속이 끊긴다. 모르는 날을 참으로 세지 않는다.
+- **계열은 그 종목이 거래된 봉으로 만든다.** 거래정지로 봉이 없는 지난 날은 계열에서 빠지고, 연속 N봉도 그 종목의 봉으로 센다. 차트가 정지일을 건너뛰는 것과 같다. 하루 정지가 그 뒤 120봉 동안 이동평균을 막지 않게 하기 위해서다.
+- **결측은 `FALSE`를 만들지 않는다.** 데이터 전체 누락일(§7.1)이 계산 창 안에 있거나 현재 봉이 없으면 `UNKNOWN`이다. `FALSE`로 두면 엣지 기준이 바뀌어 데이터가 돌아온 날 다시 울린다.
 - **`NOT_HELD`는 알림을 무효로 만들지 않는다.** 다시 사면 그날부터 평가가 이어진다. 매도로 알림이 사라지면 재매수할 때마다 다시 만들어야 한다.
 - 보유 스냅샷의 이월 행(`is_carried_forward`)은 낡은 시세라 평가손익률·비중이 그날 값이 아니다. 그 종목의 행 중 하나라도 이월값이면 `DATA_MISSING`이다.
 
@@ -462,7 +500,7 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
 | 자리 | 표시 |
 |---|---|
 | 알림 카드 | `확인 불가 · <사유>` (§6.5) |
-| 알림 목록 상단 | `MARKET_DATA_DELAYED` notice — 사용자 알림이 기다리는 데이터 종류의 최신 `DONE`이 캘린더상 기대 시각보다 늦을 때 |
+| 알림 목록 상단 | `MARKET_DATA_DELAYED` notice — 사용자 알림이 기다리는 데이터 종류의 최신 `DONE`이 기대 시각보다 늦을 때. 기대 시각은 장중이면 마지막 `DONE` + 허용 지연(장 시간 안에서만), 일별이면 §16.2의 도착 시점이다 |
 | 발화 문구 | 데이터 시점 (§6.9) |
 
 장중 스냅샷이 늦어 평가하지 못한 구간은 따로 기록하지 않는다. 기록할 수 있는 것은 "평가하지 못했다"뿐이며, 그 사이에 조건이 참이었는지는 알 수 없다.
@@ -481,7 +519,7 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
 | 발송기 | 수 초 | 발송 대기 행을 집어 Expo Push로 전송 (§9.3) |
 | 영수증 확인기 | 수 분 | 보낸 푸시의 전달 영수증을 조회 (§9.4) |
 
-평가기는 (시장, 평가 시점, 데이터 시점)마다 대상 종목의 이력을 한 번씩 읽고, 그 종목에 걸린 알림들을 함께 평가한다. 만료(`expires_at` 경과)도 이 작업이 `EXPIRED`로 옮긴다.
+평가기는 (시장, 평가 시점, 데이터 시점)마다 대상 종목의 이력을 한 번씩 읽고, 그 종목에 걸린 알림들을 함께 평가한다. 만료(`expires_at` 경과)도 이 작업이 평가보다 먼저 `EXPIRED`로 옮긴다.
 
 ### 8.2 중복 방지 — 잠금이 아니라 데이터로
 
@@ -491,9 +529,10 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
    ```sql
    UPDATE alert_state SET ..., evaluated_as_of = :as_of
     WHERE alert_id = :id
+      AND version = :version
       AND (evaluated_as_of IS NULL OR evaluated_as_of < :as_of)
    ```
-   갱신된 행이 없으면 다른 복제본이 이미 처리한 것이므로 결과를 버린다.
+   갱신된 행이 없으면 다른 복제본이 이미 처리했거나, 평가 도중 사용자가 알림을 바꾼 것이므로 결과를 버린다. 사용자 변경(수정·끄기·다시 켜기·삭제)은 같은 트랜잭션에서 `alert_state.version`을 올린다. 두 쓰기가 같은 행에서 부딪히므로 별도 잠금 없이 한쪽만 이긴다 — 끈 알림이 평가 중이던 결과로 울리거나, 새 조건의 첫 발화가 옛 조건의 결과에 덮이는 일이 없다.
 2. **발화 기록은 `(alert_id, as_of)`가 유일하다.** 1을 통과한 뒤에도 같은 발화가 두 번 들어가지 못한다.
 3. **상태 갱신 · 발화 기록 · 기기별 발송 행 · ONE_SHOT의 `ENDED` 전이는 한 트랜잭션이다.** 발화했는데 기록이 없거나, 기록했는데 상태가 그대로인 경우가 생기지 않는다.
 4. **발송기는 대기 행을 `FOR UPDATE SKIP LOCKED`로 집는다.** 한 발송 행은 한 복제본만 처리한다.
@@ -528,7 +567,7 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
 ### 9.2 푸시 수신 기기
 
 - 앱은 **첫 알림을 저장할 때** 푸시 권한을 요청한다. 로그인 직후에 묻지 않는다 — 알림을 만들지 않은 사용자에게는 권한을 줄 이유가 보이지 않는다.
-- 권한을 받으면 Expo 푸시 토큰을 `POST /devices`로 등록한다. 앱이 시작될 때마다 다시 등록해 토큰 교체를 따라간다. 토큰이 이미 다른 사용자에게 등록돼 있으면 지금 사용자로 옮긴다.
+- 권한을 받으면 Expo 푸시 토큰을 `POST /devices`로 등록하고, 응답의 `device_id`를 앱의 보안 저장소에 보관한다. 앱이 시작될 때마다 다시 등록해 토큰 교체를 따라간다. 토큰이 이미 다른 사용자에게 등록돼 있으면 지금 사용자로 옮긴다.
 - **로그아웃하면 `DELETE /devices/{id}`로 등록을 지운다.** 공용 기기에서 로그아웃한 사람의 알림이 오면 안 된다.
 
 ### 9.3 발송
@@ -544,10 +583,10 @@ KR · DAILY_FLOW     · 2026-09-26         RUNNING
 { "to": "ExponentPushToken[…]",
   "title": "삼성전자 · 가격 도달",
   "body": "현재가 70,200원 ≥ 70,000원 · 10:15 기준",
-  "data": { "event_id": "…", "url": "…://alert-events/…" } }
+  "data": { "event_id": "…" } }
 ```
 
-앱이 푸시를 눌렀을 때 여는 곳과 앱 상태별 동작은 [앱 정보 구조](../app-information-architecture.md) §4가 정의한다.
+`data`에는 `event_id`만 싣는다. 앱은 푸시 응답 처리에서 `event_id`로 화면을 연다. 앱의 URL 스킴은 구현 계획에서 정한다. 푸시를 눌렀을 때 여는 곳과 앱 상태별 동작은 [앱 정보 구조](../app-information-architecture.md) §4가 정의한다.
 
 ### 9.4 영수증
 
@@ -602,8 +641,9 @@ Expo 푸시 접근 토큰은 코드·로그·저장소에 넣지 않고 Secret�
 | `last_result` | text null | `TRUE` · `FALSE` · `UNKNOWN`. 평가 전 null |
 | `last_known_result` | text | `TRUE` · `FALSE`. 엣지 기준 |
 | `unknown_reason` | text null | §7.2 코드 |
-| `evaluated_as_of` | timestamptz null | 마지막으로 평가한 데이터 시점. 종가는 그 거래일의 시장 마감 시각으로 기록한다 |
+| `evaluated_as_of` | timestamptz null | 마지막으로 평가한 데이터 시점. 종가는 그 거래일의 `dim_market_calendar.close_at`으로 기록한다. 생성·다시 켜기·수정 시 비운다 (§6.3) |
 | `spec_hash` | text | §6.6 |
+| `version` | int | 사용자 변경마다 증가 (§8.2) |
 
 **`alert_event`** 발화 — 이력이자 발송 대기열
 
@@ -630,7 +670,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 | `expo_ticket_id` | text null | 영수증 조회용 |
 | `last_error` | text null | |
 
-발화와 분리하는 것은 한 사용자가 기기를 여럿 가질 수 있어서다. 기기마다 성공·실패가 갈린다.
+발화와 분리하는 것은 한 사용자가 기기를 여럿 가질 수 있어서다. 기기마다 성공·실패가 갈린다. 기기를 지우면 그 기기의 발송 행도 함께 지운다(`ON DELETE CASCADE`). 발송 행은 전달 수단의 기록이고, 발화 기록은 `alert_event`에 남는다.
 
 **`push_device`** 푸시 수신 기기
 
@@ -652,6 +692,15 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 
 알림이 생기거나 바뀔 때 백엔드가 갱신한다. 데이터는 `intraday = true`인 종목의 장중 스냅샷을 만들고, 미국 종목은 이 목록과 보유 종목의 일봉을 만든다(§16.2). 전 종목을 몇 분 간격으로 수집하는 것은 원천 호출 한도로 성립하지 않을 수 있고, 알림이 걸린 종목만 필요하다.
 
+**`snapshot_run`** 보유 스냅샷 완료 신호
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `as_of` | date PK | 스냅샷 기준일 |
+| `finished_at` | timestamptz | EOD 스냅샷 생성이 전 계좌에 대해 끝난 시각 |
+
+포트폴리오 EOD 배치가 쓰고 평가기가 읽는다(§7.1). 사용자 상태 지표를 쓰는 알림의 평가 신호다.
+
 ### 10.2 데이터 소유 테이블 (백엔드는 읽기만)
 
 `instrument` · 수정주가 일봉 · 투자자별 순매수 · 장중 스냅샷 · `market_data_run` · `dim_market_calendar`. 컬럼과 제공 조건은 §16.2, 물리 테이블명은 데이터 팀 규약을 따른다.
@@ -671,13 +720,13 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 | 미리보기 | `POST /alerts/preview` |
 | 카탈로그 | `GET /alerts/catalog` |
 | 종목 검색 | `GET /instruments?q=&held=` |
-| 울린 알림 | `GET /alert-events` · `GET /alert-events/{id}` · `POST /alert-events/{id}/read` · `POST /alert-events/read-all` |
+| 울린 알림 | `GET /alert-events?alert_id=&cursor=&limit=` · `GET /alert-events/{id}` · `POST /alert-events/{id}/read` · `POST /alert-events/read-all` |
 | 배지 | `GET /alert-events/unread-count` |
 | 기기 | `POST /devices` · `DELETE /devices/{id}` |
 
 인증은 포트폴리오와 같다(포트폴리오 스펙 §8.8). 전 엔드포인트가 토큰을 요구하고, 사용자 ID는 경로·쿼리·바디 어디에서도 받지 않는다.
 
-`GET /instruments`는 알림 전용이 아니다. 종목을 고르는 모든 화면이 쓰는 앱 공통 검색이다. 응답 행의 `held`는 인증 주체의 최신 확정 스냅샷에 그 종목이 있는지다.
+`GET /instruments`는 알림 전용이 아니다. 종목을 고르는 모든 화면이 쓰는 앱 공통 검색이다. 응답 행의 `held`는 인증 주체의 최신 확정 스냅샷에 그 종목이 있는지다. 예수금 의사종목(`asset_class = CASH`, 포트폴리오 스펙 §5.2)은 검색 결과와 보유 종목 구역에 내리지 않는다.
 
 ### 11.2 목록 응답 — 포트폴리오 봉투
 
@@ -714,6 +763,8 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 
 상세·생성·수정·미리보기·카탈로그는 봉투를 쓰지 않는다. 봉투는 "기준 시점이 있는 조회 결과"의 모양이다.
 
+**앱의 봉투 처리에 더할 것.** 봉투 타입의 `as_of`를 nullable로 바꾸고, null이면 기준 배너를 숨긴다. notice를 그릴 화면 목록에 `alerts`·`alert-events`를, 그 화면의 코드 목록에 `MARKET_DATA_DELAYED`를 더한다. 빈 상태 사유에 `NO_ALERTS`·`NO_EVENTS`와 그 문구를 더한다.
+
 ### 11.3 요청·응답
 
 ```json
@@ -727,6 +778,38 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ```
 
 ```json
+// GET /alerts/{id}
+{ "alert_id": "…", "name": "삼성전자 7만원",
+  "instrument": { "id": "…", "label": "삼성전자", "market": "KR" },
+  "cadence": "INTRADAY", "notify_mode": "EDGE_REARM", "cooldown_min": null,
+  "expires_at": null, "status": "ACTIVE",
+  "trigger_type": "PRESET",
+  "trigger_spec": { "preset_key": "price_reach", "params": { "price": 70000, "direction": "up" } },
+  "summary": "장중 · 현재가가 70,000원 이상이 되면",
+  "last_result": "FALSE", "unknown_reason": null,
+  "evaluated_as_of": "2026-09-26T10:20:00+09:00",
+  "recent_events": [ { "event_id": "…", "title": "삼성전자 · 가격 도달",
+                       "as_of": "2026-09-26T10:15:00+09:00", "read": true } ] }
+```
+
+`recent_events`는 최근 5건이다. 그 알림의 전체 발화는 `GET /alert-events?alert_id=`로 본다. `trigger_spec`이 응답에 있는 것은 `수정`이 프리셋 입력·조건 만들기 화면을 값이 채워진 채 열기 때문이다.
+
+```json
+// GET /alert-events?cursor=&limit=20   (봉투)
+{ "as_of": "2026-09-26T10:15:00+09:00",
+  "data": {
+    "rows": [ { "event_id": "…", "alert_id": "…", "title": "삼성전자 · 가격 도달",
+                "body": "현재가 70,200원 ≥ 70,000원 · 10:15 기준",
+                "as_of": "2026-09-26T10:15:00+09:00", "read": false,
+                "alert_deleted": false } ],
+    "next_cursor": "…" },
+  "empty_reason": null, "notices": [] }
+```
+
+정렬은 `as_of` 내림차순이다. `next_cursor`가 null이면 마지막 쪽이다.
+
+```json
+// POST /alerts/preview  요청: 저장 요청과 같은 모양 + 수정 중이면 "alert_id"
 // POST /alerts/preview  → 200
 { "valid": true,
   "errors": [],
@@ -745,8 +828,20 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
   "as_of": "2026-09-26T10:15:00+09:00", "fired_at": "2026-09-26T10:15:41+09:00",
   "observed": { "price": 70200, "threshold": 70000 },
   "read_at": "2026-09-26T10:20:03+09:00",
-  "alert": { "alert_id": "…", "status": "ACTIVE", "deleted": false,
+  "alert": { "alert_id": "…", "name": "삼성전자 7만원",
+             "cadence": "INTRADAY", "notify_mode": "EDGE_REARM",
+             "status": "ACTIVE", "deleted": false,
              "instrument": { "id": "…", "label": "삼성전자" } } }
+```
+
+```json
+// POST /alerts/{id}/resume   — 만료된 알림은 expires_at 필수(null이면 무기한)
+{ "expires_at": null }
+
+// POST /devices
+{ "expo_push_token": "ExponentPushToken[…]", "platform": "IOS" }
+// → 200
+{ "device_id": "…" }
 ```
 
 ```json
@@ -806,7 +901,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 | 유지 방식 | `conditions[i].modifier` | 종가=`streak`, 장중=`persist_min` |
 | ＋조건 추가(AND) | `conditions[]` 배열 push | 최소 1개 |
 | 현재값 표시 | `POST /alerts/preview`의 `current` | — |
-| 발화 방식 | `alert.notify_mode` (+ `cooldown_min`) | 쿨다운은 장중만 |
+| 알림 방식 | `alert.notify_mode` (+ `cooldown_min`) | 쿨다운은 장중만 |
 | 유효기간 | `alert.expires_at` | 미래 시각 |
 | 알림 이름 | `alert.name` | 1~40자 |
 
@@ -817,7 +912,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 | (조건 선택 카드) | `alert.trigger_type='PRESET'`, `spec.preset_key` | 카탈로그 존재, 종목 시장이 `markets`에 포함 |
 | 평가 시점 | `alert.cadence` | 프리셋 `cadences`에 포함 |
 | 파라미터 폼 필드 | `spec.params.*` | 카탈로그 `param_schema` |
-| (공통 설정) | §12.1의 발화 방식·유효기간·이름과 동일 | 동일 |
+| (공통 설정) | §12.1의 알림 방식·유효기간·이름과 동일 | 동일 |
 
 ### 12.3 목록·상세
 
@@ -825,7 +920,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 |---|---|
 | 카드 상태 문구 | `status` + `last_result` + `unknown_reason` (§6.5) |
 | 카드 조건 문장 | `summary` |
-| 최근 발화 | `last_fired_at` |
+| 최근 울림 | `last_fired_at` |
 | 새로 울린 알림 블록 | `data.unread` |
 | 탭 배지 | `GET /alert-events/unread-count` |
 | 데이터 지연 배너 | `MARKET_DATA_DELAYED` notice |
@@ -839,10 +934,10 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ```json
 {
   "instrument_id": "…",
+  "name": "카카오 RSI 과열 지속",
   "cadence": "CLOSE",
   "notify_mode": "EDGE_REARM",
   "trigger_type": "COMPOSABLE",
-  "spec_version": 1,
   "trigger_spec": {
     "conditions": [
       {
@@ -859,7 +954,10 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ### 13.2 조립형 — "외국인 3거래일 연속 순매수"
 ```json
 {
+  "instrument_id": "…",
+  "name": "삼성전자 외국인 매수",
   "cadence": "CLOSE",
+  "notify_mode": "EDGE_REARM",
   "trigger_type": "COMPOSABLE",
   "trigger_spec": {
     "conditions": [
@@ -877,6 +975,8 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ### 13.3 프리셋 — "박스권 20일 상단 돌파"
 ```json
 {
+  "instrument_id": "…",
+  "name": "SK하이닉스 박스권",
   "cadence": "CLOSE",
   "notify_mode": "EDGE_REARM",
   "trigger_type": "PRESET",
@@ -890,7 +990,10 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ### 13.4 조립형 — 두 지표 비교 + AND (예: "5일선 > 20일선 AND 거래량 배수 ≥ 2")
 ```json
 {
+  "instrument_id": "…",
+  "name": "NAVER 단기 추세",
   "cadence": "CLOSE",
+  "notify_mode": "ONE_SHOT",
   "trigger_type": "COMPOSABLE",
   "trigger_spec": {
     "conditions": [
@@ -914,6 +1017,8 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 ### 13.5 조립형 — 장중 "현재가가 직전 20일 최고가를 넘고 10분 지속"
 ```json
 {
+  "instrument_id": "…",
+  "name": "삼성전자 20일 고점 돌파",
   "cadence": "INTRADAY",
   "notify_mode": "COOLDOWN",
   "cooldown_min": 60,
@@ -931,7 +1036,9 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 }
 ```
 
-장중 알림의 오른쪽 종가 지표는 직전 거래일까지의 이력으로 계산되므로(§3.1), 여기서 `lag: 0`인 20봉 윈도우는 오늘을 포함하지 않는다.
+장중 알림에서 변형이 붙은 피연산자는 직전 거래일 봉을 현재 봉으로 하는 이력으로 계산되므로(§3.1), 여기서 `lag: 0`인 20봉 윈도우는 직전 거래일까지의 20봉이며 오늘을 포함하지 않는다.
+
+`spec_version`은 서버가 정하므로 요청에 싣지 않는다(§5.5).
 
 ---
 
@@ -943,27 +1050,28 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 
 | 필드 | 규칙 |
 |------|------|
-| `instrument_id` | 종목 마스터에 존재 |
+| `instrument_id` | 종목 마스터에 존재. 예수금 의사종목(`asset_class = CASH`)은 불가 |
 | `cadence` | enum |
-| `notify_mode` | enum. `COOLDOWN`이면 `cadence = INTRADAY`이고 `cooldown_min >= 1` |
+| `notify_mode` | enum. `COOLDOWN`이면 `cadence = INTRADAY`이고 `cooldown_min` 5~1440 |
 | `expires_at` | null 또는 현재 이후 |
 | `name` | 1~40자, 공백만은 불가 |
-| user-scope 지표 포함 | `cadence = CLOSE`이고, 저장 시점에 최신 확정 스냅샷에서 보유 중 |
+| user-scope 지표 포함 | `cadence = CLOSE`. **생성할 때** 최신 확정 스냅샷에서 보유 중 — 수정·다시 켜기는 보유를 묻지 않는다(판 종목은 `NOT_HELD`로 남는다, §7.2) |
+| `spec_version` | 요청에서 받지 않는다. 서버가 정한다 (§5.5) |
 
 ### 14.2 조립형 조건
 
 | 규칙 |
 |------|
-| `conditions` 최소 1개 |
+| `conditions` 1~5개 |
 | 각 `indicator`가 카탈로그에 존재하고 `deprecated`가 아님, 종목 시장이 지표 `markets`에 포함 |
 | `indicator_params`가 카탈로그 범위 안 |
-| `transform.type`이 지표의 `allowed_transforms`에 포함. `window.n` 1~120, `window.lag` 0~5, `delta.n`·`pct.n` 1~120 |
+| `transform`이 지표별 허용 변형과 n 범위(§5.1 표) 안. `window.lag` 0~5 |
 | `op`가 지표의 `allowed_operators`에 포함 |
-| `right.const`는 number. `right`가 Operand면 같은 규칙을 재귀 적용 |
+| `right.const`는 number. `right`가 Operand면 같은 규칙을 재귀 적용하고, `left`와 `unit`이 같아야 한다 |
 | `crosses_*` 연산자는 `right`가 Operand |
 | `INTRADAY`: `left`는 `intraday_left` 지표의 `identity` |
-| `INTRADAY`: `modifier`는 null 또는 `persist_min` 1~60 / `CLOSE`: null 또는 `streak` 1~20 |
-| user-scope 지표와 market-scope 지표 혼용 허용 |
+| `INTRADAY`: `modifier`는 null 또는 `persist_min` 5~60 / `CLOSE`: null 또는 `streak` 1~20 |
+| user-scope 지표와 market-scope 지표를 한 알림에 섞지 않는다 (§5.1) |
 
 ### 14.3 프리셋
 
@@ -979,13 +1087,15 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 | 규칙 |
 |------|
 | 평가 대상은 `status = ACTIVE`이고 `deleted_at IS NULL`인 알림뿐 |
-| `alert_state` 갱신은 `evaluated_as_of < :as_of`일 때만. 데이터 시점은 뒤로 가지 않는다 |
+| `alert_state` 갱신은 `evaluated_as_of < :as_of`이고 읽을 때의 `version`과 같을 때만. 데이터 시점은 뒤로 가지 않는다 |
+| 사용자 변경(수정·끄기·다시 켜기·삭제)은 같은 트랜잭션에서 `version`을 올린다 |
+| `evaluated_as_of`가 빈 알림은 최신 `DONE` 시점 하나만 평가한다 (§6.3) |
 | `alert_event`는 `(alert_id, as_of)`마다 최대 1행 |
 | 상태 갱신 · 발화 기록 · 발송 행 · `ENDED` 전이는 한 트랜잭션 |
 | `UNKNOWN`은 발화하지 않고 `last_known_result`를 바꾸지 않는다 |
 | AND 결합은 FALSE 우선, 그다음 UNKNOWN (§6.1) |
 | 해시 불일치가 평가 시점에 발견되면 발화 없이 기준을 다시 잡는다 (§6.6) |
-| 연속 거래일은 영업일 캘린더로 센다. 영업일에 봉이 없으면 연속이 끊긴다 |
+| 계열은 그 종목이 거래된 봉으로 만든다. 결측은 `FALSE`가 아니라 `UNKNOWN`이다 (§7.2) |
 | 오래된 장중 스냅샷(허용 지연 초과)은 평가하지 않는다 |
 
 ### 14.5 소유
@@ -1130,7 +1240,7 @@ PK `(market, kind, as_of)`. 데이터가 쓰고 백엔드는 읽기만 한다. `
 | 영업일 캘린더 | 데이터 → 백엔드 | 개장·마감 시각 컬럼 · 범위 |
 | Expo 푸시 접근 토큰 | 인프라 → 백엔드 | Secret 주입 · 클러스터에서 Expo 서버로 나가는 통신 |
 
-테이블 소유: 백엔드는 `alert` · `alert_state` · `alert_event` · `alert_delivery` · `push_device` · `alert_watchlist`를, 데이터는 `instrument` · 수정주가 일봉 · 투자자별 순매수 · 장중 스냅샷 · `market_data_run` · `dim_market_calendar`를 소유한다.
+테이블 소유: 백엔드는 `alert` · `alert_state` · `alert_event` · `alert_delivery` · `push_device` · `alert_watchlist` · `snapshot_run`을, 데이터는 `instrument` · 수정주가 일봉 · 투자자별 순매수 · 장중 스냅샷 · `market_data_run` · `dim_market_calendar`를 소유한다.
 
 **사용자는 백엔드 안에만 있다.** `alert_watchlist`는 종목 목록일 뿐 누가 알림을 걸었는지 담지 않는다. 데이터는 어느 종목을 수집할지만 알면 된다.
 
@@ -1160,7 +1270,7 @@ PK `(market, kind, as_of)`. 데이터가 쓰고 백엔드는 읽기만 한다. `
 
 ## 18. 다음 단계
 
-1. **팀 경계 합의** — §16.3 ([설계 공유 및 합의 요청](../../meetings/2026-09-27-buy-sell-timing-alert-design-review.md))
-2. **구현 계획** — 카탈로그·컴파일러 → 스키마·마이그레이션 → 검증·미리보기 → 평가기(종가 → 장중) → 발화 기록·발송기 → API → 앱(알림 탭 → 새 알림 흐름 → 울린 알림 → 딥링크) → 상태 화면
+1. **데이터 테이블 이름과 스키마 확정** — §16.2 ([설계 공유 및 합의 요청](../../meetings/2026-09-27-buy-sell-timing-alert-design-review.md) 다음 단계)
+2. **구현 계획** — 선행(종목 검색 API, 종목 상세 화면의 `알림 걸기` 진입점, 로컬 CORS에 새 경로·메서드 추가) → 카탈로그·컴파일러 → 스키마·마이그레이션 → 검증·미리보기 → 평가기(종가 → 장중 → 보유 스냅샷) → 발화 기록·발송기 → API → 앱(봉투 확장 → 알림 탭 → 새 알림 흐름 → 울린 알림 → 푸시 응답) → 상태 화면
 
-구현 계획 단계에서 확정하는 것: 인덱스와 제약조건, 발송 재시도 간격·상한, 영수증 조회 시점, 장중 허용 지연·주기의 운영값, `spec_hash`의 정규화 규칙.
+구현 계획 단계에서 확정하는 것: 인덱스와 제약조건, 발송 재시도 간격·상한, 영수증 조회 시점, 장중 주기의 운영값, `spec_hash`의 정규화 규칙, 앱의 URL 스킴.

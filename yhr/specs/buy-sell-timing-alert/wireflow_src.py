@@ -435,7 +435,7 @@ for lb, bg, fg, dot in [('감시 중', GRN_BG, GRN, GRN),
                         ('조건 충족 중', AMB_BG, AMB_TX, AMB),
                         ('확인 불가 · 사유', GRY_BG, MUT, DIM),
                         ('꺼짐', GRY_BG, MUT, None),
-                        ('발화 후 종료', BLU_BG, PRI, None),
+                        ('울린 뒤 종료', BLU_BG, PRI, None),
                         ('만료', GRY_BG, FAINT, None)]:
     pill(cx, y, 150, 20, bg, fg, lb, dot=dot)
     y += 24
@@ -543,8 +543,13 @@ B1 = 190
 x, y = ph(360, B1, '알림', back=False, right='＋ 새 알림', tab='알림')
 asof(360, y, PW, '최근 평가 2026-09-26 10:15', right=None)
 y += 34
-sect(x, y, '새로 울린 알림 2', '전체 →')
-y += 26
+A1_ALL_Y = y + 15
+rect(x, y, 276, 30, PANEL, 'none', 1, arc=8)
+text(x + 12, y, 200, 30, '울린 알림 전체', 11, TXT, bold=True)
+text(x + 236, y, 30, 30, '→', 12, PRI, align='center', bold=True)
+y += 36
+sect(x, y, '새로 울린 알림 2')
+y += 24
 for t, s in [('삼성전자 · 가격 도달', '10:15 · 현재가 70,200원'),
              ('카카오 · RSI 과매수', '9/26 종가 · RSI(14) 71.3')]:
     card(x, y, 276, 40, '#FFFFFF', INF_ST)
@@ -553,22 +558,19 @@ for t, s in [('삼성전자 · 가격 도달', '10:15 · 현재가 70,200원'),
     text(x + 22, y + 20, 200, 16, s, 9, MUT)
     text(x + 244, y, 24, 40, '›', 14, DIM, align='center')
     y += 46
-y += 6
 sect(x, y, '내 알림')
-y += 26
+y += 24
 alert_card(x, y, '삼성전자', '장중 · 현재가 ≥ 70,000원',
-           (64, GRN_BG, GRN, '감시 중', GRN), '돌파할 때마다 · 최근 발화 10:15')
-y += 68
+           (64, GRN_BG, GRN, '감시 중', GRN), '돌파할 때마다 · 최근 울림 10:15')
+y += 64
 alert_card(x, y, '카카오', '종가 · RSI(14) 3거래일 연속 ≥ 70',
-           (84, AMB_BG, AMB_TX, '조건 충족 중', AMB), '돌파할 때마다 · 최근 발화 9/26')
-y += 68
+           (84, AMB_BG, AMB_TX, '조건 충족 중', AMB), '돌파할 때마다 · 최근 울림 9/26')
+y += 64
 alert_card(x, y, 'SK하이닉스', '종가 · 20일 박스권 상단 돌파',
            (104, GRY_BG, MUT, '확인 불가 · 거래 없음', DIM), '돌파할 때마다')
-y += 68
+y += 64
 alert_card(x, y, 'NAVER', '장중 · 현재가 ≤ 180,000원',
-           (80, BLU_BG, PRI, '발화 후 종료', None), '한 번만 · 9/24 울림', right='다시 켜기')
-y += 68
-mono(x, y, 276, 'GET /alerts · data.rows + data.unread')
+           (80, BLU_BG, PRI, '울린 뒤 종료', None), '한 번만 · 9/24 울림', right='다시 켜기')
 
 # A2 울린 알림 (목록)
 x, y = ph(760, B1, '울린 알림', right='모두 읽음')
@@ -600,7 +602,7 @@ box(x, y, 276, 64, 'ok')
 text(x + 12, y + 8, 250, 16, '울린 이유', 9, GRN, bold=True)
 text(x + 12, y + 26, 250, 30, '현재가 70,200원 ≥ 70,000원', 14, TXT, bold=True)
 y += 76
-for k, v in [('평가 시점', '장중'), ('발화 방식', '돌파할 때마다'), ('알림', '삼성전자 7만원')]:
+for k, v in [('평가 시점', '장중'), ('알림 방식', '돌파할 때마다'), ('알림', '삼성전자 7만원')]:
     text(x, y, 120, 26, k, 10, MUT)
     text(x + 120, y, 156, 26, v, 11, TXT, align='right')
     hr(x, y + 26, 276)
@@ -620,7 +622,7 @@ rect(PX, PY, 260, 72, '#FFFFFF', AMB_ST, 1, arc=12, shadow=True)
 text(PX + 12, PY + 6, 200, 16, '주식앱 · 지금', 8, MUT)
 text(PX + 12, PY + 22, 236, 18, '삼성전자 · 가격 도달', 11, TXT, bold=True)
 text(PX + 12, PY + 42, 236, 18, '현재가 70,200원 ≥ 70,000원 · 10:15 기준', 9, SUB)
-text(PX + 270, PY + 10, 180, 50, 'iOS 앱 푸시\n…://alert-events/{event_id}', 9, AMB_TX)
+text(PX + 270, PY + 10, 180, 50, 'iOS 앱 푸시\ndata: event_id', 9, AMB_TX)
 
 # A4 알림 상세
 x, y = ph(1660, B1, '알림 상세', right='수정')
@@ -631,7 +633,7 @@ y += 32
 box(x, y, 276, 48, 'info')
 text(x + 12, y, 252, 48, '장중 · 현재가가 70,000원 이상이 되면\n알려요', 11, TXT)
 y += 58
-for k, v in [('마지막 평가', '10:20 · 조건 미충족'), ('발화 방식', '돌파할 때마다'),
+for k, v in [('마지막 평가', '감시 중 · 10:20 평가'), ('알림 방식', '돌파할 때마다'),
              ('유효기간', '무기한')]:
     text(x, y, 120, 26, k, 10, MUT)
     text(x + 120, y, 156, 26, v, 11, TXT, align='right')
@@ -730,7 +732,7 @@ mono(x, y, 276, 'preset_key + params 저장 · 평가 시점 컴파일\nPOST /al
 # N4 공통 설정
 x, y = ph(1660, B2, '공통 설정')
 y += 12
-text(x, y, 276, 16, '발화 방식', 9, MUT)
+text(x, y, 276, 16, '알림 방식', 9, MUT)
 y += 20
 radio(x, y, '돌파할 때마다', True, 'EDGE_REARM')
 y += 26
@@ -836,7 +838,7 @@ text(CX, CY + 570, 760, 20,
 # 흐름선
 # ══════════════════════════════════════════════════════════════
 # 밴드 1
-edge([(660, B1 + 140), (760, B1 + 140)], '전체 →', loff=(0, -12))
+edge([(660, A1_ALL_Y), (760, A1_ALL_Y)], '울린 알림 전체', loff=(0, -12))
 edge([(1060, B1 + 130), (1160, B1 + 130)], '행 탭', loff=(0, -12))
 edge([(500, B1), (500, B1 - 30), (1230, B1 - 30), (1230, B1)], '새로 울린 알림 행', lseg=1)
 edge([(1330, PY + 72), (1330, B1)], '푸시 탭', color=AMB, loff=(34, 0))
