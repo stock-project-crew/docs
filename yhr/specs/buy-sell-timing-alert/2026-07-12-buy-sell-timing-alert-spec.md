@@ -825,10 +825,10 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 // POST /alerts/preview  → 200
 { "valid": true,
   "errors": [],
-  "summary": { "short": "종가 · RSI(14) ≥ 70",
+  "summary": { "short": "종가 · RSI(14) 70 이상 진입",
                "sentence": "종가 기준으로 RSI(14)가 70 이상이면 알려요" },
   "current": { "result": "TRUE", "as_of": "2026-09-26T15:30:00+09:00",
-               "header": "지금 · 9/26 종가 기준", "result_text": "충족하고 있어요",
+               "header": "9/26 종가 기준", "result_text": "충족하고 있어요",
                "conditions": [ { "result": "TRUE", "unknown_reason": null,
                                  "text": "RSI(14) 71.3 ≥ 70" } ] },
   "already_satisfied": true,
@@ -873,10 +873,11 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 
 ```json
 // GET /alerts/catalog (발췌)
-{ "indicators": [ { "key": "rsi", "label": "RSI", "unit": "ratio",
+{ "indicators": [ { "key": "rsi", "label": "RSI", "category": "기술지표", "unit": "index",
                     "params": [ { "key": "n", "default": 14, "min": 2, "max": 30 } ],
                     "intraday_left": false, "markets": ["KR", "US"],
                     "allowed_transforms": ["identity", "delta"],
+                    "transform_ranges": { "delta": { "min": 1, "max": 5 } },
                     "allowed_operators": ["gte", "lte", "gt", "lt", "crosses_above", "crosses_below"],
                     "scope": "market", "deprecated": false } ],
   "presets": [ { "key": "box_breakout", "label": "박스권 돌파", "cadences": ["CLOSE"],
@@ -1074,7 +1075,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 **현재값 상자**는 조건마다 한 줄, 맨 아래에 알림 전체 결과를 둔다.
 
 ```
-지금 · 9/26 종가 기준
+9/26 종가 기준
 ✓ 5일 이동평균 72,100원 > 20일 이동평균 70,850원
 ✕ 거래량 배수(20일) 1.4배 ≥ 2배
 → 아직 충족하지 않아요
