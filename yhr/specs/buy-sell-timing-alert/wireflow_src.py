@@ -435,7 +435,7 @@ for lb, bg, fg, dot in [('감시 중', GRN_BG, GRN, GRN),
                         ('조건 충족 중', AMB_BG, AMB_TX, AMB),
                         ('확인 불가 · 사유', GRY_BG, MUT, DIM),
                         ('꺼짐', GRY_BG, MUT, None),
-                        ('울린 뒤 종료', BLU_BG, PRI, None),
+                        ('울린 뒤 종료', GRY_BG, MUT, None),
                         ('만료', GRY_BG, FAINT, None)]:
     pill(cx, y, 150, 20, bg, fg, lb, dot=dot)
     y += 24
@@ -522,9 +522,11 @@ def radio(x, y, s, on, sub=None):
         text(x + 150, y, 126, 22, sub, 8, FAINT, mono=True, align='right')
 
 
-def alert_card(x, y, name, cond, pl, meta, right='toggle'):
+def alert_card(x, y, name, cond, pl, meta, right='toggle', market='KR'):
     card(x, y, 276, 62)
     text(x + 12, y + 6, 150, 20, name, 12, TXT, bold=True)
+    nw = sum(11 if ord(c) > 127 else 7 for c in name)
+    pill(x + 16 + nw, y + 9, 24, 16, BLU_BG, PRI, market, size=7)
     pill(x + 276 - 12 - pl[0], y + 8, pl[0], 18, pl[1], pl[2], pl[3], dot=pl[4], size=8)
     text(x + 12, y + 26, 200, 16, cond, 10, SUB)
     text(x + 12, y + 42, 200, 14, meta, 8, FAINT)
@@ -548,29 +550,27 @@ rect(x, y, 276, 30, PANEL, 'none', 1, arc=8)
 text(x + 12, y, 200, 30, '울린 알림 전체', 11, TXT, bold=True)
 text(x + 236, y, 30, 30, '→', 12, PRI, align='center', bold=True)
 y += 36
-sect(x, y, '새로 울린 알림 2')
+sect(x, y, '새로 울린 알림 3')
 y += 24
-for t, s in [('삼성전자 · 가격 도달', '10:15 · 현재가 70,200원'),
-             ('카카오 · RSI 과매수', '9/26 종가 · RSI(14) 71.3')]:
-    card(x, y, 276, 40, '#FFFFFF', INF_ST)
-    rect(x + 10, y + 17, 6, 6, UP, 'none', 1, ellipse=True)
-    text(x + 22, y + 3, 200, 18, t, 11, TXT, bold=True)
-    text(x + 22, y + 20, 200, 16, s, 9, MUT)
-    text(x + 244, y, 24, 40, '›', 14, DIM, align='center')
-    y += 46
+for t in ['삼성전자 · 가격 도달 · 10:15', '카카오 · RSI 과매수 · 9/26 종가',
+          'NAVER · 급등락 · 9/26 종가']:
+    card(x, y, 276, 32, '#FFFFFF', INF_ST)
+    rect(x + 10, y + 13, 6, 6, PRI, 'none', 1, ellipse=True)
+    text(x + 22, y, 220, 32, t, 10, TXT, bold=True)
+    text(x + 244, y, 24, 32, '›', 14, DIM, align='center')
+    y += 36
+text(x + 4, y, 200, 20, '외 2건 →', 10, PRI, bold=True)
+y += 26
 sect(x, y, '내 알림')
 y += 24
 alert_card(x, y, '삼성전자', '장중 · 현재가 ≥ 70,000원',
-           (64, GRN_BG, GRN, '감시 중', GRN), '돌파할 때마다 · 최근 울림 10:15')
+           (64, GRN_BG, GRN, '감시 중', GRN), '삼성전자 7만원 · 최근 울림 10:15')
 y += 64
-alert_card(x, y, '카카오', '종가 · RSI(14) 3거래일 연속 ≥ 70',
-           (84, AMB_BG, AMB_TX, '조건 충족 중', AMB), '돌파할 때마다 · 최근 울림 9/26')
-y += 64
-alert_card(x, y, 'SK하이닉스', '종가 · 20일 박스권 상단 돌파',
-           (104, GRY_BG, MUT, '확인 불가 · 거래 없음', DIM), '돌파할 때마다')
+alert_card(x, y, 'SK하이닉스', '종가 · 20일 박스권(폭 15% 이내) 상단 돌파',
+           (104, GRY_BG, MUT, '확인 불가 · 거래 없음', DIM), 'SK하이닉스 박스권 돌파')
 y += 64
 alert_card(x, y, 'NAVER', '장중 · 현재가 ≤ 180,000원',
-           (80, BLU_BG, PRI, '울린 뒤 종료', None), '한 번만 · 9/24 울림', right='다시 켜기')
+           (80, GRY_BG, MUT, '울린 뒤 종료', None), 'NAVER 18만원 · 최근 울림 9/24', right='다시 켜기')
 
 # A2 울린 알림 (목록)
 x, y = ph(760, B1, '울린 알림', right='모두 읽음')
@@ -583,7 +583,7 @@ for t, s, unread, dele in [('삼성전자 · 가격 도달', '9/26 10:15 · 현�
                            ('LG에너지솔루션 · 급등락', '9/20 종가 · 등락률 -6.1%', False, True)]:
     card(x, y, 276, 50)
     if unread:
-        rect(x + 10, y + 22, 6, 6, UP, 'none', 1, ellipse=True)
+        rect(x + 10, y + 22, 6, 6, PRI, 'none', 1, ellipse=True)
     text(x + 22, y + 6, 190, 18, t, 11, TXT if not dele else MUT, bold=unread)
     text(x + 22, y + 26, 200, 16, s, 9, MUT)
     if dele:
@@ -627,12 +627,18 @@ text(PX + 270, PY + 10, 180, 50, 'iOS 앱 푸시\ndata: event_id', 9, AMB_TX)
 # A4 알림 상세
 x, y = ph(1660, B1, '알림 상세', right='수정')
 y += 14
-text(x, y, 200, 24, '삼성전자 7만원', 16, TXT, bold=True)
+text(x, y, 120, 24, '삼성전자', 16, TXT, bold=True)
+pill(x + 76, y + 4, 24, 16, BLU_BG, PRI, 'KR', size=7)
 pill(x + 206, y + 3, 70, 20, GRN_BG, GRN, '감시 중', dot=GRN)
-y += 32
-box(x, y, 276, 48, 'info')
-text(x + 12, y, 252, 48, '장중 · 현재가가 70,000원 이상이 되면\n알려요', 11, TXT)
-y += 58
+y += 26
+text(x, y, 276, 18, '삼성전자 7만원', 10, SUB)
+y += 24
+box(x, y, 276, 44, 'info')
+text(x + 12, y, 252, 44, '장중에 현재가가 70,000원 이상이면\n알려요', 11, TXT)
+y += 52
+box(x, y, 276, 40, 'ok')
+text(x + 12, y + 2, 256, 36, '지금 · 10:20 기준\n× 현재가 69,800원 ≥ 70,000원', 9, GRN)
+y += 48
 for k, v in [('마지막 평가', '감시 중 · 10:20 평가'), ('알림 방식', '돌파할 때마다'),
              ('유효기간', '무기한')]:
     text(x, y, 120, 26, k, 10, MUT)
@@ -724,9 +730,9 @@ chip(x, y, 70, '종가', on=True)
 rect(x + 80, y, 70, 24, PANEL, 'none', 1, arc=50)
 text(x + 80, y, 70, 24, '장중', 10, DIM, align='center')
 y += 36
-box(x, y, 276, 58, 'ok')
-text(x + 12, y + 6, 256, 48, '지금 · 9/26 종가 기준\n직전 20일 폭 11.2% · 최고가 71,800원\n종가 71,200원 · 돌파까지 +600원', 9, GRN)
-y += 68
+box(x, y, 276, 66, 'ok')
+text(x + 12, y + 4, 256, 58, '지금 · 9/26 종가 기준\n✓ 가격 폭(20일) 11.2% ≤ 15%\n× 종가 71,200원 > 직전 20일 최고 고가 71,800원\n→ 아직 충족하지 않아요', 9, GRN)
+y += 76
 mono(x, y, 276, 'preset_key + params 저장 · 평가 시점 컴파일\nPOST /alerts/preview → current', h=36)
 
 # N4 공통 설정
@@ -771,7 +777,7 @@ rect(x, y, 276, 206, '#FFFFFF', AMB_ST, 1, arc=10, dashed=True)
 text(x + 12, y + 6, 100, 18, '조건 1', 10, AMB_TX, bold=True)
 cx2 = x + 12
 field(cx2, y + 26, '지표', 'RSI (14)', w=120)
-field(cx2 + 132, y + 26, '변형', '현재값', w=120)
+field(cx2 + 132, y + 26, '변형', '그대로', w=120)
 field(cx2, y + 82, '연산자', '≥', w=70)
 text(cx2 + 82, y + 82, 90, 16, '기준값', 9, MUT)
 rect(cx2 + 82, y + 100, 90, 32, AMB_BOX, AMB_ST, 1, arc=10)
@@ -783,16 +789,16 @@ rect(cx2, y + 158, 90, 30, BLU_BG, 'none', 1, arc=8)
 text(cx2, y + 158, 90, 30, '연속 ▼', 10, PRI, align='center', bold=True)
 rect(cx2 + 98, y + 158, 90, 30, '#FFFFFF', LINE, 1, arc=8)
 text(cx2 + 98, y + 158, 90, 30, '－   3   ＋', 11, TXT, align='center')
-text(cx2 + 194, y + 158, 60, 30, '거래일', 9, AMB_TX)
+text(cx2 + 194, y + 158, 60, 30, '일 연속', 9, AMB_TX)
 y += 216
 rect(x, y, 276, 32, INF_BOX, INF_ST, 1, arc=10)
 text(x, y, 276, 32, '＋ 조건 추가 (AND)', 11, PRI, align='center', bold=True)
 y += 42
 box(x, y, 276, 40, 'gray')
-text(x + 10, y, 260, 40, '“종가 기준, RSI(14)가 3거래일 연속\n70 이상이면 알림”', 10, TXT, bold=True)
+text(x + 10, y, 260, 40, '“종가 기준으로 RSI(14)가 3일 연속\n70 이상이면 알려요”', 10, TXT, bold=True)
 y += 48
 box(x, y, 276, 30, 'ok')
-text(x + 10, y, 260, 30, '지금 · RSI 68.4 (9/26 종가) · 조건까지 +1.6', 9, GRN)
+text(x + 10, y, 260, 30, '지금 · 9/26 종가 기준 · × RSI(14) 68.4 ≥ 70', 9, GRN)
 y += 38
 mono(x, y, 276, 'cadence + conditions[] (AND) → trigger_spec JSONB')
 
