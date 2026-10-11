@@ -576,19 +576,21 @@ alert_card(x, y, 'NAVER', '장중 · 현재가 ≤ 180,000원',
 x, y = ph(760, B1, '울린 알림', right='모두 읽음')
 asof(760, y, PW, '최근 평가 2026-09-26 10:15', right=None)
 y += 34
-for t, s, unread, dele in [('삼성전자 · 가격 도달', '9/26 10:15 · 현재가 70,200원', True, False),
-                           ('카카오 · RSI 과매수', '9/26 종가 · RSI(14) 71.3', True, False),
-                           ('삼성전자 · 가격 도달', '9/25 09:42 · 현재가 70,100원', False, False),
-                           ('NAVER · 가격 도달', '9/24 13:05 · 현재가 179,500원', False, False),
-                           ('LG에너지솔루션 · 급등락', '9/20 종가 · 등락률 -6.1%', False, True)]:
-    card(x, y, 276, 50)
+for t, s, w, unread, dele in [
+        ('삼성전자 · 가격 도달', '현재가 70,200원 ≥ 70,000원 · 10:15 기준', '2시간 전', True, False),
+        ('카카오 · RSI 과매수', 'RSI(14) 71.3 ≥ 70 · 9/26 종가 기준', '18시간 전', True, False),
+        ('삼성전자 · 가격 도달', '현재가 70,100원 ≥ 70,000원 · 09:42 기준', '9/25 09:42', False, False),
+        ('NAVER · 가격 도달', '현재가 179,500원 ≤ 180,000원 · 13:05 기준', '9/24 13:05', False, False),
+        ('LG에너지솔루션 · 급등락', '등락률 -6.1% · 9/20 종가 기준', '9/20 16:05', False, True)]:
+    card(x, y, 276, 58)
     if unread:
-        rect(x + 10, y + 22, 6, 6, PRI, 'none', 1, ellipse=True)
-    text(x + 22, y + 6, 190, 18, t, 11, TXT if not dele else MUT, bold=unread)
-    text(x + 22, y + 26, 200, 16, s, 9, MUT)
+        rect(x + 10, y + 12, 6, 6, PRI, 'none', 1, ellipse=True)
+    text(x + 22, y + 4, 190, 18, t, 11, TXT if not dele else MUT, bold=unread)
+    text(x + 22, y + 22, 244, 16, s, 9, SUB)
+    text(x + 22, y + 38, 120, 16, w, 8, FAINT)
     if dele:
-        pill(x + 196, y + 15, 70, 18, GRY_BG, FAINT, '삭제된 알림', size=8)
-    y += 56
+        pill(x + 196, y + 37, 70, 16, GRY_BG, FAINT, '삭제된 알림', size=7)
+    y += 64
 mono(x, y + 4, 276, 'GET /alert-events · 삭제된 알림의 발화도 남는다')
 
 # A3 울린 알림 상세
@@ -596,18 +598,19 @@ x, y = ph(1160, B1, '울린 알림')
 y += 14
 text(x, y, 276, 24, '삼성전자 · 가격 도달', 16, TXT, bold=True)
 y += 26
-text(x, y, 276, 18, '2026-09-26 10:15 기준 · 10:15:41 울림', 9, MUT)
+text(x, y, 276, 18, '9/26 10:15 기준 · 10:15:41 울림', 9, MUT)
 y += 28
 box(x, y, 276, 64, 'ok')
 text(x + 12, y + 8, 250, 16, '울린 이유', 9, GRN, bold=True)
 text(x + 12, y + 26, 250, 30, '현재가 70,200원 ≥ 70,000원', 14, TXT, bold=True)
 y += 76
-for k, v in [('평가 시점', '장중'), ('알림 방식', '돌파할 때마다'), ('알림', '삼성전자 7만원')]:
-    text(x, y, 120, 26, k, 10, MUT)
-    text(x + 120, y, 156, 26, v, 11, TXT, align='right')
-    hr(x, y + 26, 276)
-    y += 30
-y += 14
+sect(x, y, '이 알림')
+y += 26
+text(x, y, 180, 26, '삼성전자 7만원', 12, TXT, bold=True)
+pill(x + 206, y + 4, 70, 20, GRN_BG, GRN, '감시 중', dot=GRN)
+y += 32
+hr(x, y, 276)
+y += 22
 rect(x, y, 276, 40, '#FFFFFF', PRI, 1, arc=12)
 text(x, y, 276, 40, '알림 보기 →', 12, PRI, align='center', bold=True)
 y += 48
@@ -636,11 +639,11 @@ y += 24
 box(x, y, 276, 44, 'info')
 text(x + 12, y, 252, 44, '장중에 현재가가 70,000원 이상이면\n알려요', 11, TXT)
 y += 52
-box(x, y, 276, 40, 'ok')
-text(x + 12, y + 2, 256, 36, '지금 · 10:20 기준\n× 현재가 69,800원 ≥ 70,000원', 9, GRN)
-y += 48
-for k, v in [('마지막 평가', '감시 중 · 10:20 평가'), ('알림 방식', '돌파할 때마다'),
-             ('유효기간', '무기한')]:
+box(x, y, 276, 52, 'ok')
+text(x + 12, y + 2, 256, 48, '지금 · 10:20 기준\n× 현재가 69,800원 ≥ 70,000원\n→ 아직 충족하지 않아요', 9, GRN)
+y += 58
+for k, v in [('평가 시점', '장중'), ('알림 방식', '돌파할 때마다'),
+             ('유효기간', '무기한'), ('마지막 평가', '10:20')]:
     text(x, y, 120, 26, k, 10, MUT)
     text(x + 120, y, 156, 26, v, 11, TXT, align='right')
     hr(x, y + 26, 276)
@@ -648,7 +651,7 @@ for k, v in [('마지막 평가', '감시 중 · 10:20 평가'), ('알림 방식
 y += 10
 sect(x, y, '최근 울린 알림', '전체 →')
 y += 26
-for t in ['9/26 10:15 · 현재가 70,200원', '9/25 09:42 · 현재가 70,100원']:
+for t in ['2시간 전 · 삼성전자 · 가격 도달', '9/25 09:42 · 삼성전자 · 가격 도달']:
     text(x, y, 250, 24, t, 10, SUB)
     text(x + 252, y, 24, 24, '›', 13, DIM, align='center')
     hr(x, y + 26, 276)
@@ -658,8 +661,6 @@ text(x, y, 200, 24, '감시', 12, TXT, bold=True)
 toggle(x + 242, y + 2, True)
 y += 40
 text(x, y, 276, 24, '알림 삭제', 11, '#C0392B', align='center', bold=True)
-y += 34
-mono(x, y, 276, 'GET /alerts/{id} · pause · resume · DELETE')
 
 # ══════════════════════════════════════════════════════════════
 # 밴드 2 — 새 알림 흐름
@@ -673,8 +674,8 @@ text(x + 12, y + 10, 250, 34, '삼성', 11, TXT)
 y += 56
 sect(x, y, '검색 결과')
 y += 26
-for nm, cd, held in [('삼성전자', '005930', True), ('삼성SDI', '006400', False),
-                     ('삼성바이오로직스', '207940', False), ('삼성전기', '009150', False)]:
+for nm, cd, held in [('삼성SDI', '006400', False), ('삼성바이오로직스', '207940', False),
+                     ('삼성전기', '009150', False), ('삼성전자', '005930', True)]:
     card(x, y, 276, 40)
     text(x + 12, y, 150, 40, nm, 11, TXT, bold=True)
     text(x + 150, y, 60, 40, cd, 9, FAINT, mono=True)
@@ -715,9 +716,13 @@ x, y = ph(1260, B2, '박스권 돌파', right='다음')
 rect(x, y + 10, 276, 26, INF_BOX, 'none', 1, arc=6)
 text(x + 10, y + 10, 266, 26, '프리셋 · 종가', 10, PRI, bold=True)
 y += 48
-stepper(x, y, '관찰 기간 (window_days)', '20 일')
-y += 60
-stepper(x, y, '최대 폭 (max_range_pct)', '15 %')
+text(x, y, 276, 16, '관찰 기간 (window_days)', 9, MUT)
+y += 20
+for i, (lb, on) in enumerate([('5', False), ('20', True), ('60', False), ('120', False)]):
+    chip(x + i * 52, y, 46, lb + '일', on=on)
+chip(x + 208, y, 68, '직접 입력')
+y += 36
+field(x, y, '최대 폭 (max_range_pct)', '15 %', arrow=False)
 y += 62
 text(x, y, 276, 16, '방향 (direction)', 9, MUT)
 y += 20
@@ -727,12 +732,11 @@ y += 34
 text(x, y, 276, 16, '평가 시점', 9, MUT)
 y += 20
 chip(x, y, 70, '종가', on=True)
-rect(x + 80, y, 70, 24, PANEL, 'none', 1, arc=50)
-text(x + 80, y, 70, 24, '장중', 10, DIM, align='center')
+text(x + 80, y, 196, 24, '이 프리셋은 종가로만 평가해요', 9, MUT)
 y += 36
-box(x, y, 276, 66, 'ok')
-text(x + 12, y + 4, 256, 58, '지금 · 9/26 종가 기준\n✓ 가격 폭(20일) 11.2% ≤ 15%\n× 종가 71,200원 > 직전 20일 최고 고가 71,800원\n→ 아직 충족하지 않아요', 9, GRN)
-y += 76
+box(x, y, 276, 52, 'ok')
+text(x + 12, y + 2, 256, 48, '지금 · 9/26 종가 기준\n× 종가 71,200원 > 직전 20일 최고 고가 71,800원 (폭 11.2%)\n→ 아직 충족하지 않아요', 9, GRN)
+y += 62
 mono(x, y, 276, 'preset_key + params 저장 · 평가 시점 컴파일\nPOST /alerts/preview → current', h=36)
 
 # N4 공통 설정
@@ -756,7 +760,7 @@ y += 62
 rect(x, y, 276, 44, PRI, 'none', 1, arc=12)
 text(x, y, 276, 44, '저장', 13, '#FFFFFF', align='center', bold=True)
 y += 56
-mono(x, y, 276, 'POST /alerts · 첫 저장 시 푸시 권한 요청(iOS)', h=30)
+mono(x, y, 276, 'POST /alerts · 권한 미정이면 안내 시트 → iOS 권한 창', h=30)
 
 # ══════════════════════════════════════════════════════════════
 # 밴드 3 — 조건 만들기 · 개념도
