@@ -118,6 +118,9 @@
 | 앞에 떠 있을 때 온 푸시 | 시스템 배너를 끄고 앱 안 배너를 5초 띄운다 | IA §4.2 |
 | 닫은 배너 기억 | kvStore(기기 SecureStore · 웹 localStorage) | 새 패키지 없이 토큰 저장과 같은 자리 |
 | 종목 상세 `알림 걸기` | 이번 범위 밖. 흐름이 `EditorStart.instrument`로 종목이 정해진 시작을 받는다 | 사용자 결정. 종목 상세 화면이 아직 없다 |
+| `울린 알림 전체 →` | 알림 0건·미확인 0건인 빈 상태에서도 보인다 | 사용자 결정. IA §2.3 "항상 보인다". 알림을 모두 지워도 울린 기록은 남는다(§6.8) |
+| 앱 안 배너와 푸시 처리 자리 | 루트 스택 옆(화면 밖) | 어느 스택 화면·모달 위에서든 배너가 보여야 한다. 푸시로 열 때 `navigate(…, { pop: true })`로 탭 묶음이 두 벌이 되지 않게 한다 |
+| 백엔드 테스트 DB (Task 0) | 전용 DB `portfolio_test_last_close` (`TEST_DB_URL`) | 사용자 결정. 기본 `portfolio_test`는 계획 ② 세션과 함께 쓴다 |
 
 ## A.5 파일 구조
 
@@ -137,8 +140,8 @@ front-end/src/
 │   ├── App.tsx                   (수정) 알림 수신 리스너 시작
 │   └── navigation/
 │       ├── types.ts              (수정) alerts 탭, alert · alert-events · alert-event · alert-editor
-│       ├── RootStack.tsx         (수정) 위 네 화면
-│       └── Tabs.tsx              (수정) 알림 탭 + 배지 + PushRouter
+│       ├── RootStack.tsx         (수정) 위 네 화면 + 그 옆의 PushRouter
+│       └── Tabs.tsx              (수정) 알림 탭 + 배지
 ├── auth/
 │   ├── AuthContext.tsx           (수정) 로그아웃 때 기기 해제, 로그인 실패 때 대기 중인 푸시 버림
 │   └── tokenStore.ts             (수정) 저장소를 storage/kvStore로 뽑아 씀
@@ -157,8 +160,9 @@ front-end/src/
 │   ├── notifications.ts          (신규) expo-notifications를 아는 유일한 파일
 │   ├── pushInbox.ts              (신규) 푸시 열기 대기열 · 도착 알림 (순수)
 │   ├── device.ts                 (신규) 기기 등록·해제와 device_id 보관
-│   ├── usePushGate.ts            (신규) 저장 전 권한 시트 판단
-│   ├── usePushBanners.ts         (신규) 권한 거부 · Android 배너
+│   ├── gate.ts                   (신규) 저장 전 권한 시트 판단 · 허용 · 설정 열기
+│   ├── usePushBanners.ts         (신규) 권한 거부 · Android 배너의 상태
+│   ├── PushBanners.tsx           (신규) 위 두 배너
 │   ├── PushRouter.tsx            (신규) 푸시 → 화면 이동, 앞에 떠 있을 때 앱 안 배너, 배지 갱신
 │   └── InAppBanner.tsx           (신규)
 ├── screens/
@@ -246,12 +250,26 @@ cd ../back-end-last-close
 
 `import org.springframework.test.context.jdbc.Sql;`은 이미 있다.
 
-- [ ] **Step 3: 테스트가 실패하는지 본다**
+- [ ] **Step 3: ⛔ 승인 — 전용 테스트 DB를 만든다**
 
-Run: `./gradlew test --tests 'com.stockproject.portfolio.alert.api.InstrumentSearchApiTest'`
+백엔드 테스트는 DB에 쓴다(`@Sql`의 TRUNCATE·INSERT). 기본 테스트 DB `portfolio_test`는 계획 ② 세션도 함께 쓰므로, 이 태스크는 전용 DB `portfolio_test_last_close`에서 돈다. 테스트 설정(`src/test/resources/application-test.yaml`)이 `TEST_DB_URL`로 주소를 바꿀 수 있고, Flyway가 빈 DB에 이 worktree의 마이그레이션(`db/migration` · `db/external`)을 적용한다. 그래서 계획 ②의 마이그레이션은 들어가지 않는다.
+
+사용자에게 묻는다: "로컬 Postgres 컨테이너(`db`)에 테스트 전용 DB `portfolio_test_last_close`를 하나 만들까요? 이 태스크의 백엔드 테스트만 그 DB를 씁니다." 승인을 받은 뒤에만 실행한다.
+
+```bash
+cd /Users/yhr/Dev/workspace/personal/stock-project/back-end-last-close
+docker compose ps db                    # 떠 있지 않으면 멈추고 사용자에게 묻는다(기동도 승인 대상)
+docker compose exec -T db createdb -U portfolio portfolio_test_last_close
+```
+
+Expected: 오류 없이 끝난다. 이미 있으면 `already exists`가 나온다 — 그대로 쓴다.
+
+- [ ] **Step 4: 테스트가 실패하는지 본다**
+
+Run: `TEST_DB_URL='jdbc:postgresql://localhost:5432/portfolio_test_last_close?currentSchema=app,data' ./gradlew test --tests 'com.stockproject.portfolio.alert.api.InstrumentSearchApiTest'`
 Expected: 새 세 테스트가 FAIL — `last_close` 필드가 없어 `NullPointerException`(get이 null).
 
-- [ ] **Step 4: 행·매퍼·응답·서비스를 고친다**
+- [ ] **Step 5: 행·매퍼·응답·서비스를 고친다**
 
 `InstrumentSearchRow.java`:
 
@@ -267,7 +285,7 @@ public record InstrumentSearchRow(UUID id, String label, String symbol, String m
                                   BigDecimal lastClose, LocalDate lastCloseOn) { }
 ```
 
-`InstrumentSearchMapper.java` — 두 SELECT에 같은 LATERAL 조인을 붙인다. 열 순서가 레코드 생성자 순서와 같아야 한다.
+`InstrumentSearchMapper.java` — 두 SELECT에 같은 LATERAL 조인을 붙인다. 열 별칭(`last_close` · `last_close_on`)은 레코드 필드 이름에 맞춘다 — MyBatis가 생성자 인자를 이름으로 매핑한다(`application.yaml`의 `arg-name-based-constructor-auto-mapping: true` · `map-underscore-to-camel-case: true`).
 
 ```java
     /** 종목마다 가장 최근 일봉 하나. (instrument_id, date) 기본키를 거꾸로 읽는다. */
@@ -336,15 +354,15 @@ public record InstrumentSearchResponse(List<Row> rows) {
                 .toList());
 ```
 
-- [ ] **Step 5: 테스트가 통과하는지 본다**
+- [ ] **Step 6: 테스트가 통과하는지 본다**
 
-Run: `./gradlew test --tests 'com.stockproject.portfolio.alert.api.InstrumentSearchApiTest'`
+Run: `TEST_DB_URL='jdbc:postgresql://localhost:5432/portfolio_test_last_close?currentSchema=app,data' ./gradlew test --tests 'com.stockproject.portfolio.alert.api.InstrumentSearchApiTest'`
 Expected: PASS (기존 테스트 포함 전부).
 
-Run: `./gradlew test`
-Expected: PASS. 실패가 있으면 이 변경과 무관한지 main에서 같은 테스트를 돌려 확인하고 보고한다.
+Run: `TEST_DB_URL='jdbc:postgresql://localhost:5432/portfolio_test_last_close?currentSchema=app,data' ./gradlew test`
+Expected: PASS. 실패가 있으면 이 변경과 무관한지 가린다 — 같은 DB에서 `git stash` 후 같은 테스트를 돌려 main 코드에서도 실패하면 무관한 실패로 보고하고, 이 변경 뒤에만 실패하면 고친다. 원래 경로의 `portfolio_test`로는 돌리지 않는다.
 
-- [ ] **Step 6: 스펙에 필드를 적는다 (docs 저장소)**
+- [ ] **Step 7: 스펙에 필드를 적는다 (docs 저장소)**
 
 `docs/yhr/specs/buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md` §11.1의 `GET /instruments` 문단 끝(`미국 종목의 label은 종목 마스터의 이름이다.` 뒤)에 문장을 더한다.
 
@@ -361,7 +379,7 @@ Expected: PASS. 실패가 있으면 이 변경과 무관한지 main에서 같은
               "last_close": 63010, "last_close_on": "2026-09-25" } ] }
 ```
 
-- [ ] **Step 7: 커밋한다 (두 저장소)**
+- [ ] **Step 8: 커밋한다 (두 저장소)**
 
 ```bash
 cd /Users/yhr/Dev/workspace/personal/stock-project/back-end-last-close
@@ -381,7 +399,7 @@ git commit -m "docs: 종목 검색 응답에 직전 종가를 적는다" \
 
 docs 저장소는 다른 세션도 커밋한다. 이 파일만 스테이징한다.
 
-- [ ] **Step 8: ⛔ 승인 — 병합**
+- [ ] **Step 9: ⛔ 승인 — 병합**
 
 사용자에게 묻는다: "`feat/instrument-last-close`(커밋 1개)를 back-end main에 병합할까요? 원래 경로에서 계획 ②가 진행 중이라, 병합은 그 세션의 작업 트리를 건드리지 않는 방식(`git -C back-end-last-close push origin feat/instrument-last-close` 후 PR, 또는 사용자가 정한 방식)으로 합니다." 답을 받기 전에는 병합하지 않는다. 프론트 태스크는 병합을 기다리지 않는다 — `last_close`가 없으면 가격 칸이 빈 채로 열린다.
 
@@ -633,8 +651,8 @@ describe('알림 화면을 위한 봉투', () => {
     params: {},
   };
 
-  it('기준 시점이 없으면 기준 줄을 숨기고 경고는 그린다', () => {
-    renderScreen(
+  it('기준 시점이 없으면 기준 줄을 숨기고 경고는 그린다', async () => {
+    await renderScreen(
       <ScreenFrame
         screen="alerts"
         envelope={{ as_of: null, data: {}, empty_reason: null, notices: [delayed] }}
@@ -648,8 +666,8 @@ describe('알림 화면을 위한 봉투', () => {
     expect(screen.getByText('본문')).toBeTruthy();
   });
 
-  it('기준 줄의 머리말을 바꿀 수 있다', () => {
-    renderScreen(
+  it('기준 줄의 머리말을 바꿀 수 있다', async () => {
+    await renderScreen(
       <ScreenFrame
         screen="alerts"
         asOfPrefix="최근 평가"
@@ -662,8 +680,8 @@ describe('알림 화면을 위한 봉투', () => {
     expect(screen.getByText('최근 평가 2026-09-26 10:15')).toBeTruthy();
   });
 
-  it('머리 줄은 빈 상태에서도 보인다', () => {
-    renderScreen(
+  it('머리 줄은 빈 상태에서도 보인다', async () => {
+    await renderScreen(
       <ScreenFrame
         screen="alerts"
         header={<Text>알림 머리</Text>}
@@ -679,8 +697,8 @@ describe('알림 화면을 위한 봉투', () => {
     expect(screen.queryByText('본문')).toBeNull();
   });
 
-  it('울린 알림이 없다는 빈 상태', () => {
-    renderScreen(
+  it('울린 알림이 없다는 빈 상태', async () => {
+    await renderScreen(
       <ScreenFrame
         screen="alert-events"
         envelope={{ as_of: null, data: {}, empty_reason: 'NO_EVENTS', notices: [] }}
@@ -1128,7 +1146,7 @@ export type AlertEventDetail = {
   fired_at: string;
   observed: Record<string, unknown>;
   read_at: string | null;
-  /** §11.3 예시에 없다. 계획 ②에 목록 행과 같은 두 필드를 요청했다(계획 ③ A.3). */
+  /** 목록 행과 같은 평가 시점·시장. 응답에 없으면 화면이 `alert.cadence`와 국내 표기로 그린다. */
   cadence?: Cadence;
   market?: Market;
   alert: {
@@ -2129,11 +2147,11 @@ describe('usePreview', () => {
   it('입력이 가라앉은 뒤 마지막 초안만 보낸다', async () => {
     const calls = serveRoutes([{ method: 'POST', path: '/alerts/preview', body: echo }]);
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = await renderHook(
       ({ request }: { request: PreviewRequest }) => usePreview(request, { debounceMs: 30 }),
       { wrapper, initialProps: { request: draft('A') } },
     );
-    rerender({ request: draft('AB') });
+    await rerender({ request: draft('AB') });
 
     await waitFor(() => expect(result.current.preview?.summary?.short).toBe('AB'));
     expect(calls.filter((c) => c.path === '/alerts/preview')).toHaveLength(1);
@@ -2154,12 +2172,12 @@ describe('usePreview', () => {
       },
     ]);
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = await renderHook(
       ({ request }: { request: PreviewRequest }) => usePreview(request, { debounceMs: 0 }),
       { wrapper, initialProps: { request: draft('A') } },
     );
     await waitFor(() => expect(gates.A).toBeDefined());
-    rerender({ request: draft('B') });
+    await rerender({ request: draft('B') });
     await waitFor(() => expect(gates.B).toBeDefined());
 
     await act(async () => gates.B());
@@ -2171,7 +2189,7 @@ describe('usePreview', () => {
 
   it('초안이 없으면 부르지 않는다', async () => {
     const calls = serveRoutes([]);
-    const { result } = renderHook(() => usePreview(null, { debounceMs: 0 }), { wrapper });
+    const { result } = await renderHook(() => usePreview(null, { debounceMs: 0 }), { wrapper });
     await act(async () => undefined);
     expect(calls).toHaveLength(0);
     expect(result.current.preview).toBeNull();
@@ -2181,13 +2199,13 @@ describe('usePreview', () => {
 describe('useUnreadCount', () => {
   it('서버가 준 수를 쓴다', async () => {
     serveRoutes([{ path: '/alert-events/unread-count', body: { count: 3 } }]);
-    const { result } = renderHook(() => useUnreadCount(), { wrapper });
+    const { result } = await renderHook(() => useUnreadCount(), { wrapper });
     await waitFor(() => expect(result.current).toBe(3));
   });
 
   it('경로가 없으면(404) 0이다', async () => {
     serveRoutes([]);
-    const { result } = renderHook(() => useUnreadCount(), { wrapper });
+    const { result } = await renderHook(() => useUnreadCount(), { wrapper });
     await act(async () => undefined);
     expect(result.current).toBe(0);
   });
@@ -2359,7 +2377,7 @@ describe('ConfirmSheet', () => {
   it('두 버튼이 각자의 동작을 부른다', async () => {
     const onConfirm = jest.fn();
     const onCancel = jest.fn();
-    renderScreen(
+    await renderScreen(
       <ConfirmSheet
         visible
         title="이 알림을 삭제할까요?"
@@ -3024,7 +3042,7 @@ afterEach(() => setAccessToken(null));
 async function renderAlerts(routes: Route[]) {
   const calls = serveRoutes(routes);
   const moves: { name: string; params: unknown }[] = [];
-  renderWithNavigation(<AlertsScreen />, {
+  await renderWithNavigation(<AlertsScreen />, {
     others: STACK,
     onNavigate: (name, params) => moves.push({ name, params }),
   });
@@ -3080,16 +3098,17 @@ describe('알림 탭 — 카드와 블록', () => {
 });
 
 describe('알림 탭 — 빈 상태', () => {
-  it('알림도 미확인 발화도 없으면 온보딩만', async () => {
+  it('알림도 미확인 발화도 없으면 온보딩 — 지난 이력으로 가는 줄은 남는다', async () => {
     const { moves } = await renderAlerts([{ path: '/alerts', body: alertsEmptyFixture }]);
     await waitFor(() => expect(screen.getByText('아직 걸어 둔 알림이 없어요')).toBeTruthy());
 
-    expect(screen.queryByText('울린 알림 전체')).toBeNull();
+    expect(screen.getByText('울린 알림 전체')).toBeTruthy();
+    expect(screen.queryByText(/새로 울린 알림/)).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: '＋ 첫 알림 만들기' }));
     expect(moves.at(-1)).toEqual({ name: 'alert-editor', params: { mode: 'new' } });
   });
 
-  it('알림이 없어도 지운 알림의 미확인 발화가 있으면 블록을 둔다', async () => {
+  it('알림이 없어도 지운 알림의 미확인 발화가 있으면 새로 울린 알림을 둔다', async () => {
     await renderAlerts([{ path: '/alerts', body: alertsEmptyWithUnreadFixture }]);
     await waitFor(() => expect(screen.getByText('아직 걸어 둔 알림이 없어요')).toBeTruthy());
 
@@ -3139,7 +3158,7 @@ describe('탭 배지', () => {
 
   it('미확인 발화 수를 알림 탭에 단다', async () => {
     serveRoutes([...summaryRoutes, { path: '/alert-events/unread-count', body: { count: 3 } }]);
-    renderWithQuery(
+    await renderWithQuery(
       <NavigationContainer>
         <Tabs />
       </NavigationContainer>,
@@ -3151,7 +3170,7 @@ describe('탭 배지', () => {
   /** Review Focus 5 — 울린 알림 API가 아직 없는 서버. */
   it('배지 수를 받지 못하면 배지 없이 탭이 선다', async () => {
     serveRoutes(summaryRoutes);
-    renderWithQuery(
+    await renderWithQuery(
       <NavigationContainer>
         <Tabs />
       </NavigationContainer>,
@@ -3364,8 +3383,8 @@ import { basisLabel } from '@/format/alertTime';
 /**
  * 알림 탭 위쪽 — `울린 알림 전체 →`와 새로 울린 알림 (IA §2.3).
  *
- * `울린 알림 전체`는 미확인 발화가 없어도 남는다. 지난 이력으로 가는 길이 이 줄 하나뿐이다.
- * 알림도 미확인 발화도 없을 때만 숨긴다 — 그때는 빈 상태가 화면의 주인이다.
+ * `울린 알림 전체`는 항상 보인다(IA §2.3). 지난 이력으로 가는 길이 이 줄 하나뿐이고,
+ * 알림을 모두 지운 사용자에게도 울린 기록은 남는다(§6.8).
  * 새로 울린 알림은 최대 3건이고 넘치면 `외 N건 →`. 블록이 내 알림을 화면 밖으로 밀지 않게 한다.
  */
 export function UnreadBlock({
@@ -3378,7 +3397,6 @@ export function UnreadBlock({
   onOpenEvent: (eventId: string) => void;
 }) {
   const palette = useTheme();
-  if (data.rows.length === 0 && data.unread.length === 0) return null;
 
   return (
     <View style={styles.block}>
@@ -3655,7 +3673,7 @@ git commit -m "feat: 알림 탭에 내 알림 카드와 새로 울린 알림, �
 - Produces:
   - `detailToPreview(detail: AlertDetail): PreviewRequest`
   - `<SentenceBox sentence={string | null | undefined} pending={boolean} />` · `<CurrentBox current={Current | null | undefined} pending={boolean} />` — Task 10·11이 폼에서 그대로 쓴다.
-  - `renderWithStack(name, Component, params, options?: { others?: string[]; onNavigate?: (name, params) => void })` — 뒤로 갈 자리(`__home`)를 깔고 그 위에 화면을 연다. 렌더 결과에 `navigation`(컨테이너 ref)을 더해 돌려준다.
+  - `renderWithStack(name, Component, params, options?: { others?: string[]; onNavigate?: (name, params) => void })` — 뒤로 갈 자리(`__home`)를 깔고 그 위에 화면을 연다. 렌더가 끝나기를 기다려(RNTL 14의 `render`는 Promise다) 결과에 `navigation`(컨테이너 ref)을 더해 돌려준다.
 
 - [ ] **Step 1: 테스트용 스택 감싸개를 쓴다**
 
@@ -3686,7 +3704,7 @@ function Empty() {
   return null;
 }
 
-export function renderWithStack(
+export async function renderWithStack(
   name: string,
   component: ComponentType,
   params: object | undefined,
@@ -3696,7 +3714,7 @@ export function renderWithStack(
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const navigation = createNavigationContainerRef();
 
-  const rendered = render(
+  const rendered = await render(
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider initialMetrics={METRICS}>
         <NavigationContainer
@@ -3746,10 +3764,10 @@ const OTHERS = ['alert-events', 'alert-event', 'alert-editor'];
 beforeEach(() => setAccessToken('tok'));
 afterEach(() => setAccessToken(null));
 
-function open(alertId: string, routes: Route[]) {
+async function open(alertId: string, routes: Route[]) {
   const calls = serveRoutes([{ method: 'POST', path: '/alerts/preview', body: previewFixture }, ...routes]);
   const moves: { name: string; params: unknown }[] = [];
-  renderWithStack('alert', AlertDetailScreen, { alertId }, {
+  await renderWithStack('alert', AlertDetailScreen, { alertId }, {
     others: OTHERS,
     onNavigate: (name, params) => moves.push({ name, params }),
   });
@@ -3774,7 +3792,7 @@ describe('detailToPreview', () => {
 
 describe('알림 상세', () => {
   it('머리 · 문장 · 현재값 상자 · 속성 · 최근 울린 알림', async () => {
-    const { calls } = open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
+    const { calls } = await open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
     await waitFor(() => expect(screen.getByText('장중에 현재가가 70,000원 이상이면 알려요')).toBeTruthy());
 
     expect(screen.getByText('삼성전자')).toBeTruthy();
@@ -3793,7 +3811,7 @@ describe('알림 상세', () => {
   });
 
   it('울린 적 없고 꺼진 알림 — 토글을 켜면 다시 켜기', async () => {
-    const { calls } = open('a-composable', [
+    const { calls } = await open('a-composable', [
       { path: '/alerts/a-composable', body: composableDetailFixture },
       { method: 'POST', path: '/alerts/a-composable/resume', status: 204 },
     ]);
@@ -3807,7 +3825,7 @@ describe('알림 상세', () => {
   });
 
   it('만료된 알림은 유효기간을 골라 다시 켠다', async () => {
-    const { calls } = open('a-expired', [
+    const { calls } = await open('a-expired', [
       { path: '/alerts/a-expired', body: expiredDetailFixture },
       { method: 'POST', path: '/alerts/a-expired/resume', status: 204 },
     ]);
@@ -3822,7 +3840,7 @@ describe('알림 상세', () => {
   });
 
   it('삭제는 확인을 거쳐 지우고 들어온 자리로 돌아간다', async () => {
-    const { calls, moves } = open('a-satisfied', [
+    const { calls, moves } = await open('a-satisfied', [
       { path: '/alerts/a-satisfied', body: presetDetailFixture },
       { method: 'DELETE', path: '/alerts/a-satisfied', status: 204 },
     ]);
@@ -3838,7 +3856,7 @@ describe('알림 상세', () => {
   });
 
   it('수정과 전체 →', async () => {
-    const { moves } = open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
+    const { moves } = await open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
     await waitFor(() => expect(screen.getByText('수정')).toBeTruthy());
 
     await fireEvent.press(screen.getByRole('button', { name: '전체 →' }));
@@ -3846,7 +3864,7 @@ describe('알림 상세', () => {
   });
 
   it('수정을 누르면 값이 채워진 흐름을 연다', async () => {
-    const { moves } = open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
+    const { moves } = await open('a-satisfied', [{ path: '/alerts/a-satisfied', body: presetDetailFixture }]);
     await waitFor(() => expect(screen.getByText('수정')).toBeTruthy());
 
     await fireEvent.press(screen.getByRole('button', { name: '수정' }));
@@ -3854,7 +3872,7 @@ describe('알림 상세', () => {
   });
 
   it('없거나 남의 알림이면 서버 문장을 낸다', async () => {
-    open('x', [
+    await open('x', [
       { path: '/alerts/x', status: 404, body: { error: { code: 'ALERT_NOT_FOUND', message: '알림을 찾을 수 없어요' } } },
     ]);
     await waitFor(() => expect(screen.getByText('알림을 찾을 수 없어요')).toBeTruthy());
@@ -4080,7 +4098,7 @@ function DetailBody({
 
       <SentenceBox sentence={alert.summary.sentence} pending={false} />
       <Text style={[type.micro, styles.help, { color: palette.textMuted }]}>
-        기간의 `일`은 그 종목이 거래된 날로 세요. 휴장일과 거래정지일은 빼요.
+        {'기간의 "일"은 그 종목이 거래된 날로 세요. 휴장일과 거래정지일은 빼요.'}
       </Text>
       <CurrentBox current={preview.preview?.current} pending={preview.pending} />
 
@@ -4290,20 +4308,20 @@ import { type Route, serveRoutes } from '@/testing/serveRoutes';
 beforeEach(() => setAccessToken('tok'));
 afterEach(() => setAccessToken(null));
 
-function openList(params: object | undefined, routes: Route[]) {
+async function openList(params: object | undefined, routes: Route[]) {
   const calls = serveRoutes(routes);
   const moves: { name: string; params: unknown }[] = [];
-  renderWithStack('alert-events', AlertEventsScreen, params, {
+  await renderWithStack('alert-events', AlertEventsScreen, params, {
     others: ['alert-event'],
     onNavigate: (name, p) => moves.push({ name, params: p }),
   });
   return { calls, moves };
 }
 
-function openEvent(eventId: string, routes: Route[]) {
+async function openEvent(eventId: string, routes: Route[]) {
   const calls = serveRoutes(routes);
   const moves: { name: string; params: unknown }[] = [];
-  renderWithStack('alert-event', AlertEventScreen, { eventId }, {
+  await renderWithStack('alert-event', AlertEventScreen, { eventId }, {
     others: ['alert'],
     onNavigate: (name, p) => moves.push({ name, params: p }),
   });
@@ -4312,7 +4330,7 @@ function openEvent(eventId: string, routes: Route[]) {
 
 describe('울린 알림', () => {
   it('행 — 제목 · 본문 · 삭제된 알림 표시', async () => {
-    openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
+    await openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
     await waitFor(() => expect(screen.getByText('삼성전자 · 가격 도달')).toBeTruthy());
 
     expect(screen.getByText('현재가 70,200원 ≥ 70,000원 · 10:15 기준')).toBeTruthy();
@@ -4322,13 +4340,13 @@ describe('울린 알림', () => {
   });
 
   it('알림 상세의 전체 →로 오면 그 알림으로 거른다', async () => {
-    const { calls } = openList({ alertId: 'a-satisfied' }, [{ path: '/alert-events', body: eventsFixture }]);
+    const { calls } = await openList({ alertId: 'a-satisfied' }, [{ path: '/alert-events', body: eventsFixture }]);
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
     expect(calls[0].url).toContain('alert_id=a-satisfied');
   });
 
   it('모두 읽음은 읽음 처리 뒤 목록을 다시 받는다', async () => {
-    const { calls } = openList(undefined, [
+    const { calls } = await openList(undefined, [
       { path: '/alert-events', body: eventsFixture },
       { method: 'POST', path: '/alert-events/read-all', status: 204 },
     ]);
@@ -4342,7 +4360,7 @@ describe('울린 알림', () => {
   });
 
   it('끝에 닿으면 다음 쪽을 커서로 받는다', async () => {
-    const { calls } = openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
+    const { calls } = await openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
     await waitFor(() => expect(screen.getByText('삼성전자 · 가격 도달')).toBeTruthy());
 
     fireEvent(screen.getByTestId('alert-events-list'), 'onEndReached');
@@ -4351,7 +4369,7 @@ describe('울린 알림', () => {
   });
 
   it('행을 누르면 울린 알림 상세', async () => {
-    const { moves } = openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
+    const { moves } = await openList(undefined, [{ path: '/alert-events', body: eventsFixture }]);
     await waitFor(() => expect(screen.getByText('삼성전자 · 가격 도달')).toBeTruthy());
 
     await fireEvent.press(screen.getByRole('button', { name: '삼성전자 · 가격 도달' }));
@@ -4359,14 +4377,14 @@ describe('울린 알림', () => {
   });
 
   it('빈 상태', async () => {
-    openList(undefined, [{ path: '/alert-events', body: eventsEmptyFixture }]);
+    await openList(undefined, [{ path: '/alert-events', body: eventsEmptyFixture }]);
     await waitFor(() => expect(screen.getByText('아직 울린 알림이 없어요')).toBeTruthy());
   });
 });
 
 describe('울린 알림 상세', () => {
   it('울린 당시 문구와 이 알림, 열면 읽음 처리', async () => {
-    const { calls } = openEvent('e-1', [
+    const { calls } = await openEvent('e-1', [
       { path: '/alert-events/e-1', body: eventDetailFixture },
       { method: 'POST', path: '/alert-events/e-1/read', status: 204 },
     ]);
@@ -4382,7 +4400,7 @@ describe('울린 알림 상세', () => {
   });
 
   it('이 알림 끄기와 알림 보기', async () => {
-    const { calls, moves } = openEvent('e-1', [
+    const { calls, moves } = await openEvent('e-1', [
       { path: '/alert-events/e-1', body: eventDetailFixture },
       { method: 'POST', path: '/alert-events/e-1/read', status: 204 },
       { method: 'POST', path: '/alerts/a-satisfied/pause', status: 204 },
@@ -4397,7 +4415,7 @@ describe('울린 알림 상세', () => {
   });
 
   it('삭제된 알림의 발화는 알림 보기와 끄기를 숨기고, 이미 읽었으면 다시 읽지 않는다', async () => {
-    const { calls } = openEvent('e-9', [{ path: '/alert-events/e-9', body: deletedEventDetailFixture }]);
+    const { calls } = await openEvent('e-9', [{ path: '/alert-events/e-9', body: deletedEventDetailFixture }]);
     await waitFor(() => expect(screen.getByText('삭제된 알림')).toBeTruthy());
 
     expect(screen.queryByText('알림 보기 →')).toBeNull();
@@ -4406,7 +4424,7 @@ describe('울린 알림 상세', () => {
   });
 
   it('다른 계정이거나 없는 발화', async () => {
-    openEvent('nope', [
+    await openEvent('nope', [
       { path: '/alert-events/nope', status: 404, body: { error: { code: 'EVENT_NOT_FOUND', message: '울린 알림을 찾을 수 없어요' } } },
     ]);
     await waitFor(() => expect(screen.getByText('찾을 수 없는 알림이에요')).toBeTruthy());
@@ -5035,6 +5053,15 @@ describe('수정 왕복 — Review Focus 3', () => {
     });
   });
 
+  it('손대지 않은 유효기간은 저장된 시각 그대로, 고치면 새로 계산한다', () => {
+    const weekly: AlertDetail = { ...presetDetailFixture, expires_at: '2026-10-18T12:00:00+09:00' };
+    const draft = draftFromDetail(weekly);
+    expect(draftToRequest(draft, catalog, now)!.expires_at).toBe('2026-10-18T12:00:00+09:00');
+
+    const changed = draftReducer(draft, { type: 'expiry-date', value: '2026-10-20' });
+    expect(draftToRequest(changed, catalog, now)!.expires_at).toBe('2026-10-20T23:59:59+09:00');
+  });
+
   it('프리셋: 가격과 방향', () => {
     const request = draftToRequest(draftFromDetail(presetDetailFixture), catalog, now)!;
     expect(request.trigger_spec).toEqual(presetDetailFixture.trigger_spec);
@@ -5177,6 +5204,11 @@ export type Draft = {
   expiry: ExpiryChoice;
   /** 날짜 지정일 때 `YYYY-MM-DD`. */
   expiryDate: string;
+  /**
+   * 수정으로 열었을 때 저장돼 있던 만료 시각. 유효기간을 건드리지 않으면 이 값을 그대로 보낸다 —
+   * 1주·1개월로 만든 만료(예: 12:00)가 날짜 지정의 23:59:59로 바뀌지 않게 한다.
+   */
+  keptExpiresAt: string | null;
   name: string;
   /** 사용자가 이름 칸을 건드렸는가. 건드리기 전에는 기본 이름을 따라간다. */
   nameTouched: boolean;
@@ -5250,6 +5282,7 @@ export function newDraft(instrument?: DraftInstrument): Draft {
     cooldownMin: DEFAULT_COOLDOWN,
     expiry: 'NONE',
     expiryDate: '',
+    keptExpiresAt: null,
     name: '',
     nameTouched: false,
     dirty: false,
@@ -5334,6 +5367,7 @@ export function draftFromDetail(detail: AlertDetail): Draft {
     cooldownMin: detail.cooldown_min === null ? DEFAULT_COOLDOWN : String(detail.cooldown_min),
     expiry: detail.expires_at ? 'DATE' : 'NONE',
     expiryDate: detail.expires_at ? detail.expires_at.slice(0, 10) : '',
+    keptExpiresAt: detail.expires_at,
     name: detail.name,
     nameTouched: true,
   };
@@ -5444,9 +5478,9 @@ function apply(draft: Draft, action: DraftAction): Draft {
     case 'cooldown':
       return { ...draft, cooldownMin: action.value };
     case 'expiry':
-      return { ...draft, expiry: action.choice };
+      return { ...draft, expiry: action.choice, keptExpiresAt: null };
     case 'expiry-date':
-      return { ...draft, expiryDate: action.value };
+      return { ...draft, expiryDate: action.value, keptExpiresAt: null };
     case 'name':
       return { ...draft, name: action.value, nameTouched: true };
   }
@@ -5539,7 +5573,7 @@ export function draftToRequest(draft: Draft, catalog: AlertCatalog, now: Date): 
     cadence: draft.cadence,
     notify_mode: draft.notifyMode,
     cooldown_min: draft.notifyMode === 'COOLDOWN' ? toNumber(draft.cooldownMin) : null,
-    expires_at: expiresAtFor(draft.expiry, draft.expiryDate, now),
+    expires_at: draft.keptExpiresAt ?? expiresAtFor(draft.expiry, draft.expiryDate, now),
     trigger_type: draft.triggerType,
     trigger_spec:
       draft.triggerType === 'PRESET'
@@ -5606,7 +5640,7 @@ const FIELDS: Record<string, Record<string, FieldSpec>> = {
   rsi_zone: {
     zone: { label: '구간', choices: { overbought: '과매수', oversold: '과매도' } },
     level: { label: '기준' },
-    n: { label: '기간', unit: fixed('일') },
+    n: { label: '기간', unit: fixed('일'), period: true },
   },
   box_breakout: {
     window_days: { label: '관찰 기간', unit: fixed('일'), period: true },
@@ -5887,7 +5921,7 @@ git commit -m "feat: 새 알림 초안의 상태와 요청 변환, 입력 칸 �
   - `type EditorParamList = { instrument: undefined; trigger: undefined; preset: undefined; composable: undefined; settings: undefined }`
   - `<EditorProvider initial catalog>` · `useEditor(): { draft, dispatch, catalog, openedAt, finished, finish(alertId) }` · `useDraftPreview()` (= `usePreview(draftToPreview(draft, catalog, openedAt))`)
   - `useDebounced<T>(value: T, ms: number): T`
-  - 테스트: `openEditor(start: EditorStart, routes?: Route[]) → { calls, moves, navigation }`, `searchRoute`
+  - 테스트: `openEditor(start: EditorStart, routes?: Route[]): Promise<{ calls, moves, navigation }>`, `searchRoute`
   - `<AlertEditorNavigator />` — 이 태스크는 `instrument` · `trigger` 두 단계만 등록한다. `preset`(Task 10) · `composable`(Task 11) · `settings`(Task 13)는 그 태스크가 같은 `Stack.Navigator`에 한 줄씩 더한다.
   - `finish(alertId)`를 부르면: 새 알림은 모달을 알림 상세로 바꾸고(`replace('alert')`), 수정은 모달을 닫아 들어온 알림 상세로 돌아간다.
 
@@ -5912,11 +5946,11 @@ export const searchRoute: Route = {
   body: (_body, url) => (url.includes('held=true') ? heldFixture : instrumentsFixture),
 };
 
-export function openEditor(start: EditorStart, routes: Route[] = []) {
+export async function openEditor(start: EditorStart, routes: Route[] = []) {
   // 테스트가 준 경로를 앞에 둔다. 먼저 맞는 경로가 답하므로 기본 대역을 덮어쓸 수 있다.
   const calls = serveRoutes([...routes, { path: '/alerts/catalog', body: catalogFixture }, searchRoute]);
   const moves: { name: string; params: unknown }[] = [];
-  const { navigation } = renderWithStack('alert-editor', AlertEditorNavigator, start, {
+  const { navigation } = await renderWithStack('alert-editor', AlertEditorNavigator, start, {
     others: ['alert'],
     onNavigate: (name, params) => moves.push({ name, params }),
   });
@@ -5927,6 +5961,7 @@ export function openEditor(start: EditorStart, routes: Route[] = []) {
 `front-end/src/__tests__/alertEditorFlow.test.tsx`:
 
 ```tsx
+import { StackActions } from '@react-navigation/native';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { setAccessToken } from '@/api/client';
@@ -5938,25 +5973,26 @@ afterEach(() => setAccessToken(null));
 
 describe('대상 종목', () => {
   it('검색어가 없으면 보유 종목 구역, 입력이 멈추면 검색 결과', async () => {
-    const { calls } = openEditor({ mode: 'new' });
+    const { calls } = await openEditor({ mode: 'new' });
     await waitFor(() => expect(screen.getByText('보유 종목')).toBeTruthy());
     expect(screen.getByText('NAVER')).toBeTruthy();
 
     await fireEvent.changeText(screen.getByLabelText('종목 검색'), '삼성');
 
-    await waitFor(() => expect(screen.getByText('검색 결과')).toBeTruthy());
-    expect(screen.getByText('삼성SDI')).toBeTruthy();
+    // 라벨은 디바운스가 끝나는 순간 바뀌고 행은 응답이 와야 바뀐다(앞 결과를 들고 있다).
+    await waitFor(() => expect(screen.getByText('삼성SDI')).toBeTruthy());
+    expect(screen.getByText('검색 결과')).toBeTruthy();
     expect(screen.getAllByText('보유').length).toBeGreaterThan(0);
     expect(calls.some((c) => c.url.includes(`q=${encodeURIComponent('삼성')}`))).toBe(true);
   });
 
   it('보유 종목이 없으면 검색을 권한다', async () => {
-    openEditor({ mode: 'new' }, [{ path: '/instruments', body: { rows: [] } }]);
+    await openEditor({ mode: 'new' }, [{ path: '/instruments', body: { rows: [] } }]);
     await waitFor(() => expect(screen.getByText('종목명이나 종목코드로 검색하세요')).toBeTruthy());
   });
 
   it('종목을 고르면 조건 선택 — 직접 만들기와 프리셋 9종', async () => {
-    openEditor({ mode: 'new' });
+    await openEditor({ mode: 'new' });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeTruthy());
 
     await fireEvent.press(screen.getByRole('button', { name: '삼성전자' }));
@@ -5971,7 +6007,7 @@ describe('대상 종목', () => {
 
 describe('조건 선택', () => {
   it('미국 종목의 수급 프리셋은 비활성 + 국내 종목만', async () => {
-    openEditor({
+    await openEditor({
       mode: 'new',
       instrument: { id: 'i-apple', label: '애플', market: 'US', held: true, lastClose: 230.1, lastCloseOn: '2026-09-25' },
     });
@@ -5982,7 +6018,7 @@ describe('조건 선택', () => {
   });
 
   it('보유하지 않은 종목의 수익률 도달은 보유 종목만', async () => {
-    openEditor({
+    await openEditor({
       mode: 'new',
       instrument: { id: 'i-sdi', label: '삼성SDI', market: 'KR', held: false, lastClose: null, lastCloseOn: null },
     });
@@ -5993,14 +6029,14 @@ describe('조건 선택', () => {
 describe('닫기', () => {
   /*
    * 모달을 걷어내는 루트 동작으로 확인한다. 컨테이너의 goBack은 모달 안 스택이 먼저 받아
-   * 한 단계 뒤로 갈 뿐이라 가드가 돌지 않는다. 헤더의 `닫기`와 iOS 쓸어내리기는 루트에서
-   * 모달을 걷어내는 동작이라 이 경로와 같다.
+   * 한 단계 뒤로 갈 뿐이고, v7의 navigate는 다른 이름이면 새로 쌓을 뿐이라 둘 다 가드가 돌지 않는다.
+   * popTo는 그 아래 라우트까지 걷어내므로 모달이 제거된다 — 헤더의 `닫기`·iOS 쓸어내리기와 같은 제거다.
    */
-  const leave = (navigation: ReturnType<typeof openEditor>['navigation']) =>
-    act(async () => navigation.navigate('__home' as never));
+  const leave = (navigation: Awaited<ReturnType<typeof openEditor>>['navigation']) =>
+    act(async () => navigation.dispatch(StackActions.popTo('__home')));
 
   it('손대지 않았으면 묻지 않고 닫는다', async () => {
-    const { moves, navigation } = openEditor({ mode: 'new' });
+    const { moves, navigation } = await openEditor({ mode: 'new' });
     await waitFor(() => expect(screen.getByText('보유 종목')).toBeTruthy());
 
     await leave(navigation);
@@ -6010,7 +6046,7 @@ describe('닫기', () => {
   });
 
   it('작성 중이면 버릴지 묻고, 계속 쓰면 남는다', async () => {
-    const { moves, navigation } = openEditor({ mode: 'new' });
+    const { moves, navigation } = await openEditor({ mode: 'new' });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeTruthy());
     await fireEvent.press(screen.getByRole('button', { name: '삼성전자' }));
     await waitFor(() => expect(screen.getByText('＋ 직접 조건 만들기')).toBeTruthy());
@@ -6544,6 +6580,7 @@ git commit -m "feat: 새 알림 흐름을 모달로 열고 종목·조건을 고
   - `dayLabel(date: string): string` — `2026-09-25` → `9/25`
   - `<NumberField label value onChange unit? note? error? accessibilityLabel? />`
   - `<StepFooter label disabled onPress />` — 화면 아래 고정 버튼(`다음` · `저장`)
+  - `<PreviewFailure error onRetry />` — 미리보기를 받지 못했을 때의 문구와 `다시 시도`
   - `canProceed(preview, pending): boolean` (`StepFooter.tsx`에서 export) — 조건 칸(`trigger_spec…` · `cadence`)에 오류가 없고 응답을 기다리지 않을 때만 다음으로 간다
   - `<PresetStep />`
 
@@ -6575,7 +6612,7 @@ const SAMSUNG: EditorInstrument = {
 
 const preview = (body: unknown = previewFixture): Route => ({ method: 'POST', path: '/alerts/preview', body });
 
-function lastPreview(calls: ReturnType<typeof openEditor>['calls']): PreviewRequest {
+function lastPreview(calls: Awaited<ReturnType<typeof openEditor>>['calls']): PreviewRequest {
   return calls.filter((c) => c.path === '/alerts/preview').at(-1)!.body as PreviewRequest;
 }
 
@@ -6583,7 +6620,7 @@ beforeEach(() => setAccessToken('tok'));
 afterEach(() => setAccessToken(null));
 
 async function choosePreset(label: string, routes: Route[] = [preview()]) {
-  const opened = openEditor({ mode: 'new', instrument: SAMSUNG }, routes);
+  const opened = await openEditor({ mode: 'new', instrument: SAMSUNG }, routes);
   await waitFor(() => expect(screen.getByText(label)).toBeTruthy());
   await fireEvent.press(screen.getByRole('button', { name: label }));
   return opened;
@@ -6634,6 +6671,19 @@ describe('프리셋 입력', () => {
     expect(screen.getByRole('button', { name: '다음' }).props.accessibilityState.disabled).toBe(true);
   });
 
+  it('미리보기를 받지 못하면 이유와 다시 시도를 보인다', async () => {
+    const { calls } = await choosePreset('가격 도달', [
+      { method: 'POST', path: '/alerts/preview', status: 500, body: { error: { code: 'INTERNAL', message: '잠시 후 다시 시도해 주세요' } } },
+    ]);
+    await waitFor(() => expect(screen.getByText('잠시 후 다시 시도해 주세요')).toBeTruthy());
+    expect(screen.getByRole('button', { name: '다음' }).props.accessibilityState.disabled).toBe(true);
+    const before = calls.filter((c) => c.path === '/alerts/preview').length;
+
+    await fireEvent.press(screen.getByRole('button', { name: '다시 시도' }));
+
+    await waitFor(() => expect(calls.filter((c) => c.path === '/alerts/preview').length).toBe(before + 1));
+  });
+
   it('종가로 바꾸면 하루 한 번이라고 알린다', async () => {
     const { calls } = await choosePreset('가격 도달');
     await waitFor(() => expect(screen.getByRole('tab', { name: '종가' })).toBeTruthy());
@@ -6664,7 +6714,7 @@ describe('프리셋 입력', () => {
   });
 
   it('수정으로 열면 저장된 값으로 채우고 alert_id를 싣는다', async () => {
-    const { calls } = openEditor({ mode: 'edit', alertId: 'a-satisfied' }, [
+    const { calls } = await openEditor({ mode: 'edit', alertId: 'a-satisfied' }, [
       { path: '/alerts/a-satisfied', body: presetDetailFixture },
       preview(),
     ]);
@@ -6763,13 +6813,16 @@ const styles = StyleSheet.create({
 `front-end/src/screens/alertEditor/StepFooter.tsx`:
 
 ```tsx
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PreviewResponse } from '@/api/alertTypes';
 import { useTheme } from '@/design/theme';
-import { screenPadding, space } from '@/design/tokens';
+import { radius, screenPadding, space } from '@/design/tokens';
+import { type } from '@/design/typography';
+import { messageOf } from '@/envelope/ErrorState';
 import { Button } from '@/ui/Button';
+import { TextButton } from '@/ui/TextButton';
 
 /** 단계 아래에 고정된 주 버튼. `다음`과 `저장`이 같은 자리에 있다. */
 export function StepFooter({
@@ -6807,8 +6860,32 @@ export function canProceed(preview: PreviewResponse | null, pending: boolean): b
   return !preview.errors.some((e) => e.path === 'cadence' || e.path.startsWith('trigger_spec'));
 }
 
+/**
+ * 미리보기를 받지 못했을 때(서버 오류 · 닿지 못함). 문장 상자가 비고 `다음`이 잠긴 이유를 보이고
+ * 다시 부를 길을 준다. 형 오류는 여기가 아니다 — 그것은 200 응답의 `errors`로 칸 아래에 붙는다.
+ */
+export function PreviewFailure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const palette = useTheme();
+  if (!error) return null;
+  return (
+    <View style={[styles.failure, { backgroundColor: palette.errorBg }]}>
+      <Text style={[type.caption, styles.failureText, { color: palette.errorText }]}>{messageOf(error)}</Text>
+      <TextButton label="다시 시도" onPress={onRetry} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   footer: { paddingHorizontal: screenPadding, paddingTop: space.md, borderTopWidth: 1 },
+  failure: {
+    marginTop: space.md,
+    borderRadius: radius.button,
+    padding: space.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+  },
+  failureText: { flex: 1 },
 });
 ```
 
@@ -6832,7 +6909,7 @@ import { useDraftPreview, useEditor } from '@/screens/alertEditor/EditorContext'
 import { errorAt, errorsOutside } from '@/screens/alertEditor/fieldErrors';
 import { NumberField } from '@/screens/alertEditor/NumberField';
 import { fieldSpec, periodChips } from '@/screens/alertEditor/presetFields';
-import { StepFooter, canProceed } from '@/screens/alertEditor/StepFooter';
+import { PreviewFailure, StepFooter, canProceed } from '@/screens/alertEditor/StepFooter';
 import type { EditorParamList } from '@/screens/alertEditor/types';
 import { Chip } from '@/ui/Chip';
 import { SegmentedControl } from '@/ui/SegmentedControl';
@@ -6853,7 +6930,7 @@ export function PresetStep() {
   const { draft, dispatch, catalog } = useEditor();
   const navigation = useNavigation<NativeStackNavigationProp<EditorParamList>>();
   const palette = useTheme();
-  const { preview, pending } = useDraftPreview();
+  const { preview, pending, error, refetch } = useDraftPreview();
   const preset = catalog.presets.find((p) => p.key === draft.presetKey);
 
   useLayoutEffect(() => {
@@ -6910,6 +6987,7 @@ export function PresetStep() {
           </Text>
         ))}
 
+        <PreviewFailure error={error} onRetry={refetch} />
         <SentenceBox sentence={preview?.summary?.sentence} pending={pending} />
         <CurrentBox current={preview?.current} pending={pending} />
       </ScrollView>
@@ -7060,7 +7138,7 @@ const preview = (body: unknown = { ...previewFixture, summary: { short: '', sent
   body,
 });
 
-function conditionsSent(calls: ReturnType<typeof openEditor>['calls']) {
+function conditionsSent(calls: Awaited<ReturnType<typeof openEditor>>['calls']) {
   const body = calls.filter((c) => c.path === '/alerts/preview').at(-1)?.body as PreviewRequest | undefined;
   return (body?.trigger_spec as ComposableSpec | undefined)?.conditions;
 }
@@ -7069,7 +7147,7 @@ beforeEach(() => setAccessToken('tok'));
 afterEach(() => setAccessToken(null));
 
 async function openComposable(instrument: EditorInstrument = SAMSUNG, routes: Route[] = [preview()]) {
-  const opened = openEditor({ mode: 'new', instrument }, routes);
+  const opened = await openEditor({ mode: 'new', instrument }, routes);
   await waitFor(() => expect(screen.getByText('＋ 직접 조건 만들기')).toBeTruthy());
   await fireEvent.press(screen.getByRole('button', { name: '＋ 직접 조건 만들기' }));
   await waitFor(() => expect(screen.getByText('평가 시점 · 이 알림 전체')).toBeTruthy());
@@ -7175,7 +7253,7 @@ describe('조건 만들기', () => {
   });
 
   it('수정으로 열면 저장된 조건으로 채운다', async () => {
-    openEditor({ mode: 'edit', alertId: 'a-composable' }, [
+    await openEditor({ mode: 'edit', alertId: 'a-composable' }, [
       { path: '/alerts/a-composable', body: composableDetailFixture },
       preview(),
     ]);
@@ -7616,7 +7694,7 @@ import { ConditionBox } from '@/screens/alertEditor/ConditionBox';
 import { MAX_CONDITIONS, cadenceChangeClears } from '@/screens/alertEditor/draft';
 import { useDraftPreview, useEditor } from '@/screens/alertEditor/EditorContext';
 import { errorAt, errorsOutside } from '@/screens/alertEditor/fieldErrors';
-import { StepFooter, canProceed } from '@/screens/alertEditor/StepFooter';
+import { PreviewFailure, StepFooter, canProceed } from '@/screens/alertEditor/StepFooter';
 import type { EditorParamList } from '@/screens/alertEditor/types';
 import { ConfirmSheet } from '@/ui/ConfirmSheet';
 import { SegmentedControl } from '@/ui/SegmentedControl';
@@ -7640,7 +7718,7 @@ export function ComposableStep() {
   const { draft, dispatch, catalog } = useEditor();
   const navigation = useNavigation<NativeStackNavigationProp<EditorParamList>>();
   const palette = useTheme();
-  const { preview, pending } = useDraftPreview();
+  const { preview, pending, error, refetch } = useDraftPreview();
   const [asking, setAsking] = useState<Cadence | null>(null);
   const instrument = draft.instrument;
   if (!instrument) return null;
@@ -7695,6 +7773,7 @@ export function ComposableStep() {
           </Text>
         ))}
 
+        <PreviewFailure error={error} onRetry={refetch} />
         <SentenceBox sentence={preview?.summary?.sentence} pending={pending} />
         <CurrentBox current={preview?.current} pending={pending} />
       </ScrollView>
@@ -7760,7 +7839,7 @@ git commit -m "feat: 지표·변형·연산자·기준값·유지로 조건을 �
 - Create: `front-end/src/push/config.ts` · `notifications.ts` · `pushInbox.ts` · `device.ts` · `gate.ts` · `usePushBanners.ts`
 - Create: `front-end/src/push/PushRouter.tsx` · `InAppBanner.tsx` · `PushBanners.tsx`
 - Modify: `front-end/src/app/App.tsx` (리스너 시작)
-- Modify: `front-end/src/app/navigation/Tabs.tsx` (`PushRouter`)
+- Modify: `front-end/src/app/navigation/RootStack.tsx` (`PushRouter`)
 - Modify: `front-end/src/auth/AuthContext.tsx` (로그아웃 때 기기 해제, 로그인 실패 때 대기 중인 푸시 버림)
 - Modify: `front-end/src/screens/alerts/AlertsScreen.tsx` (`PushBanners`)
 - Create: `front-end/src/testing/notificationsMock.ts`
@@ -7772,7 +7851,7 @@ git commit -m "feat: 지표·변형·연산자·기준값·유지로 조건을 �
 - Produces:
   - `pushCapable(): boolean` · `isAndroid(): boolean` · `easProjectId(): string | null` (`@/push/config`)
   - `type PermissionState = 'undetermined' | 'denied' | 'granted' | 'unsupported'` · `permissionState()` · `requestPermission()` · `expoPushToken(projectId)` · `startNotificationListeners(): () => void` (`@/push/notifications`)
-  - `deliverOpen(eventId)` · `subscribeOpens(fn): () => void` · `discardPendingOpen()` · `deliverArrival(arrival)` · `subscribeArrivals(fn): () => void` · `type Arrival = { eventId: string; title: string; body: string }` (`@/push/pushInbox`)
+  - `deliverOpen(eventId)` · `subscribeOpens(fn): () => void` · `discardPendingOpen()` · `deliverArrival(arrival)` · `subscribeArrivals(fn): () => void` · `resetPushInbox()` · `type Arrival = { eventId: string; title: string; body: string }` (`@/push/pushInbox`)
   - `registerThisDevice(): Promise<void>` · `unregisterThisDevice(): Promise<void>` (`@/push/device`)
   - `type GateSheet = 'ask' | 'settings' | null` · `gateBeforeSave(): Promise<GateSheet>` · `allowPush(): Promise<void>` · `openPushSettings(): void` (`@/push/gate`) — Task 13이 저장 버튼에서 쓴다.
   - `kvStore` (`@/storage/kvStore`) — `setItemAsync` · `getItemAsync` · `deleteItemAsync`
@@ -7789,6 +7868,13 @@ git diff --stat package.json
 ```
 
 Expected: `package.json`의 dependencies에 두 줄이 더해지고 버전이 `~`로 고정된다. `expo` 버전은 바뀌지 않는다(`^54.0.0` 그대로). 바뀌었으면 멈추고 보고한다.
+
+설치한 버전의 타입으로 이 태스크가 쓰는 API를 확인한다. 이름이나 필드가 다르면 Step 6의 `notifications.ts`를 설치된 타입에 맞추고 그 차이를 보고한다.
+
+```bash
+grep -n "getLastNotificationResponseAsync\|addNotificationResponseReceivedListener\|addNotificationReceivedListener\|getExpoPushTokenAsync" node_modules/expo-notifications/build/index.d.ts
+grep -rn "shouldShowBanner\|shouldShowList\|shouldShowAlert" node_modules/expo-notifications/build/Notifications.types.d.ts
+```
 
 `app.json`에는 손대지 않는다. `extra.eas.projectId`는 사용자가 `eas init`으로 넣는다(Task 14).
 
@@ -7905,13 +7991,13 @@ import { setAccessToken } from '@/api/client';
 import { RootStack } from '@/app/navigation/RootStack';
 import type { RootStackParamList } from '@/app/navigation/types';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
-import { alertsFixture, eventDetailFixture } from '@/fixtures/alerts';
+import { alertsFixture, eventDetailFixture, presetDetailFixture, previewFixture } from '@/fixtures/alerts';
 import { goldenAssetChange, goldenSummary } from '@/fixtures/golden';
 import { easProjectId, isAndroid, pushCapable } from '@/push/config';
 import { registerThisDevice } from '@/push/device';
 import { gateBeforeSave } from '@/push/gate';
 import { startNotificationListeners } from '@/push/notifications';
-import { deliverArrival, deliverOpen, discardPendingOpen, subscribeOpens } from '@/push/pushInbox';
+import { deliverArrival, deliverOpen, resetPushInbox, subscribeOpens } from '@/push/pushInbox';
 import { AlertsScreen } from '@/screens/alerts/AlertsScreen';
 import {
   emitResponse,
@@ -7946,10 +8032,10 @@ const appRoutes: Route[] = [
   { method: 'DELETE', path: '/devices/dev-1', status: 204 },
 ];
 
-function renderApp() {
+async function renderApp() {
   const navigation = createNavigationContainerRef<RootStackParamList>();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  render(
+  await render(
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider initialMetrics={METRICS}>
         <NavigationContainer ref={navigation}>
@@ -7964,7 +8050,7 @@ function renderApp() {
 beforeEach(() => {
   setAccessToken('tok');
   resetNotifications();
-  discardPendingOpen();
+  resetPushInbox();
   storedItems.clear();
   jest.mocked(pushCapable).mockReturnValue(true);
   jest.mocked(isAndroid).mockReturnValue(false);
@@ -7988,7 +8074,7 @@ describe('푸시 대기열', () => {
 
   it('버리면 넘기지 않는다', () => {
     deliverOpen('e-1');
-    discardPendingOpen();
+    resetPushInbox();
     const fn = jest.fn();
     subscribeOpens(fn);
     expect(fn).not.toHaveBeenCalled();
@@ -7997,13 +8083,14 @@ describe('푸시 대기열', () => {
   it('누른 푸시와 꺼진 동안 누른 푸시를 같은 응답은 한 번만 넘긴다', async () => {
     setColdStartResponse('e-cold');
     const opened = jest.fn();
-    subscribeOpens(opened);
+    const off = subscribeOpens(opened);
 
     const stop = startNotificationListeners();
     await act(async () => undefined);
     emitResponse('e-cold');
     emitResponse('e-2');
     stop();
+    off();
 
     expect(opened.mock.calls).toEqual([['e-cold'], ['e-2']]);
   });
@@ -8014,7 +8101,7 @@ describe('푸시를 누르면 (IA §4)', () => {
     serveRoutes(appRoutes);
     deliverOpen('e-1');
 
-    const navigation = renderApp();
+    const navigation = await renderApp();
 
     await waitFor(() => expect(navigation.getCurrentRoute()?.name).toBe('alert-event'));
     expect(navigation.getCurrentRoute()?.params).toEqual({ eventId: 'e-1' });
@@ -8022,9 +8109,21 @@ describe('푸시를 누르면 (IA §4)', () => {
     await waitFor(() => expect(navigation.getCurrentRoute()?.name).toBe('alerts'));
   });
 
+  it('다른 화면이 위에 떠 있어도 탭 묶음은 하나다', async () => {
+    serveRoutes([...appRoutes, { path: '/alerts/a-satisfied', body: presetDetailFixture }, { method: 'POST', path: '/alerts/preview', body: previewFixture }]);
+    const navigation = await renderApp();
+    await waitFor(() => expect(screen.getByText('총자산')).toBeTruthy());
+    await act(async () => navigation.navigate('alert', { alertId: 'a-satisfied' }));
+
+    await act(async () => deliverOpen('e-1'));
+
+    await waitFor(() => expect(navigation.getCurrentRoute()?.name).toBe('alert-event'));
+    expect(navigation.getRootState().routes.map((route) => route.name)).toEqual(['tabs', 'alert-event']);
+  });
+
   it('앞에 떠 있을 때는 화면을 옮기지 않고 앱 안 배너를 띄운다. 배너를 누르면 상세', async () => {
     const calls = serveRoutes(appRoutes);
-    const navigation = renderApp();
+    const navigation = await renderApp();
     await waitFor(() => expect(screen.getByText('총자산')).toBeTruthy());
     const before = calls.filter((c) => c.path === '/alert-events/unread-count').length;
 
@@ -8081,7 +8180,7 @@ describe('기기 등록', () => {
         </Pressable>
       );
     }
-    render(
+    await render(
       <AuthProvider>
         <LogoutProbe />
       </AuthProvider>,
@@ -8094,6 +8193,34 @@ describe('기기 등록', () => {
     const del = calls.find((c) => c.method === 'DELETE' && c.path === '/devices/dev-1');
     expect(del?.auth).toBe('Bearer tok-live');
     expect(storedItems.has('alerts.device_id')).toBe(false);
+  });
+
+  it('기기 해제가 401을 받아도 만료가 아니라 그냥 로그아웃이다', async () => {
+    storedItems.set('portfolio.access_token', 'tok-live');
+    storedItems.set('portfolio.expires_at', '2099-01-01T00:00:00+09:00');
+    storedItems.set('alerts.device_id', 'dev-1');
+    serveRoutes([
+      { method: 'DELETE', path: '/devices/dev-1', status: 401, body: { error: { code: 'UNAUTHENTICATED', message: '다시 로그인해 주세요' } } },
+    ]);
+
+    function LogoutProbe() {
+      const { status, sessionExpired, logout } = useAuth();
+      return (
+        <Pressable accessibilityRole="button" accessibilityLabel="로그아웃" onPress={logout}>
+          <Text>{`${status} ${sessionExpired ? '만료' : '정상'}`}</Text>
+        </Pressable>
+      );
+    }
+    await render(
+      <AuthProvider>
+        <LogoutProbe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('authenticated 정상')).toBeTruthy());
+
+    await fireEvent.press(screen.getByRole('button', { name: '로그아웃' }));
+
+    await waitFor(() => expect(screen.getByText('unauthenticated 정상')).toBeTruthy());
   });
 
   it('로그인에 실패하면 맡아 둔 푸시를 버린다', async () => {
@@ -8115,7 +8242,7 @@ describe('기기 등록', () => {
         </Pressable>
       );
     }
-    render(
+    await render(
       <AuthProvider>
         <LoginProbe />
       </AuthProvider>,
@@ -8149,7 +8276,7 @@ describe('알림 탭의 안내 배너 (§12.7)', () => {
   it('권한 거부 배너는 닫으면 이 기기에서 다시 보이지 않는다', async () => {
     notificationState.permission = 'denied';
     serveRoutes(appRoutes);
-    renderWithNavigation(<AlertsScreen />, { others: ['alert', 'alert-events', 'alert-event', 'alert-editor'] });
+    await renderWithNavigation(<AlertsScreen />, { others: ['alert', 'alert-events', 'alert-event', 'alert-editor'] });
 
     await waitFor(() => expect(screen.getByText('알림 권한이 꺼져 있어 앱 안에서만 볼 수 있어요')).toBeTruthy());
     await fireEvent.press(screen.getByRole('button', { name: '권한 안내 닫기' }));
@@ -8162,7 +8289,7 @@ describe('알림 탭의 안내 배너 (§12.7)', () => {
     jest.mocked(pushCapable).mockReturnValue(false);
     jest.mocked(isAndroid).mockReturnValue(true);
     serveRoutes(appRoutes);
-    renderWithNavigation(<AlertsScreen />, { others: ['alert', 'alert-events', 'alert-event', 'alert-editor'] });
+    await renderWithNavigation(<AlertsScreen />, { others: ['alert', 'alert-events', 'alert-event', 'alert-editor'] });
 
     await waitFor(() =>
       expect(screen.getByText('Android에서는 앱 안에서만 알림을 확인할 수 있어요')).toBeTruthy(),
@@ -8285,6 +8412,13 @@ export function subscribeArrivals(fn: (arrival: Arrival) => void): () => void {
   return () => {
     arrivalListeners.delete(fn);
   };
+}
+
+/** 우편함을 비운다 — 맡아 둔 것 · 받는 화면 · 도착 리스너 모두. 테스트 사이에 상태가 새지 않게 한다. */
+export function resetPushInbox(): void {
+  pending = null;
+  opener = null;
+  arrivalListeners.clear();
 }
 ```
 
@@ -8683,7 +8817,7 @@ import { InAppBanner } from '@/push/InAppBanner';
 import { type Arrival, subscribeArrivals, subscribeOpens } from '@/push/pushInbox';
 
 /**
- * 탭 묶음과 함께 사는 푸시 처리. 탭 묶음이 그려졌다는 것은 로그인했고 화면을 열 수 있다는 뜻이다.
+ * 루트 스택 옆에 사는 푸시 처리. 루트 스택이 그려졌다는 것은 로그인했고 화면을 열 수 있다는 뜻이다.
  *
  * - 누른 푸시: 탭을 알림으로 바꾼 뒤 그 위에 울린 알림 상세를 쌓는다. 탭을 먼저 바꿔 두지 않으면
  *   뒤로 갈 때 직전 탭으로 돌아간다(IA §4.1). 로그인 전에 맡아 둔 것도 여기서 한 번 연다.
@@ -8696,9 +8830,11 @@ export function PushRouter() {
   const queryClient = useQueryClient();
   const [arrival, setArrival] = useState<Arrival | null>(null);
 
+  // 위에 다른 화면(알림 상세·모달·다른 울린 알림)이 떠 있어도 탭 묶음까지 걷어낸 뒤 쌓는다.
+  // v7의 navigate는 이름이 다르면 새로 쌓으므로 pop을 준다 — 없으면 탭 묶음이 두 벌이 된다.
   const open = useCallback(
     (eventId: string) => {
-      navigation.navigate('tabs', { screen: 'alerts' });
+      navigation.navigate('tabs', { screen: 'alerts' }, { pop: true });
       navigation.navigate('alert-event', { eventId });
     },
     [navigation],
@@ -8744,48 +8880,66 @@ export function PushRouter() {
 
 - [ ] **Step 7: 앱에 잇는다**
 
-`app/navigation/Tabs.tsx` — `PushRouter`를 탭 내비게이터 옆에 둔다. 주석 끝에 한 줄을 더한다: `푸시 처리는 탭 묶음과 함께 산다. 탭 묶음이 그려졌다는 것이 로그인했고 화면을 열 수 있다는 뜻이다.`
+`app/navigation/RootStack.tsx` — `PushRouter`를 루트 스택 내비게이터 옆(화면 밖)에 둔다. 앱 안 배너가 어느 스택 화면·모달 위에서든 보여야 하고(IA §4.2), 루트 스택은 로그인한 뒤에만 그려지므로 "열 수 있는 때"와 같다. 파일 전체가 아래와 같아진다(Task 6·7·9가 더한 줄 포함).
 
 ```tsx
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '@/app/navigation/types';
+import { Tabs } from '@/app/navigation/Tabs';
+import { useTheme } from '@/design/theme';
 import { PushRouter } from '@/push/PushRouter';
-```
+import { AlertEditorNavigator } from '@/screens/alertEditor/AlertEditorNavigator';
+import { AlertDetailScreen } from '@/screens/alerts/AlertDetailScreen';
+import { AlertEventScreen } from '@/screens/alerts/AlertEventScreen';
+import { AlertEventsScreen } from '@/screens/alerts/AlertEventsScreen';
+import { AssetChangeScreen } from '@/screens/assetChange/AssetChangeScreen';
 
-`Tabs`의 반환을 바꾼다(나머지는 Task 5 그대로).
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
-```tsx
+/**
+ * 탭 여섯과, 그 위에 얹히는 화면들.
+ *
+ * 자산 변화를 탭으로 두지 않는 것은 그 화면이 답하는 질문이 "지금 얼마인가"가 아니라
+ * "요약에서 본 저 증감이 무엇이었나"이기 때문이다. 물음이 생긴 자리에서 들어가고
+ * 뒤로 가기로 그 자리로 돌아가는 편이 짧다.
+ *
+ * 알림의 상세 화면들(알림 상세 · 울린 알림 · 울린 알림 상세)도 같은 이유로 스택이다.
+ * 푸시로 열 때는 탭을 알림으로 바꾼 뒤 그 위에 쌓는다 — 뒤로 가면 알림 탭이다(IA §4.1).
+ *
+ * 푸시 처리(PushRouter)는 루트 스택 옆에 산다. 앱 안 배너가 어느 화면 위에서든 보이고,
+ * 루트 스택이 그려졌다는 것이 로그인했다는 뜻이다.
+ */
+export function RootStack() {
+  const palette = useTheme();
+
   return (
     <>
-      <Tab.Navigator
+      <Stack.Navigator
         screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: palette.primary,
-          tabBarInactiveTintColor: palette.textMuted,
-          tabBarLabelStyle: type.caption,
-          tabBarStyle: { backgroundColor: palette.bg, borderTopColor: palette.border },
-          tabBarIcon: () => null,
+          headerTintColor: palette.text,
+          headerStyle: { backgroundColor: palette.bg },
+          contentStyle: { backgroundColor: palette.bg },
         }}
       >
-        <Tab.Screen name="summary" component={SummaryScreen} options={{ title: '요약' }} />
-        <Tab.Screen name="positions" component={PositionsScreen} options={{ title: '종목' }} />
-        <Tab.Screen name="allocation" component={AllocationScreen} options={{ title: '비중' }} />
-        <Tab.Screen name="accounts" component={AccountsScreen} options={{ title: '계좌' }} />
-        <Tab.Screen name="realized-pnl" component={RealizedPnlScreen} options={{ title: '손익' }} />
-        <Tab.Screen
-          name="alerts"
-          component={AlertsScreen}
-          options={{
-            title: '알림',
-            tabBarBadge: badgeText(unread),
-            tabBarBadgeStyle: { backgroundColor: palette.badge, color: palette.onBadge },
-          }}
+        <Stack.Screen name="tabs" component={Tabs} options={{ headerShown: false }} />
+        <Stack.Screen name="asset-change" component={AssetChangeScreen} options={{ title: '자산 변화' }} />
+        <Stack.Screen name="alert" component={AlertDetailScreen} options={{ title: '알림 상세' }} />
+        <Stack.Screen name="alert-events" component={AlertEventsScreen} options={{ title: '울린 알림' }} />
+        <Stack.Screen name="alert-event" component={AlertEventScreen} options={{ title: '울린 알림' }} />
+        <Stack.Screen
+          name="alert-editor"
+          component={AlertEditorNavigator}
+          options={{ presentation: 'modal', headerShown: false }}
         />
-      </Tab.Navigator>
+      </Stack.Navigator>
       <PushRouter />
     </>
   );
+}
 ```
 
-`PushRouter`는 탭 내비게이터 밖, `tabs` 화면 안에 있다. 그 안의 `useNavigation()`은 루트 스택의 `tabs` 화면 것을 돌려주어 `navigate('alert-event')`가 루트 스택에 닿는다. 테스트처럼 `Tabs`를 화면 없이 `NavigationContainer` 바로 아래에 그려도 `useNavigation()`은 컨테이너를 돌려주므로 깨지지 않는다(React Navigation 7).
+`PushRouter`는 화면 밖이라 `useNavigation()`이 컨테이너(루트) 내비게이션을 돌려준다(React Navigation 7은 화면 밖에서 컨테이너를 돌려준다 — `@react-navigation/core/src/useNavigation.tsx`). 그래서 `navigate('tabs', …)` · `navigate('alert-event', …)`가 루트 스택에 바로 닿는다. 탭 묶음(`Tabs.tsx`)은 바꾸지 않는다.
 
 `app/App.tsx` — import에 `useEffect`(`react`)와 `startNotificationListeners`(`@/push/notifications`)를 더하고 `App` 함수 첫 줄에 넣는다.
 
@@ -8821,9 +8975,15 @@ import { discardPendingOpen } from '@/push/pushInbox';
 
 ```ts
   // 공용 기기에서 로그아웃한 사람의 알림이 오면 안 된다. 토큰이 살아 있을 때 기기 등록을 지운다(§9.2).
+  // 그 요청이 401을 받아도 "세션이 만료됐어요"가 아니라 그냥 로그아웃이다 — 그동안 만료 처리를 떼어 둔다.
+  // 서버에 닿지 못하면 등록이 서버에 남는다. 다음 사람이 이 기기에서 로그인해 등록하면 그 사람에게 옮겨진다(§14.5).
   const logout = useCallback(() => {
     discardPendingOpen();
-    void unregisterThisDevice().finally(() => endSession(false));
+    setUnauthenticatedHandler(null);
+    void unregisterThisDevice().finally(() => {
+      endSession(false);
+      setUnauthenticatedHandler(() => endSession(true));
+    });
   }, [endSession]);
 ```
 
@@ -8918,7 +9078,7 @@ afterEach(() => setAccessToken(null));
 
 /** 삼성전자 · 가격 도달까지 고르고 공통 설정으로 간다. */
 async function toSettings(routes: Route[] = [preview(), created, device]) {
-  const opened = openEditor({ mode: 'new', instrument: SAMSUNG }, routes);
+  const opened = await openEditor({ mode: 'new', instrument: SAMSUNG }, routes);
   await waitFor(() => expect(screen.getByText('가격 도달')).toBeTruthy());
   await fireEvent.press(screen.getByRole('button', { name: '가격 도달' }));
   await waitFor(() =>
@@ -8929,7 +9089,7 @@ async function toSettings(routes: Route[] = [preview(), created, device]) {
   return opened;
 }
 
-function savedBody(calls: ReturnType<typeof openEditor>['calls']): AlertRequest | undefined {
+function savedBody(calls: Awaited<ReturnType<typeof openEditor>>['calls']): AlertRequest | undefined {
   return calls.find((c) => c.path === '/alerts' && (c.method === 'POST' || c.method === 'PUT'))?.body as
     | AlertRequest
     | undefined;
@@ -9061,7 +9221,7 @@ describe('저장 전 푸시 권한 (§12.7)', () => {
 
 describe('수정 저장', () => {
   it('PUT으로 보내고 흐름을 닫아 들어온 자리로 돌아간다', async () => {
-    const { calls, moves } = openEditor({ mode: 'edit', alertId: 'a-satisfied' }, [
+    const { calls, moves } = await openEditor({ mode: 'edit', alertId: 'a-satisfied' }, [
       { path: '/alerts/a-satisfied', body: presetDetailFixture },
       preview(),
       { method: 'PUT', path: '/alerts/a-satisfied', body: { alert_id: 'a-satisfied' } },
@@ -9445,10 +9605,15 @@ const expected = JSON.parse(await (await import('node:fs/promises')).readFile(ne
 let failed = false;
 for (const [name, request] of Object.entries(expected.requests)) {
   const { status, body } = await get(request.path, request.init);
-  const actual = new Set(shape(body));
-  const missing = expected.keys[name].filter((key) => !actual.has(key));
-  console.log(`${name}: HTTP ${status}, 픽스처에만 있는 키 ${missing.length}개`);
+  const actualKeys = shape(body);
+  const actual = new Set(actualKeys);
+  // 서버 쪽 배열이 비었으면 그 원소의 키는 견줄 수 없다. 모자란 키로 세지 않고 따로 알린다.
+  const emptyArrays = actualKeys.filter((key) => key.endsWith('[]'));
+  const unchecked = expected.keys[name].filter((key) => emptyArrays.some((prefix) => key.startsWith(`${prefix}.`)));
+  const missing = expected.keys[name].filter((key) => !actual.has(key) && !unchecked.includes(key));
+  console.log(`${name}: HTTP ${status}, 픽스처에만 있는 키 ${missing.length}개, 빈 배열이라 견주지 못한 키 ${unchecked.length}개`);
   for (const key of missing) console.log(`  - ${key}`);
+  for (const prefix of new Set(unchecked.map((key) => key.slice(0, key.indexOf('[]') + 2)))) console.log(`  (빈 배열) ${prefix}`);
   if (missing.length > 0) failed = true;
 }
 process.exit(failed ? 1 : 0);
@@ -9477,7 +9642,10 @@ function shape(value: unknown, prefix = ''): string[] {
   );
 }
 
-it('픽스처 키 목록을 적는다', () => {
+// 저장소의 파일을 쓰므로 평소 `npm test`에서는 건너뛴다. 대조 전에 `WRITE_FIXTURE_KEYS=1`로 한 번 돌린다.
+const writeKeys = process.env.WRITE_FIXTURE_KEYS === '1' ? it : it.skip;
+
+writeKeys('픽스처 키 목록을 적는다', () => {
   const previewBody = {
     instrument_id: '10000000-0000-0000-0000-000000000001',
     name: '대조',
@@ -9510,6 +9678,13 @@ it('픽스처 키 목록을 적는다', () => {
 
 `unread`와 `notices`는 계획 ②가 채우는 자리라 ①만 있는 서버에서는 빈 배열이다 — 대조에서 뺀다.
 
+키 목록을 만든다.
+
+```bash
+WRITE_FIXTURE_KEYS=1 npx jest src/__tests__/fixtureKeys.test.ts
+git diff --stat scripts/alert-fixture-keys.json
+```
+
 - [ ] **Step 3: 정적 검사를 돌린다**
 
 Run: `npx tsc --noEmit && npm test`
@@ -9536,7 +9711,9 @@ cd /Users/yhr/Dev/workspace/personal/stock-project/front-end
 API=http://localhost:8080 TOKEN="$TOKEN" node scripts/compare-alert-shapes.mjs
 ```
 
-Expected: 네 요청 모두 `픽스처에만 있는 키 0개`. 키가 모자라면 픽스처를 실제 모양에 맞추고(앱 타입도 함께), 고친 이유를 커밋 메시지에 적는다. `instruments`의 `last_close` 두 키는 Task 0이 병합되기 전 서버라면 모자라는 것이 맞다 — 그 경우 그렇게 보고한다.
+Expected: 네 요청 모두 `픽스처에만 있는 키 0개`. 키가 모자라면 픽스처를 실제 모양에 맞추고(앱 타입도 함께), 고친 이유를 커밋 메시지에 적는다. `instruments`의 `last_close` 두 키는 Task 0이 반영되지 않은 서버라면 모자라는 것이 맞다 — 그 경우 그렇게 보고한다.
+
+샘플 DB에는 사용자 알림이 없어(`sample_alert_market.sql`이 `alert`를 비운다) `/alerts`의 `data.rows[]`가 빈 배열로 온다. 그 원소의 키는 `빈 배열이라 견주지 못한 키`로 따로 나온다. 카드 행까지 견주려면 브라우저 확인(Step 5)에서 알림을 하나 만든 뒤(그 자체가 앱의 DB 쓰기다) 이 스크립트를 한 번 더 돌린다.
 
 - [ ] **Step 5: ⛔ 승인 — 브라우저 확인**
 
@@ -9579,7 +9756,7 @@ git commit -m "docs: 알림 탭과 푸시 준비를 README에 적고 응답 모�
 
 - [ ] **Step 8: ⛔ 승인 — 브랜치 마무리**
 
-`superpowers:finishing-a-development-branch`를 따른다. 병합·푸시·PR은 사용자가 고른 방식으로, 승인을 받은 뒤에만 한다. Task 0의 백엔드 브랜치 병합 여부(Step 8)와 계획 ②에 넘길 요청(A.3)을 함께 다시 알린다.
+`superpowers:finishing-a-development-branch`를 따른다. 병합·푸시·PR은 사용자가 고른 방식으로, 승인을 받은 뒤에만 한다. Task 0의 백엔드 브랜치 병합 여부(Step 9)와 계획 ②에 넘길 요청(A.3)을 함께 다시 알린다.
 
 ---
 
