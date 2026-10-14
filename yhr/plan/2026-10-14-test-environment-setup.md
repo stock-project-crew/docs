@@ -36,7 +36,7 @@ for d in docs back-end front-end dataeng; do git -C "$d" pull --ff-only; done
 | Docker Desktop | — | 로컬 Postgres 16 (`back-end/docker-compose.yml`) | Docker Desktop을 띄워 둔다 |
 | Node.js · npm | — | 앱 실행·테스트 | `brew install node` |
 | AWS CLI | v2 | 클러스터 접속 | `brew install awscli` |
-| Session Manager 플러그인 | — | 클러스터 API 터널 (`aws ssm start-session`) | `brew install --cask session-manager-plugin` |
+| Session Manager 플러그인 | — | 클러스터 API 터널 (`aws ssm start-session`) | `brew install --cask session-manager-plugin` — 설치기가 sudo 비밀번호를 묻는다. 일반 터미널 앱에서 실행한다 |
 | kubectl | — | 클러스터 조회 | `brew install kubectl` |
 | Expo Go (iOS 실기기) | **SDK 54** | 실기기 확인 · 푸시 수신 | App Store |
 
@@ -78,18 +78,22 @@ Gradle은 따로 설치하지 않는다. 저장소의 `./gradlew`가 버전을 �
 
 ## 4. 회사 네트워크 — TLS 검사
 
-회사 네트워크는 Fortinet 장비가 HTTPS를 가로채 사내 CA로 다시 서명한다. 사내 CA는 macOS 키체인에 들어 있지만 Homebrew JDK의 신뢰 저장소(`cacerts`)에는 없다. 그래서 JDK로 외부에 붙는 일이 실패한다 — Gradle 래퍼의 배포본 내려받기, 의존성 내려받기.
-
-**증상**
-
-```
-PKIX path building failed: ... unable to find valid certification path to requested target
-```
+회사 네트워크는 Fortinet 장비가 HTTPS를 가로채 사내 CA로 다시 서명한다. 사내 CA는 macOS 키체인에 들어 있지만, 키체인 대신 자체 인증서 묶음을 쓰는 도구는 외부에 붙지 못한다. 이 작업에서는 JDK와 AWS CLI 둘이다. 회사 맥북에서만 필요한 설정이다.
 
 **확인** — 발급자가 Fortinet이면 이 절에 해당한다.
 
 ```bash
 echo | openssl s_client -connect services.gradle.org:443 2>/dev/null | grep '^issuer='
+```
+
+`FG4H0FT923904340`은 사내 CA의 이름(CN)이다. 위 명령의 `issuer=`에 나온 `CN=` 값과 같아야 한다.
+
+### JDK
+
+Gradle 래퍼의 배포본 내려받기와 의존성 내려받기가 실패한다.
+
+```
+PKIX path building failed: ... unable to find valid certification path to requested target
 ```
 
 **조치** — 사내 CA를 키체인에서 꺼내 JDK 21의 `cacerts`에만 넣는다. 셸 프로필과 다른 프로젝트의 Gradle 설정은 건드리지 않는다.
@@ -101,11 +105,31 @@ security find-certificate -c FG4H0FT923904340 -p > fortinet-ca.pem
 rm fortinet-ca.pem
 ```
 
-- `FG4H0FT923904340`은 사내 CA의 이름(CN)이다. 위 확인 명령의 `issuer=`에 나온 `CN=` 값과 같아야 한다
 - 이 설정은 `brew upgrade openjdk@21`로 JDK가 바뀌면 사라진다. 업그레이드 뒤에는 다시 넣는다
 - 넣었는지 확인: `"$(brew --prefix openjdk@21)/bin/keytool" -list -cacerts -storepass changeit -alias company-fortinet-ca`
 
-AWS CLI·kubectl이 같은 증상(인증서 검증 실패)을 보이면 같은 CA 파일을 `AWS_CA_BUNDLE`로 지정한다.
+### AWS CLI
+
+```
+SSL: CERTIFICATE_VERIFY_FAILED
+```
+
+**조치** — 시스템 인증서에 사내 CA를 더한 묶음을 만들어 `stock-project` 프로필에 지정한다.
+
+```bash
+cat /etc/ssl/cert.pem > ~/.aws/ca-bundle.pem
+security find-certificate -c FG4H0FT923904340 -p >> ~/.aws/ca-bundle.pem
+```
+
+`~/.aws/config`의 `[profile stock-project]` 끝에 한 줄을 더한다. 경로는 절대경로로 쓴다.
+
+```
+ca_bundle = /Users/<사용자>/.aws/ca-bundle.pem
+```
+
+`AWS_PROFILE=stock-project aws sts get-caller-identity`가 에러 없이 IAM 사용자를 돌려주면 된다.
+
+kubectl은 SSM 터널로 `127.0.0.1`에 붙으므로 이 절에 해당하지 않는다.
 
 ---
 
@@ -119,6 +143,7 @@ docker info --format '{{.ServerVersion}}'   # 버전이 나온다. 오류면 Doc
 aws --version
 session-manager-plugin --version
 kubectl version --client
+AWS_PROFILE=stock-project aws sts get-caller-identity   # IAM 사용자가 나온다. 클러스터가 꺼져 있어도 돈다
 ls front-end/node_modules >/dev/null && echo ok   # 없으면 front-end에서 npm ci
 test -f front-end/.env && echo ok                 # 없으면 §3
 ```
@@ -153,7 +178,7 @@ cd ../front-end && npx tsc --noEmit && npm test
 
 | 항목 | 값 |
 |---|---|
-| AWS 프로필 | `stock-project` · 리전 `ap-northeast-2`. `aws configure --profile stock-project` |
+| AWS 프로필 | `stock-project` · 리전 `ap-northeast-2`. 팀에서 받은 `config` · `credentials`를 `~/.aws/`에 두고 `chmod 600`. 회사 맥북은 `ca_bundle`을 더한다(§4) |
 | kubeconfig | 팀에서 받은 개인 kubeconfig를 `~/.kube/config`에 두고 `chmod 600`. context `stock-project`, 서버 `https://127.0.0.1:16443` |
 
 **터널** — 별도 터미널에서 열어 두고, 끝나면 Ctrl+C로 닫는다.
