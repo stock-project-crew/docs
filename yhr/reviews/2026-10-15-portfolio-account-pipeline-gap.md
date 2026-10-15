@@ -154,6 +154,7 @@ DDL은 요구 10개 컬럼·CHECK와 **정확히 일치**한다. 차이는 동�
 순서가 곧 우선순위다. 앞의 여섯이 테스트 창(10/21)에 걸린다.
 
 1. **`cln_balance`·`cln_deposit` → `data` (G1·G2).** `ddl.py`에 표를 더하고 `push.py`로 보낸다. 컬럼은 §6.5·§6.6. 그 전에 KIS 위탁계좌 1개로 수집 → Silver가 레이크에 실제로 쓰이는지 확인해 달라.
+   한 실행의 잔고와 예수금은 같은 `source_as_of`로 써 달라. 백엔드는 계좌의 `max(source_as_of)` 한 벌을 그 실행의 잔고로 쓴다. 지금 `refine_cln_kis.py` `parse_balance`가 둘 다 같은 응답의 `fetched_at`을 쓰는데(`:81`·`:104`), 이것을 계약으로 굳혀 달라.
 2. **`instrument_id` 매핑 (G3).** `item_code`(+시장) → `instrument.instrument_id`. 매칭 안 된 행을 어떻게 내보낼지(행 제외 또는 null + 별도 표기)도 정해 달라 — 백엔드는 null 행을 "종목 미매칭"으로 다룬다.
 3. **`collection_run` `as_of` 타입 (G4).** 실제 DB 행으로 `collect_one`을 한 번 돌려 확인.
 4. **`silver_synced_at` (G5).** `data` 반영(리버스 ETL 커밋) 뒤에, 그 실행의 계좌 행에만 찍는다. 정제·반영이 실패한 실행에는 찍지 않는다.
