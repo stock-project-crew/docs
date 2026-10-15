@@ -35,7 +35,7 @@
 |---|---|---|---|---|
 | 없음 | — | — | — | 실행 처리나 확정이 채운다 |
 | 잠정 실측 | `false` | `false` | `USER` `DONE` 실행 | 같은 날 다음 실행이 덮는다. 확정 때 그대로 확정으로 올린다 |
-| 잠정 이월 | `false` | `true` | 같은 사용자의 다른 계좌가 그날 라인을 얻을 때(§5.6) | 같은 날 실행이 덮는다. 확정 때 직전 영업일 확정 라인으로 다시 이월한다 |
+| 잠정 이월 | `false` | `true` | 같은 사용자의 다른 계좌가 그날 라인을 얻을 때, 또는 그 계좌의 앞 날짜 라인이 늦게 생길 때(§5.6) | 같은 날 실행이 덮는다. 확정 때 직전 영업일 확정 라인으로 다시 이월한다 |
 | 확정 | `true` | 둘 다 | `SCHEDULE` `DONE` 실행 · 확정 단계 | 바꾸지 않는다 |
 
 잠정 이월이 있는 이유: 화면은 사용자의 가장 늦은 `as_of` 한 벌을 읽는다(`SnapshotCalendarMapper.latestAsOf`). 한 계좌만 새로고침해 그날 라인이 생기면 다른 계좌는 그날 라인이 없어 한 벌에서 빠진다 — 총자산이 그 계좌만큼 줄어 손실처럼 보인다(스펙 §7.3의 1). 다른 계좌의 직전 기준일 값을 그날로 복사해 두면 화면은 "새로고침한 계좌는 새 값, 나머지는 기준일 배지가 붙은 기존 값"이 된다.
@@ -141,7 +141,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 | `FAILED` | `SKIPPED` `RUN_NOT_DONE` | 같다 |
 | `REAUTH_REQUIRED` | `SKIPPED` `RUN_NOT_DONE` + 연동 상태 전이(§9) | 같다 |
 
-`BUILT`이면 §5.6의 잠정 이월을 함께 쓴다.
+`BUILT`이면 §5.6의 잠정 이월(같은 사용자의 다른 계좌 · 이 계좌의 이후 날짜)을 함께 쓴다.
 
 **먼저 거르는 조건** (위 표보다 앞선다)
 
@@ -200,7 +200,9 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 | `UNMATCHED_INSTRUMENT` | `cln_balance.instrument_id`가 null이거나 `instrument`에 없다 | ✔ |
 | `CASH_INSTRUMENT` | 그 통화의 `CASH` 의사종목이 없거나 둘 이상이다 | ✔ |
 | `FX_MISSING` | `KRW`가 아닌 행이 있는데 `as_of` 이하 환율 행이 하나도 없다 | ✔ |
-| `INVARIANT` | §5.5 위반 | ✘ |
+| `INVARIANT` | §5.5 위반, 또는 수치 컬럼(`quantity` · `avg_price` · `market_value` · `amount`)이나 통화가 null — 계약(데이터 요구사항 §6.5 · §6.6)이 NOT NULL로 정한 값이 비어 있다 | ✘ |
+
+null 값을 계산 실패로 다루는 이유: 예외로 끝나면 그 실행이 처리 기록을 남기지 못해 마감 뒤에도 그날 확정을 막고(§6.2), 날짜 순서 때문에 그 뒤 모든 날짜의 확정도 멈춘다. 최종 사유로 남기면 그 계좌만 이월된다.
 
 `STALE_BALANCE`가 막는 경우: 데이터 쪽 반영이 실패했는데 `silver_synced_at`이 찍히면(대조 문서 G5) 며칠 전 잔고가 이번 실행의 값처럼 이월 표시 없이 들어간다.
 
@@ -213,7 +215,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 - `CASH` 행의 `cost_amount_krw = market_value_krw`.
 - `is_carried_forward = true`이면 `source_as_of`의 KST 날짜 < `as_of`.
 
-### 5.6 같은 사용자의 다른 계좌에 잠정 이월
+### 5.6 잠정 이월
 
 `BUILT`로 계좌 X의 D 라인을 쓴 같은 트랜잭션에서, X의 소유자가 가진 다른 계좌 Y 가운데 다음을 모두 만족하는 계좌에 잠정 이월을 쓴다.
 
@@ -224,6 +226,10 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 그 사용자의 직전 기준일은 그 사용자의 계좌에 라인이 있는 날 가운데 D보다 이른 가장 늦은 날이다. 조회 시 검증(§6.1)과 화면의 전일 비교(`SnapshotCalendarMapper`)가 쓰는 기준과 같다. 그래서 D가 화면에 뜰 때 검증이 요구하는 계좌와 잠정 이월이 채운 계좌가 일치한다. 직전 영업일이 아직 확정되지 않아 라인이 없는 아침에도 그 전 기준일의 값으로 채워진다.
 
 Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = false`. 금액 · `fx_rate` · `fx_as_of` · `source_as_of`는 원본 그대로다(스펙 §7.3). 이 행은 Y의 그날 실행이 성공하면 덮이고, 확정 단계가 직전 영업일 확정 라인으로 다시 계산한다(§6.3). 해제했다 다시 연동한 계좌는 사용자의 직전 기준일에 라인이 없으므로 잠정 이월되지 않는다.
+
+**이 계좌의 이후 날짜.** 같은 트랜잭션에서, X의 소유자에게 라인이 있고 아직 확정되지 않은(`snapshot_run`이 없는) D 이후 날짜 L마다, X의 L 라인이 없으면 방금 쓴 D 라인 한 벌을 L로 복사한다. `is_carried_forward = true`, `is_final = false`, 금액 · 환율 · `source_as_of`는 D 라인 그대로다.
+
+이 규칙이 없으면 처리 순서에 따라 화면이 깨진다. 예: 신규 계좌 Y의 D-1 EOD가 재시도로 남아 있는 아침에 다른 계좌만 새로고침하면 D 라인이 생기고, Y는 사용자의 직전 기준일(D-1 이전)에 라인이 없어 잠정 이월되지 않는다. 그 뒤 Y의 D-1 재시도가 성공하면 사용자의 직전 기준일이 D-1이 되고 Y는 그날 라인이 있으므로, 조회 시 검증이 Y의 D 라인을 요구한다. 이후 날짜로의 잠정 이월이 그 라인을 채운다. 확정 단계는 각 날짜를 직전 영업일 확정 라인으로 다시 계산한다(§6.3).
 
 ## 6. 확정 — `Finalizer`
 
@@ -276,11 +282,12 @@ Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = tr
 
 | 트랜잭션 | 잠금 | 하는 일 |
 |---|---|---|
-| 실행 처리 | D 공유 advisory lock → 그 사용자의 계좌 전부 `FOR UPDATE` (`account_id` 순) | `snapshot_run(D)` 없음 확인 → `position_build` 기록 → 라인 교체 · 잠정 이월 → 연동 상태 전이 |
+| 실행 처리 | D 공유 advisory lock → 그 사용자의 계좌 전부 `FOR UPDATE` (`account_id` 순) → 이후 날짜 L 공유 advisory lock (날짜 오름차순) | `snapshot_run(D)` 없음 확인 → `position_build` 기록 → 라인 교체 · 잠정 이월 → 연동 상태 전이 |
 | 계좌 확정 | D 공유 advisory lock → 그 계좌 `FOR UPDATE` | D 라인 재확인 → 승격 · 이월 |
 | 날짜 확정 | D 배타 advisory lock | 대상 계좌 전부 확정됐는지 확인 → `snapshot_run` |
 
 - 날짜 확정이 배타 잠금이므로, `snapshot_run(D)` 확인과 라인 쓰기 사이에 다른 복제본이 D를 확정할 수 없다. 확정된 날의 라인은 바뀌지 않는다.
+- 이후 날짜로의 잠정 이월(§5.6)은 쓰기 전에 그 날짜 L의 공유 잠금을 잡고 `snapshot_run(L)`이 없는지 다시 본다. 이 잠금만 계좌 잠금 뒤에 잡는다. 공유 잠금끼리는 충돌하지 않지만, L에 날짜 확정의 배타 잠금 요청이 대기 중이면 Postgres는 뒤에 온 공유 요청도 그 뒤에 줄 세운다. 그래서 "이 실행 → L 날짜 확정(대기열) → L의 다른 처리(공유 보유, 이 사용자 계좌 대기) → 이 실행" 순환이 생길 수 있다. 이 순환에서 단단히 잠금을 기다리는 쪽은 둘뿐이고 나머지는 대기열 순서다. Postgres 교착 검출기는 이런 순환을 `deadlock_timeout` 뒤 대기열을 재배치해 푸는 것으로 설명돼 있다(`src/backend/storage/lmgr/README`의 soft edge). 실측하지는 않았다. 재배치 대신 한쪽이 교착 오류로 끝나도 그 실행은 롤백되고 다음 회차에 다시 처리된다.
 - 실행 처리가 사용자의 계좌 전부를 잠그는 것은 잠정 이월(§5.6)이 다른 계좌의 라인을 쓰기 때문이다. 같은 사용자의 두 실행이 서로 다른 계좌를 먼저 잡아 교착하지 않게 `account_id` 순으로 잡는다.
 - 실행 처리는 계좌 잠금을 잡은 뒤 `position_build`에서 그 실행의 기록을 다시 읽는다. 최종 사유로 이미 있으면 다른 복제본이 처리한 것이므로 아무것도 하지 않는다. 기록은 `INSERT … ON CONFLICT (run_id) DO UPDATE`로 쓰고, 재시도면 `attempts`를 올린다. 계좌의 연동 상태도 잠근 뒤에 읽은 값으로 판정한다.
 - 어느 단계에서 죽어도 트랜잭션이 함께 사라져 다음 회차가 같은 결과를 낸다.
@@ -342,7 +349,7 @@ UPDATE collection_run r
 
 **순수 단위**
 
-- `LineCalculator`: KRW 행 · USD 행 · 환율 폴백 · 원화 반올림 경계(.5) · 예수금 0원 · 수량 0 행 거름 · `instrument_id` null · 실패 사유 각각.
+- `LineCalculator`: KRW 행 · USD 행 · 환율 폴백 · 원화 반올림 경계(.5) · 예수금 0원 · 수량 0 행 거름 · `instrument_id` null · 수치 · 통화 null · 실패 사유 각각.
 - `LineInvariants`: 규칙마다 위반 사례 하나.
 - 확정 판정: 대상 계좌 정의 · 마감 전후 · 캘린더 없음 · 대상 0개 · 오늘 이후 날짜 제외.
 - `failure_reason` 걸러내기.
@@ -355,6 +362,8 @@ UPDATE collection_run r
 | `SCHEDULE` `FAILED`, 직전 영업일 라인 있음 | 확정 이월 — 금액 · `fx_*` · `source_as_of` 보존 |
 | 계좌 A·B 중 A만 `USER` `DONE` | A 잠정 실측 + B 잠정 이월. `GET /portfolio/views/accounts`가 200이고 B에 기준일 배지 재료(`is_carried_forward`)가 있다 |
 | 직전 영업일이 아직 확정 전인 아침에 A만 `USER` `DONE` | B는 그 전 기준일 값으로 잠정 이월되고 화면이 200 |
+| 신규 계좌의 전날 EOD가 재시도 대기 중에 다른 계좌가 오늘 라인을 얻고, 그 뒤 재시도가 성공 | 신규 계좌의 전날 라인이 오늘로 잠정 이월되고 화면이 200 |
+| 잔고 · 예수금의 수치나 통화가 null | `INVARIANT`, 그 계좌만 이월. 확정은 멈추지 않는다 |
 | 위 상태에서 그날 `SCHEDULE` 둘 다 `DONE` | 둘 다 새 값으로 확정 |
 | 위 상태에서 A `SCHEDULE` `FAILED` · B `DONE` | A 승격, B 새 값 확정 |
 | `SCHEDULE` `DONE` 뒤 같은 날 `USER` `DONE` | `FINAL_EXISTS`, 라인 불변 |
