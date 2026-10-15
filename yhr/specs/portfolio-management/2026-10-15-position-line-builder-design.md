@@ -19,6 +19,7 @@
 - `collection_run` 결과에 따른 `account.link_state` 전이.
 - `CollectionStatusPort`의 실제 구현(계좌별 뷰의 `last_collection`).
 - 조회 시 검증 `accountsWithoutLine`의 판정 범위 조정(§6.1).
+- 알림이 읽는 최신 확정 보유 스냅샷 날짜를 `snapshot_run`이 있는 날로 한정(§6.4).
 
 **만들지 않는다**
 
@@ -37,7 +38,7 @@
 | 잠정 이월 | `false` | `true` | 같은 사용자의 다른 계좌가 그날 라인을 얻을 때(§5.6) | 같은 날 실행이 덮는다. 확정 때 직전 영업일 확정 라인으로 다시 이월한다 |
 | 확정 | `true` | 둘 다 | `SCHEDULE` `DONE` 실행 · 확정 단계 | 바꾸지 않는다 |
 
-잠정 이월이 있는 이유: 화면은 사용자의 가장 늦은 `as_of` 한 벌을 읽는다(`SnapshotCalendarMapper.latestAsOf`). 한 계좌만 새로고침해 그날 라인이 생기면 다른 계좌는 그날 라인이 없어 한 벌에서 빠진다 — 총자산이 그 계좌만큼 줄어 손실처럼 보인다(스펙 §7.3의 1). 다른 계좌의 직전 값을 그날로 복사해 두면 화면은 "새로고침한 계좌는 새 값, 나머지는 기준일 배지가 붙은 기존 값"이 된다.
+잠정 이월이 있는 이유: 화면은 사용자의 가장 늦은 `as_of` 한 벌을 읽는다(`SnapshotCalendarMapper.latestAsOf`). 한 계좌만 새로고침해 그날 라인이 생기면 다른 계좌는 그날 라인이 없어 한 벌에서 빠진다 — 총자산이 그 계좌만큼 줄어 손실처럼 보인다(스펙 §7.3의 1). 다른 계좌의 직전 기준일 값을 그날로 복사해 두면 화면은 "새로고침한 계좌는 새 값, 나머지는 기준일 배지가 붙은 기존 값"이 된다.
 
 ## 3. 구성
 
@@ -131,7 +132,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 - `state`가 `DONE`(`silver_synced_at`이 채워짐) · `FAILED` · `REAUTH_REQUIRED`이고 `position_build`에 없다.
 - `position_build`에 재시도할 수 있는 사유로 남아 있고, 그 `as_of`에 `snapshot_run`이 없다.
 
-`finished_at` 순으로 한 회차에 최대 `batch-size`행. `account`에 없는 `account_ref`의 행은 고르지 않는다 — 백엔드가 모르는 계좌다.
+한 회차에 최대 `batch-size`행을 고른다. 처음 보는 실행을 재시도보다 먼저, 그 안에서는 `finished_at` 순이다 — 재시도로 남은 행이 많아도 새로 끝난 실행이 밀리지 않는다. `account`에 없는 `account_ref`의 행은 고르지 않는다 — 백엔드가 모르는 계좌다.
 
 | 실행 결과 | `SCHEDULE` | `USER` |
 |---|---|---|
@@ -154,7 +155,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 
 **이월은 여기서 확정하지 않는다.** 실행이 끝나는 순서는 날짜 순서를 보장하지 않으므로, 확정 이월은 날짜 순으로 도는 확정 단계(§6)가 한다.
 
-`DONE`이면 `account.last_synced_at`을 그 실행의 `finished_at`으로 올린다(더 늦을 때만).
+`DONE`이면 계좌가 `DISCONNECTED`가 아닌 한 `account.last_synced_at`을 그 실행의 `finished_at`으로 올린다(더 늦을 때만). 위의 거르는 조건보다 먼저 한다 — 주말이나 확정된 날의 수동 동기화도 성공한 동기화다.
 
 ### 5.2 잔고 한 벌 고르기
 
@@ -217,10 +218,12 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 `BUILT`로 계좌 X의 D 라인을 쓴 같은 트랜잭션에서, X의 소유자가 가진 다른 계좌 Y 가운데 다음을 모두 만족하는 계좌에 잠정 이월을 쓴다.
 
 - `DISCONNECTED`가 아니다.
-- D의 직전 영업일(`prev_trading_day`)에 라인이 있다.
+- 그 사용자의 직전 기준일에 라인이 있다.
 - D에 라인이 없다.
 
-Y의 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = false`. 금액 · `fx_rate` · `fx_as_of` · `source_as_of`는 원본 그대로다(스펙 §7.3). 이 행은 Y의 그날 실행이 성공하면 덮이고, 확정 단계가 다시 계산한다(§6.3).
+그 사용자의 직전 기준일은 그 사용자의 계좌에 라인이 있는 날 가운데 D보다 이른 가장 늦은 날이다. 조회 시 검증(§6.1)과 화면의 전일 비교(`SnapshotCalendarMapper`)가 쓰는 기준과 같다. 그래서 D가 화면에 뜰 때 검증이 요구하는 계좌와 잠정 이월이 채운 계좌가 일치한다. 직전 영업일이 아직 확정되지 않아 라인이 없는 아침에도 그 전 기준일의 값으로 채워진다.
+
+Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = false`. 금액 · `fx_rate` · `fx_as_of` · `source_as_of`는 원본 그대로다(스펙 §7.3). 이 행은 Y의 그날 실행이 성공하면 덮이고, 확정 단계가 직전 영업일 확정 라인으로 다시 계산한다(§6.3). 해제했다 다시 연동한 계좌는 사용자의 직전 기준일에 라인이 없으므로 잠정 이월되지 않는다.
 
 ## 6. 확정 — `Finalizer`
 
@@ -242,12 +245,12 @@ Y의 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward =
 - **마감**: D 다음 KR 영업일(`next_trading_day`)의 `portfolio.snapshot.finalize-at`(기본 `08:00`) KST. 캘린더에서 정할 수 없으면 확정하지 않고 경고 로그를 남긴다.
 - **계좌가 확정 가능해지는 때** — 둘 중 하나.
   - D의 `SCHEDULE` 실행이 하나 이상 있고, 전부 `position_build`에 최종 사유(재시도 사유가 아님)로 처리됐다.
-  - 마감이 지났다.
+  - 마감이 지났고, 그 계좌의 D 실행 가운데 끝났는데(§5.1의 대상 조건) `position_build`에 아직 없는 것이 없다. 마감 직전에 끝난 실행이 처리되기 전에 이월로 덮이지 않게 한다. 재시도 사유로 남은 실행은 기다리지 않는다.
 - **대상 계좌가 0개인 날**은 마감이 지나야 확정한다. 마감 전에 확정하면 그날 늦게 끝나는 첫 수집이 `FINAL_EXISTS`로 막혀 계좌가 편입되지 못한다.
 
 ### 6.3 계좌 확정
 
-계좌마다 트랜잭션 하나. 그 계좌를 잠근 뒤 D의 라인을 본다.
+계좌마다 트랜잭션 하나. D 공유 잠금과 그 계좌 잠금을 잡은 뒤, D가 이미 확정됐거나 계좌가 `DISCONNECTED`면 아무것도 하지 않는다. 아니면 D의 라인을 본다.
 
 | D의 라인 | 처리 | `position_build` |
 |---|---|---|
@@ -263,6 +266,8 @@ Y의 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward =
 
 대상 계좌가 모두 확정되면 `snapshot_run(D)`를 쓴다(`SnapshotRunRecorder`, `ON CONFLICT DO NOTHING`). 대상이 0개인 날도 마감 뒤에는 쓴다 — 알림 평가기가 그날을 "스냅샷 없음"으로 다루지 않게 한다.
 
+**알림이 읽는 확정본**: 알림의 미리보기와 생성 검증(보유 여부)은 사용자의 가장 늦은 확정 스냅샷을 읽는다(`HoldingMapper.latestFinalAsOf`). `SCHEDULE` `DONE`은 날짜 확정 전에 그 계좌의 라인을 `is_final = true`로 쓰므로, `is_final`만 보면 일부 계좌만 확정된 날을 확정본으로 읽는다. 그래서 이 조회를 `snapshot_run`이 있는 날로 한정한다. 알림 평가기는 이미 `snapshot_run`을 신호로 쓴다.
+
 **확정이 멈췄을 때**: 마감이 지났는데 D가 확정되지 않으면 매 회차 경고 로그에 D와 확정하지 못한 `account_id`를 남긴다. 한 날짜가 막히면 그 뒤 날짜와 전 사용자의 `snapshot_run`이 함께 멈추므로, 이 로그가 운영에서 볼 신호다.
 
 ## 7. 멱등성과 동시성
@@ -277,7 +282,7 @@ Y의 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward =
 
 - 날짜 확정이 배타 잠금이므로, `snapshot_run(D)` 확인과 라인 쓰기 사이에 다른 복제본이 D를 확정할 수 없다. 확정된 날의 라인은 바뀌지 않는다.
 - 실행 처리가 사용자의 계좌 전부를 잠그는 것은 잠정 이월(§5.6)이 다른 계좌의 라인을 쓰기 때문이다. 같은 사용자의 두 실행이 서로 다른 계좌를 먼저 잡아 교착하지 않게 `account_id` 순으로 잡는다.
-- `position_build` 기록은 `INSERT … ON CONFLICT (run_id) DO UPDATE … WHERE` 기존 사유가 재시도 사유일 때만으로 한다. 반환 행이 없으면 다른 복제본이 최종 처리한 것이므로 롤백하고 넘어간다.
+- 실행 처리는 계좌 잠금을 잡은 뒤 `position_build`에서 그 실행의 기록을 다시 읽는다. 최종 사유로 이미 있으면 다른 복제본이 처리한 것이므로 아무것도 하지 않는다. 기록은 `INSERT … ON CONFLICT (run_id) DO UPDATE`로 쓰고, 재시도면 `attempts`를 올린다. 계좌의 연동 상태도 잠근 뒤에 읽은 값으로 판정한다.
 - 어느 단계에서 죽어도 트랜잭션이 함께 사라져 다음 회차가 같은 결과를 낸다.
 
 ## 8. EOD 행에 `credential_ref` 채우기 — `CredentialFiller`
@@ -331,7 +336,9 @@ UPDATE collection_run r
 
 - `SchemaContractTest.범위_밖_테이블을_만들지_않는다`: `cln_balance` · `cln_deposit` · `collection_run`을 목록에서 뺀다(V7 미러가 만든다). 같은 테스트에 네 미러 표의 컬럼 목록 단언을 더한다. 이 단언은 미러와 기대값을 둘 다 백엔드가 쓰므로 미러가 데이터 요구사항 문서에서 벗어나는 실수만 잡는다. 운영 데이터 스키마와의 차이는 §10의 켜기 전 확인이 잡는다.
 - `sample_portfolio.sql`의 `TRUNCATE` 목록에 `position_build`를 더한다. `account`를 FK로 가리키는 표가 목록에 없으면 Postgres가 `TRUNCATE`를 거부한다.
+- `sample_portfolio.sql`의 `TRUNCATE` 목록에 `collection_run` · `cln_balance` · `cln_deposit` · `fx_rate`도 넣는다. 수집 결과를 심는 테스트가 남긴 행이 샘플을 쓰는 화면 테스트(`last_collection: null`)에 섞이지 않게 한다.
 - `PositionLineInvariantsTest`: 편입 전 계좌 · 재연동 계좌는 누락이 아니라는 사례를 더한다.
+- 알림 `HoldingReader`: `snapshot_run`이 없는 날의 확정 라인은 최신 확정본으로 읽지 않는다.
 
 **순수 단위**
 
@@ -347,6 +354,7 @@ UPDATE collection_run r
 | `SCHEDULE` `DONE` | 라인 값 · `is_final = true` · `source_as_of` · `snapshot_run` |
 | `SCHEDULE` `FAILED`, 직전 영업일 라인 있음 | 확정 이월 — 금액 · `fx_*` · `source_as_of` 보존 |
 | 계좌 A·B 중 A만 `USER` `DONE` | A 잠정 실측 + B 잠정 이월. `GET /portfolio/views/accounts`가 200이고 B에 기준일 배지 재료(`is_carried_forward`)가 있다 |
+| 직전 영업일이 아직 확정 전인 아침에 A만 `USER` `DONE` | B는 그 전 기준일 값으로 잠정 이월되고 화면이 200 |
 | 위 상태에서 그날 `SCHEDULE` 둘 다 `DONE` | 둘 다 새 값으로 확정 |
 | 위 상태에서 A `SCHEDULE` `FAILED` · B `DONE` | A 승격, B 새 값 확정 |
 | `SCHEDULE` `DONE` 뒤 같은 날 `USER` `DONE` | `FINAL_EXISTS`, 라인 불변 |
@@ -356,6 +364,8 @@ UPDATE collection_run r
 | 첫 수집 `FAILED` | 라인 없음, 마감 뒤 `snapshot_run` |
 | 해제 → 몇 달 뒤 같은 행 재연동 → 첫 수집 `FAILED` | 옛 라인을 이월하지 않는다 |
 | 실행 없이 마감 경과 | 대상 계좌 전부 이월 → `snapshot_run` |
+| 마감이 지났는데 끝난 실행이 아직 처리되지 않음 | 그 실행을 처리한 뒤에 확정한다 |
+| 다음 영업일을 캘린더에서 정할 수 없음 | 확정하지 않고 멈춘다 |
 | D-1 미확정에서 D `SCHEDULE` `DONE` | D 라인은 쓰되 확정은 D-1 뒤 |
 | 종목 미매칭 → 다음 회차에 매칭됨 | 재시도로 `BUILT`, `attempts = 2` |
 | 잔고 시각 < `requested_at` | `STALE_BALANCE`, 라인 불변 |
