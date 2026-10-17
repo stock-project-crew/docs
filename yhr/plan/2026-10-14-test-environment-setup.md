@@ -70,7 +70,7 @@ Gradle은 따로 설치하지 않는다. 저장소의 `./gradlew`가 버전을 �
 | AWS 자격증명 | `~/.aws/` | 머신마다 따로 설정한다 |
 | kubeconfig | `~/.kube/config` | 머신마다 따로 설정한다 |
 
-로컬 DB에는 다시 만들 수 있는 샘플만 둔다. 두 머신의 로컬 DB를 맞추려 하지 않는다 — 맞춰야 하는 기록은 클러스터 운영 DB와 `docs` 저장소에 있다.
+로컬 DB에는 다시 만들 수 있는 샘플만 둔다. 두 머신의 로컬 DB를 맞추려 하지 않는다 — 맞춰야 하는 기록은 클러스터 DB와 `docs` 저장소에 있다.
 
 `EXPO_PUBLIC_*` 값은 번들에 박히므로 `.env`를 바꾼 뒤에는 `npx expo start -c`로 캐시를 비우고 띄운다.
 
@@ -170,7 +170,7 @@ cd ../front-end && npx tsc --noEmit && npm test
 
 클러스터 API는 인터넷에 열려 있지 않다. SSM 포트포워딩으로 로컬 16443에 터널을 열고, kubectl은 그 터널로 붙는다.
 
-- 클러스터 운영 DB에는 **읽기만** 한다. 쓰기는 사용자 행위(앱 조작)로만 일어난다 — 계획서 §3.1
+- 클러스터 DB에 직접 쓰지 않는다. 쓰기는 앱 조작과 API로만 일어난다 — 운영테스트 계정의 사용과 테스트 계정의 `연계` 실행(계획서 §3.1)
 - 접속 자격증명은 `~/.aws/`와 kubeconfig에만 둔다. 저장소·문서·로그에 넣지 않는다
 - 개인 kubeconfig 계정은 배포 생성·파드 삭제까지 할 수 있다. 읽기만은 권한이 아니라 규칙으로 지킨다
 
@@ -201,7 +201,7 @@ curl -s localhost:18080/actuator/health        # {"status":"UP",...}
 
 상태 점검 말고는 전부 토큰이 필요하다. 로그인과 조회는 `back-end/README.md` §실행과 같고 주소만 `localhost:18080`이다.
 
-**운영 DB** — 앱이 쓰는 DB는 StatefulSet `portfolio-db`의 `portfolio-db-0`이다. 같은 네임스페이스의 Deployment `postgres`는 앱이 쓰지 않는다. 파드 안의 psql을 쓰고, 세션을 읽기 전용으로 연다.
+**클러스터 DB** — 앱이 쓰는 DB는 StatefulSet `portfolio-db`의 `portfolio-db-0`이다. 같은 네임스페이스의 Deployment `postgres`는 앱이 쓰지 않는다. 파드 안의 psql을 쓰고, 세션을 읽기 전용으로 연다.
 
 ```bash
 kubectl -n portfolio exec -it portfolio-db-0 -- \
