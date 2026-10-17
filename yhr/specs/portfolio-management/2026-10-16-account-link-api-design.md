@@ -88,9 +88,9 @@
 
 | 필드 | 규칙 |
 |---|---|
-| `app_key` · `app_secret` | 필수. 앞뒤 공백을 지운 값이 비어 있지 않아야 하며, 지운 값을 저장한다. 내용은 해석하지 않는다 |
+| `app_key` · `app_secret` | 필수. 앞뒤 공백을 지운 값이 비어 있지 않고 각 1,024자 이하여야 하며, 지운 값을 저장한다. 상한은 둘을 담은 값이 SSM Standard 파라미터 값 상한(4KB) 안에 들게 한다. 내용은 해석하지 않는다 |
 | `account_number` | 필수. 앞뒤 공백을 지운 뒤 숫자 8자리 + 2자리. 하이픈은 있어도 없어도 된다 |
-| `label` | 선택. 없거나 `null`이면 신규는 기본값(§3.4), 재연동은 기존 값 유지. 있으면 앞뒤 공백을 지운 뒤 1 ~ 30자. 빈 문자열은 거부 |
+| `label` | 선택. 없거나 `null`이면 신규는 기본값(§3.4), 재연동은 기존 값 유지. 있으면 앞뒤 공백을 지운 뒤 1 ~ 30자(코드 포인트 수, 이모지도 한 글자). 빈 문자열은 거부 |
 
 KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null`이고 `link_state`는 `CONNECTING`이다.
 
@@ -142,9 +142,12 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 | 같은 계좌를 다른 사용자가 갖고 있다 | `409` | `ACCOUNT_UNAVAILABLE` |
 | `DELETE` 대상이 본인 계좌가 아니다(없는 id, UUID가 아닌 id 포함) | `403` | `FORBIDDEN_ACCOUNT` |
 | 자격증명 저장소 호출 실패 | `503` | `CREDENTIAL_STORE_UNAVAILABLE` |
+| `Content-Type`이 JSON이 아니거나 없다 | `415` | `UNSUPPORTED_MEDIA_TYPE` |
+| DB 오류(연결 실패 포함) | `500` | `INTERNAL_ERROR` |
 
 - `ACCOUNT_UNAVAILABLE`의 문구는 다른 사용자가 있다는 사실을 말하지 않는다("이 계좌는 등록할 수 없습니다").
 - `400` 매핑(`HttpMessageNotReadableException` · 형식 오류)과 UUID 변환 실패(`MethodArgumentTypeMismatchException`) 매핑은 `AccountController`에만 거는 예외 처리기(`@RestControllerAdvice(assignableTypes = AccountController.class)`)에 둔다. 전역 처리기에 두면 로그인 · 기기 등록의 깨진 JSON까지 `INVALID_ACCOUNT_REQUEST`가 된다.
+- `415`는 모든 엔드포인트에 같은 뜻이라 전역 처리기(`ApiExceptionHandler`)가 맡는다. DB 오류는 계좌 처리기가 예외 종류와 SQLState만 로그에 남기고 고정 문구로 내린다. 연결을 얻지 못한 실패는 `DataAccessException`이 아니라 `TransactionException`으로 오므로 둘 다 받는다.
 
 **오류 디스패치.** `SecurityConfig`는 `/error`를 열지 않고(`anyRequest().authenticated()`), JWT 필터는 ERROR 디스패치에서 다시 돌지 않는다. 그러면 처리기가 받지 못한 예외(415, 처리하지 않은 DB 오류 등)가 `/error`로 넘어가 인증 실패로 바뀌어 `401 UNAUTHENTICATED`가 나갈 수 있다. 클라이언트는 `401`을 전역 로그아웃으로 다룬다(스펙 §10). `DispatcherType.ERROR`를 `permitAll`로 연다. 이 설정은 모든 엔드포인트에 적용된다.
 
