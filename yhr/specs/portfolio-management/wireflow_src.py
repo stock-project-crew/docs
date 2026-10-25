@@ -472,9 +472,9 @@ y += 22
 rect(cx, y + 7, 44, 3, GRN)
 text(cx + 54, y, 190, 18, '동기화 완료 복귀 (초록)', 10, SUB)
 y += 22
-text(cx, y, 240, 18, '◇ = 분기   ‹ = 뒤로', 10, SUB)
+text(cx, y, 240, 18, '‹ = 뒤로', 10, SUB)
 y += 20
-text(cx, y, 250, 44, '※ 탭바 이동은 인접 화면 간 화살표로 축약\n※ 계좌별→종목별·계좌 연동 진입은 화살표 생략', 9, MUT)
+text(cx, y, 250, 44, '※ 탭바 이동은 인접 화면 간 화살표로 축약\n※ 계좌별→종목별·계좌 연동·동기화 진입은 화살표 생략', 9, MUT)
 
 y += 40
 text(cx, y, LW - 32, 16, '렌즈 (ETF 분해)', 10, MUT, bold=True)
@@ -493,81 +493,58 @@ y += 26
 text(cx, y, 250, 32, '그리드 8pt · 터치타깃 44pt\n타입 22/16/14/12/10/9', 9, DIM)
 
 # ══════════════════════════════════════════════════════════════
-# 밴드 1 — 계좌 연동 → 동기화
+# 밴드 1 — 계좌 연동 · 동기화
 # ══════════════════════════════════════════════════════════════
 B1 = 150
 
-# P1 계좌 연동
+# P1 계좌 연동 — 연동 계좌 목록
 x, y = ph(360, B1, '계좌 연동', back=True)
-text(x, y + 3, 276, 24, '연동된 계좌가 없어요', 15, TXT, bold=True)
-text(x, y + 29, 276, 32, '증권사를 연결하면 잔고·거래내역을 자동으로 불러와요', 11, MUT)
-text(x, y + 71, 276, 16, '직접 연동', 10, MUT, bold=True)
-card(x, y + 91, 276, 56)
-text(x + 12, y + 99, 170, 20, '한국투자증권', 13, TXT, bold=True)
-pill(x + 196, y + 101, 44, 18, GRN_BG, GRN, '무료')
-text(x + 12, y + 120, 200, 18, '본인 앱키로 연결 · 빠르고 안정적', 10, MUT)
-text(x + 246, y + 91, 20, 56, '›', 14, DIM, align='center')
-text(x, y + 157, 276, 16, '기관 연동 (CODEF)', 10, MUT, bold=True)
-for i, nm in enumerate(['삼성증권', '미래에셋증권', '키움증권']):
-    yy = y + 177 + i * 52
-    card(x, yy, 276, 44)
-    text(x + 12, yy, 200, 44, nm, 13, TXT)
-    text(x + 246, yy, 20, 44, '›', 14, DIM, align='center')
-text(x, y + 337, 276, 20, '＋ 기관 더 보기', 11, PRI, bold=True)
-box(x, y + 365, 276, 60, 'warn')
-text(x + 12, y + 375, 252, 42, '일부 퇴직연금(DC) 계좌는 기관이 조회를 제공하지 않아 연동할 수 없어요', 10, AMB_TX)
-mono(x, y + 437, 276, 'account.source = KIS | CODEF\n1차 범위: 자동 연동만 (수동 입력 없음)')
+text(x, y + 6, 276, 16, '연동된 계좌', 10, MUT, bold=True)
+links = [('한국투자 위탁', '위탁 · 연동됨', None, MUT),
+         ('한국투자 연금저축', '연금저축 · 연동 중', '다음 정기 수집 뒤 잔고가 반영돼요', MUT),
+         ('한국투자 위탁 2', '위탁 · 연동 중',
+          '첫 수집에 실패했어요. 앱키·계좌번호를 확인하고 해제한 뒤 다시 등록해 주세요', AMB_TX)]
+yy = y + 28
+for nm, st, note, nc in links:
+    h = 52 if note is None else (70 if len(note) < 30 else 86)
+    card(x, yy, 276, h)
+    text(x + 12, yy + 6, 200, 20, nm, 13, TXT, bold=True)
+    text(x + 216, yy + 6, 48, 20, '해제', 11, PRI, align='right', bold=True)
+    text(x + 12, yy + 27, 252, 16, st, 10, MUT)
+    if note:
+        text(x + 12, yy + 44, 252, h - 48, note, 10, nc, valign='top')
+    yy += h + 8
+rect(x, y + 300, 276, 40, '#FFFFFF', PRI, 1, arc=8)
+text(x, y + 300, 276, 40, '＋ 계좌 추가', 12, PRI, align='center', bold=True)
+mono(x, y + 356, 276, 'GET /accounts · DELETE /accounts/{id}\n상태 줄 = link_state × last_collection', h=40)
 
-# P2 인증 정보 입력
-x, y = ph(760, B1, '삼성증권 연동', back=True, right='다음')
-text(x, y + 4, 276, 16, '인증 수단', 10, MUT, bold=True)
-rect(x, y + 24, 12, 12, '#FFFFFF', PRI, 2, ellipse=True)
-rect(x + 3, y + 27, 6, 6, PRI, 'none', 1, ellipse=True)
-text(x + 20, y + 20, 100, 20, '공동인증서', 12, TXT, bold=True)
-rect(x + 140, y + 24, 12, 12, '#FFFFFF', LINE, 1, ellipse=True)
-text(x + 160, y + 20, 110, 20, 'ID · 비밀번호', 12, SUB)
-text(x, y + 56, 276, 16, '인증서 비밀번호', 10, MUT, bold=True)
-rect(x, y + 76, 276, 36, '#FFFFFF', LINE, 1, arc=8)
-text(x + 12, y + 76, 252, 36, '●●●●●●●●', 12, TXT)
-text(x, y + 124, 276, 16, '증권사 ID', 10, MUT, bold=True)
-rect(x, y + 144, 276, 36, '#FFFFFF', LINE, 1, arc=8)
-text(x + 12, y + 144, 252, 36, 'samsung_user', 12, SUB)
-box(x, y + 194, 276, 92, 'ok')
-text(x + 12, y + 204, 252, 20, '인증정보는 저장하지 않아요', 11, GRN, bold=True)
-text(x + 12, y + 224, 252, 54,
-     'CODEF 공개키로 암호화해 전송하고, 서비스는 Connected ID만 보관해요. '
-     '인증서·비밀번호는 서버에 남지 않아요.', 10, SUB)
-mono(x, y + 298, 276, 'RSA(publicKey) → POST /accounts\naccount.credential_ref ← 시크릿 키만')
+# P2 한국투자증권 연동
+x, y = ph(760, B1, '한국투자증권 연동', back=True)
+yy = y + 4
+for lb, val, c in [('앱키', '앱키 붙여 넣기', DIM), ('앱 시크릿', '●●●●●●●●●●●●●●', TXT),
+                   ('계좌번호', '00000000-01', TXT), ('라벨', '한국투자 위탁', TXT)]:
+    text(x, yy, 276, 16, lb, 10, MUT, bold=True)
+    rect(x, yy + 20, 276, 36, '#FFFFFF', LINE, 1, arc=8)
+    text(x + 12, yy + 20, 210, 36, val, 12, c)
+    if lb == '앱 시크릿':
+        text(x + 216, yy + 20, 48, 36, '보기', 10, PRI, align='right', bold=True)
+    yy += 66
+text(x, y + 270, 276, 18, '위탁(01)·연금저축(22) 계좌만 연동할 수 있어요', 10, MUT)
+box(x, y + 298, 276, 70, 'ok')
+text(x + 12, y + 307, 252, 20, '입력값은 앱에 남기지 않아요', 11, GRN, bold=True)
+text(x + 12, y + 327, 252, 36, '앱키·시크릿은 서버의 시크릿 매니저에만 두고, 앱은 화면을 떠나면 지워요.', 10, SUB, valign='top')
+mono(x, y + 380, 276, 'POST /accounts → 202 CONNECTING\n첫 수집은 다음 정기 수집이 한다', h=40)
 rect(x, y + 455, 276, 44, PRI, 'none', 1, arc=8)
 text(x, y + 455, 276, 44, '연동하기', 13, '#FFFFFF', align='center', bold=True)
 
-# 분기
-diamond(1100, 395, 100, 76, '추가 인증\n요구 ?')
-
-# P3 추가 인증
-x, y = ph(1240, B1, '추가 인증', back=True)
-text(x, y + 4, 276, 24, '휴대폰 인증이 필요해요', 15, TXT, bold=True)
-text(x, y + 30, 276, 18, '삼성증권이 2단계 인증을 요구했어요', 11, MUT)
-rect(x, y + 62, 276, 42, '#FFFFFF', LINE, 1, arc=8)
-text(x + 12, y + 62, 180, 42, '인증번호 6자리', 12, DIM)
-text(x + 200, y + 62, 64, 42, '02:47', 11, UP, align='right', bold=True)
-rect(x, y + 114, 276, 36, '#FFFFFF', PRI, 1, arc=8)
-text(x, y + 114, 276, 36, '인증번호 재전송', 11, PRI, align='center', bold=True)
-box(x, y + 162, 276, 76, 'warn')
-text(x + 12, y + 172, 252, 20, '이 계좌는 재인증 대기 상태예요', 11, AMB_TX, bold=True)
-text(x + 12, y + 192, 252, 38, '인증을 마치면 즉시 동기화가 시작되고, 그때까지는 마지막 데이터로 표시돼요.', 10, SUB)
-mono(x, y + 250, 276, 'account.link_state = REAUTH_REQUIRED\n인증 완료 → collection_run 즉시 요청')
-rect(x, y + 455, 276, 44, PRI, 'none', 1, arc=8)
-text(x, y + 455, 276, 44, '확인', 13, '#FFFFFF', align='center', bold=True)
-
 # P4 동기화
-x, y = ph(1640, B1, '동기화', back=False)
+x, y = ph(1160, B1, '동기화', back=False)
 text(x, y + 4, 276, 24, '포트폴리오를 불러오는 중', 15, TXT, bold=True)
 text(x, y + 26, 276, 14, '진행 중 · 부분 실패 동시 표기', 8, DIM)
 rows = [('한국투자증권 위탁', '완료 15:30', GRN_BG, GRN, GRN, '✓'),
         ('한국투자증권 IRP', '완료 15:30', GRN_BG, GRN, GRN, '✓'),
-        ('삼성증권', '진행 중', BLU_BG, PRI, PRI, '●'),
-        ('미래에셋증권', '실패 · 재시도 2/3', GRY_BG, MUT, DIM, '×')]
+        ('한국투자증권 연금저축', '진행 중', BLU_BG, PRI, PRI, '●'),
+        ('한국투자증권 위탁 2', '실패 · 재시도 2/3', GRY_BG, MUT, DIM, '×')]
 for i, (nm, st, bg, fg, dot, mk) in enumerate(rows):
     yy = y + 44 + i * 52
     card(x, yy, 276, 44)
@@ -586,14 +563,14 @@ text(x, y + 380, 276, 16, '진행률 3 / 4', 10, MUT, bold=True)
 bar(x, y + 400, 276, 8, PRI, 0.75)
 
 # 노트 1
-NX, NY, NW = 2040, 150, 460
+NX, NY, NW = 1560, 150, 460
 rect(NX, NY, NW, 600, '#FFFFFF', BORDER, 1, arc=8, shadow=True)
 text(NX + 20, NY + 18, NW - 40, 24, '연동 · 동기화 원칙', 14, TXT, bold=True)
 hr(NX + 20, NY + 50, NW - 40)
-notes = [('인증정보 비저장', 'CODEF는 Connected ID만 보관하고 인증서·비밀번호는 서버에 남기지 않는다. '
-                       'KIS 앱키와 Connected ID는 시크릿 매니저에 두고 테이블에는 참조만 저장한다.'),
+notes = [('인증정보 비저장', 'KIS 앱키·시크릿은 시크릿 매니저에 두고 테이블에는 참조만 저장한다. '
+                       '앱은 입력값을 보관하지 않는다.'),
          ('항상 비동기', '동기화는 무겁고 느리다. 202로 즉시 응답하고 완료는 푸시·폴링으로 알린다.'),
-         ('부분 실패 허용', '계좌별로 독립 재시도한다. CODEF는 지수 백오프, KIS는 레이트리밋 스로틀 중심.'),
+         ('부분 실패 허용', '계좌별로 독립 재시도한다. KIS는 레이트리밋 스로틀 중심.'),
          ('캐리포워드', '실패해도 그날 position_line을 반드시 만든다. 빠뜨리면 그레인 유일성이 깨지고 '
                     '자산 변화 뷰의 항등식이 성립하지 않는다.'),
          ('as-of 두 층', '화면 as-of는 배치 실행 기준시각으로 단일. 계좌별 실제 시각은 source_as_of로 따로 추적.'),
@@ -782,10 +759,10 @@ x, y = ph(2360, B2, '계좌별', back=False, tab='계좌')
 asof(x - 12, y, PW, '기준 2026-07-27 15:30')
 groups = [('일반', '41,200,000',
            [('한국투자증권 위탁', '32,100,000', '평가 3,000만 · 예수금 210만', '+6.2%', UP, '07-27 15:30', None),
-            ('삼성증권', '9,100,000', '평가 840만 · 예수금 70만', '+1.4%', UP, '07-25 09:12', 'reauth')]),
+            ('한국투자증권 위탁 2', '9,100,000', '평가 840만 · 예수금 70만', '+1.4%', UP, '07-26 15:30', 'stale')]),
           ('연금', '16,800,000',
            [('한국투자증권 IRP', '11,900,000', '평가 1,100만 · 예수금 90만', '+3.1%', UP, '07-27 15:30', None),
-            ('미래에셋 연금', '4,900,000', '평가 490만 · 예수금 0', '—', DIM, '07-26 15:30', 'stale')])]
+            ('한국투자증권 연금저축', '4,900,000', '평가 490만 · 예수금 0', '—', DIM, '07-27 15:30', None)])]
 yy = y + 34
 for gname, gtot, accs in groups:
     rect(x, yy, 276, 22, PANEL)
@@ -799,9 +776,7 @@ for gname, gtot, accs in groups:
         text(x + 12, yy + 23, 252, 14, split, 8, DIM)
         text(x + 168, yy + 22, 96, 15, pnl, 10, c, align='right', bold=True)
         text(x + 12, yy + 40, 120, 14, sync, 8, MUT)
-        if flag == 'reauth':
-            pill(x + 176, yy + 38, 88, 15, AMB_BG, AMB_TX, '재인증 필요', size=8)
-        elif flag == 'stale':
+        if flag == 'stale':
             pill(x + 188, yy + 38, 76, 15, GRY_BG, MUT, '07-26 이월', size=8)
         yy += 62
     yy += 6
@@ -809,7 +784,7 @@ hr(x, yy, 276, LINE)
 text(x, yy + 8, 140, 22, '총자산', 12, TXT, bold=True)
 text(x + 130, yy + 8, 146, 22, '58,000,000', 13, TXT, align='right', bold=True)
 rect(x, yy + 42, 276, 36, '#FFFFFF', PRI, 1, arc=8)
-text(x, yy + 42, 276, 36, '＋ 계좌 연동', 11, PRI, align='center', bold=True)
+text(x, yy + 42, 276, 36, '계좌 연동 관리', 11, PRI, align='center', bold=True)
 mono(x, y + 424, 276, 'group_by=account_type → account\n렌즈 없음 — look-through는 계좌 합계를 바꾸지 않음')
 
 # ══════════════════════════════════════════════════════════════
@@ -1083,12 +1058,9 @@ text(380, L4 + 108, 1840, 38,
 # 흐름 (엣지)
 # ══════════════════════════════════════════════════════════════
 M1 = B1 + 300
-edge([(660, M1), (760, M1)], '기관 선택')
-edge([(1060, M1), (1080, M1), (1080, 433), (1100, 433)], '암호화 전송', lseg=0)
-edge([(1200, 433), (1220, 433), (1220, M1), (1240, M1)], '= 필요', lseg=2, loff=(0, -12))
-edge([(1150, 395), (1150, 118), (1790, 118), (1790, B1)], '= 불필요', lseg=1)
-edge([(1540, M1), (1640, M1)], '인증 완료')
-edge([(1740, B1 + 600), (1740, 790), (510, 790), (510, B2)],
+edge([(660, B1 + 385), (760, B1 + 385)], '＋ 계좌 추가')
+edge([(910, B1), (910, 118), (510, 118), (510, B1)], '202 → 목록', lseg=1)
+edge([(1310, B1 + 600), (1310, 790), (510, 790), (510, B2)],
      '동기화 완료 → 포트폴리오', GRN, lseg=1)
 
 M2 = B2 + 300
