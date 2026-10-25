@@ -206,7 +206,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 |---|---|
 | 등록 · 재연동(`CONNECTING`) | `CredentialFiller`가 EOD 행에 `credential_ref`를 복사한다. 첫 `DONE` 처리에서 `CONNECTED`가 된다 |
 | 재연동 직후 | 해제 기간에 라인이 없으므로 옛 보유를 이월하지 않는다. 첫 성공 수집부터 편입된다(생성기 설계 §6.1) |
-| 해제(`DISCONNECTED`) | 복사 대상 · 확정 대상 · 라인 존재 검증에서 빠진다 |
+| 해제(`DISCONNECTED`) | 복사 대상 · 확정 대상 · 라인 존재 검증에서 빠진다. 스냅샷 뷰 · 카탈로그 · 보유 판정에서도 즉시 빠진다(스펙 §7.5) |
 
 `CredentialFiller`는 생성기 잡(`portfolio.snapshot.runtime.enabled`)이 켜져 있어야 돈다. 꺼져 있으면 EOD 행의 `credential_ref`가 비어 수집되지 않는다(§7).
 

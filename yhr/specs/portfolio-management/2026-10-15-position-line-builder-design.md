@@ -272,7 +272,7 @@ Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = tr
 
 대상 계좌가 모두 확정되면 `snapshot_run(D)`를 쓴다(`SnapshotRunRecorder`, `ON CONFLICT DO NOTHING`). 대상이 0개인 날도 마감 뒤에는 쓴다 — 알림 평가기가 그날을 "스냅샷 없음"으로 다루지 않게 한다.
 
-**알림이 읽는 확정본**: 알림의 미리보기와 생성 검증(보유 여부)은 사용자의 가장 늦은 확정 스냅샷을 읽는다(`HoldingMapper.latestFinalAsOf`). `SCHEDULE` `DONE`은 날짜 확정 전에 그 계좌의 라인을 `is_final = true`로 쓰므로, `is_final`만 보면 일부 계좌만 확정된 날을 확정본으로 읽는다. 그래서 이 조회를 `snapshot_run`이 있는 날로 한정한다. 알림 평가기는 이미 `snapshot_run`을 신호로 쓴다.
+**알림이 읽는 확정본**: 알림의 미리보기와 생성 검증(보유 여부)은 사용자의 가장 늦은 확정 스냅샷에서 `DISCONNECTED`가 아닌 계좌의 라인을 읽는다(`HoldingMapper.latestFinalAsOf`). `SCHEDULE` `DONE`은 날짜 확정 전에 그 계좌의 라인을 `is_final = true`로 쓰므로, `is_final`만 보면 일부 계좌만 확정된 날을 확정본으로 읽는다. 그래서 이 조회를 `snapshot_run`이 있는 날로 한정한다. 알림 평가기는 이미 `snapshot_run`을 신호로 쓴다.
 
 **확정이 멈췄을 때**: 마감이 지났는데 D가 확정되지 않으면 매 회차 경고 로그에 D와 확정하지 못한 `account_id`를 남긴다. 한 날짜가 막히면 그 뒤 날짜와 전 사용자의 `snapshot_run`이 함께 멈추므로, 이 로그가 운영에서 볼 신호다.
 
