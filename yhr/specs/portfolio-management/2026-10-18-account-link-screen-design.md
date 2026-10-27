@@ -69,14 +69,14 @@
 **계좌 연동 (`account-link`)**
 
 - 스택 화면이고 헤더는 `계좌 연동`이다(IA §6.1).
-- `GET /accounts`의 계좌를 서버 순서(계좌유형, 라벨) 그대로 한 줄씩 보인다. 한 줄은 `라벨 · 상품(위탁 / 연금저축) · 상태 줄(§3.1) · 해제`다. 상품은 `account_type`으로 정한다(`GENERAL` → 위탁, `PENSION` → 연금저축).
+- `GET /accounts`의 계좌를 서버 순서(계좌유형, 라벨) 그대로 한 줄씩 보인다. 한 줄은 `라벨 · 상품(위탁 / 연금저축) · 상태 줄(§3.1) · 해제`다. 상품은 `account_type`으로 정한다(`GENERAL` → 위탁, `PENSION` → 연금저축). `env`가 `DEMO`인 계좌는 상품 옆에 `모의`를 붙인다. `REAL`과 `null`에는 붙이지 않는다.
 - 목록 아래에 `＋ 계좌 추가`를 둔다.
 - 뒤로 가면 계좌 탭이다.
 
 **한국투자증권 연동 (`account-link/new`)**
 
 - `account-link` 위에 쌓이는 스택 화면이다. 기관 선택은 없다.
-- 칸은 앱키 · 앱 시크릿 · 계좌번호 · 라벨이다(§4). 칸 아래에 `위탁(01)·연금저축(22) 계좌만 연동할 수 있어요`를 둔다.
+- 칸은 앱키 · 앱 시크릿 · 계좌번호 · 모의투자 계좌 체크 · 라벨이다(§4). 칸 아래에 `위탁(01)·연금저축(22) 계좌만 연동할 수 있어요`를 둔다.
 - `202`면 화면을 닫고 `account-link`로 돌아간다. 목록을 다시 받아 새 계좌가 `연동 중`으로 보인다.
 - 실패하면 이 화면에 머문다(§3.3).
 - 따로 둔 화면이라, 떠나면 입력값이 컴포넌트 상태와 함께 사라진다(§5.1).
@@ -166,6 +166,13 @@
 - 화면에는 9자리째부터 `12345678-01`처럼 하이픈을 그어 보인다. 사용자는 하이픈을 넣지 않는다.
 - 요청에는 숫자 10자리를 싣는다. 서버는 하이픈 유무를 가리지 않는다(API 설계 §3.1).
 
+**모의투자 계좌**
+
+- 체크박스 하나다. 기본은 체크하지 않은 상태이고 `env: "REAL"`을 싣는다. 체크하면 `"DEMO"`를 싣는다.
+- KIS는 실전과 모의투자의 앱키가 다르고, 수집기는 이 값으로 부를 서버를 고른다(API 설계 §6.1). 서버와 앱키가 맞지 않으면 첫 수집이 실패할 것으로 본다(확인하지 않음).
+- 자격증명이 아니므로 가리지 않는다. 실패해도 그대로 둔다.
+- 연동한 뒤 바꾸려면 해제하고 다시 등록한다.
+
 **라벨**
 
 - 필수다. 기본 라벨만 쓰면 위탁 두 개가 `한국투자 위탁` · `한국투자 위탁 2`로 갈려 목록에서 구분이 안 된다.
@@ -177,7 +184,7 @@
 
 ```json
 { "app_key": "<공백 지운 앱키>", "app_secret": "<공백 지운 시크릿>",
-  "account_number": "<숫자 10자리>", "label": "<공백 지운 라벨>" }
+  "account_number": "<숫자 10자리>", "env": "REAL" | "DEMO", "label": "<공백 지운 라벨>" }
 ```
 
 ## 5. 자격증명 입력값 다루기
@@ -226,6 +233,7 @@ type LinkedAccount = {
   label: string;
   account_type: 'GENERAL' | 'PENSION';
   source: string;
+  env: 'REAL' | 'DEMO' | null;
   link_state: AccountLinkState;
   last_synced_at: string | null;
   last_collection: CollectionStatus | null;
@@ -245,7 +253,7 @@ type LinkAccountResponse = { account_id: string; link_state: AccountLinkState; c
 
 ### 6.3 무효화
 
-등록 · 해제가 성공하면 `account-links` · `accounts` · `summary` · `positions` · `allocation` · `realized-pnl` · `asset-change` · `cashflows` · `catalog`를 무효화한다. 해제는 총자산과 계좌 필터(카탈로그)를 바꾸고, 입출금 계좌 선택은 카탈로그를 쓴다. 등록은 첫 수집 전이라 뷰가 당장 바뀌지 않지만 같은 목록을 쓴다. 해제 `403`도 같은 범위를 무효화한다.
+등록 · 해제가 성공하면 `account-links` · `accounts` · `summary` · `positions` · `allocation` · `realized-pnl` · `asset-change` · `cashflows` · `catalog` · `instruments`를 무효화하고 `alert-preview`를 캐시에서 지운다. 해제는 총자산과 계좌 필터(카탈로그), 종목의 보유 여부를 바꾸고, 입출금 계좌 선택은 카탈로그를 쓴다. 알림 미리보기도 보유 여부를 담지만, 디바운스하는 편집 화면은 마운트 때 다시 받지 않아 무효화로는 낡은 응답이 남는다. 등록은 첫 수집 전이라 뷰가 당장 바뀌지 않지만 같은 목록을 쓴다. 해제 `403`도 같은 범위를 무효화한다.
 
 ## 7. 테스트
 
@@ -254,7 +262,7 @@ type LinkAccountResponse = { account_id: string; link_state: AccountLinkState; c
 **픽스처**
 
 - 계좌 탭과 점은 골든 `accounts.json`을 쓴다. 이 파일에 `STALE_ACCOUNTS`가 있어 점이 켜지는 경우가 된다. 꺼지는 경우는 그 안내를 뺀 사본이다.
-- `GET /accounts`는 백엔드 골든이 없어 `src/fixtures/accountLinks.ts`에 DTO(`AccountDto` · `CollectionStatus`)를 보고 손으로 쓴다. §3.1 표의 다섯 조합을 담고 id · 라벨은 가짜다. `AccountListResponse`로 받아 `tsc`가 모양을 검사한다.
+- `GET /accounts`는 백엔드 골든이 없어 `src/fixtures/accountLinks.ts`에 DTO(`AccountDto` · `CollectionStatus`)를 보고 손으로 쓴다. §3.1 표의 다섯 조합을 담고, `env`는 `REAL` · `DEMO` · `null`을 하나 이상씩 담는다. id · 라벨은 가짜다. `AccountListResponse`로 받아 `tsc`가 모양을 검사한다.
 - 자격증명 값은 `test-app-key` · `test-app-secret` · `00000000-01` 꼴만 쓴다.
 
 **단위**
@@ -271,9 +279,9 @@ type LinkAccountResponse = { account_id: string; link_state: AccountLinkState; c
 | 대상 | 확인 |
 |---|---|
 | 계좌 탭 | `계좌 연동 관리`가 있다 · 빈 상태에서도 있다 · 누르면 `account-link` · 점이 조건대로 켜지고 꺼진다 |
-| 목록 | 상태 줄 문구 · 빈 목록 · 조회 오류와 재시도 |
+| 목록 | 상태 줄 문구 · `DEMO`인 행에만 `모의` · 빈 목록 · 조회 오류와 재시도 |
 | 해제 | 시트 → `DELETE /accounts/{id}` → 목록 재조회와 §6.3 무효화 · `503`이면 시트 안에 오류 · `403`이면 목록 재조회 |
-| 폼 | 클라이언트 검사 문구 · 라벨 미리 채움과 사용자가 고친 라벨 유지 · 요청 본문(snake_case, 공백 제거, 숫자 10자리) · `202`면 목록으로 돌아가 새 계좌가 `연동 중` · 코드별 오류 자리와 문구 · 실패 시 시크릿만 비움 · 두 번 제출 안 됨 · `http` 주소면 경고 |
+| 폼 | 클라이언트 검사 문구 · 라벨 미리 채움과 사용자가 고친 라벨 유지 · 요청 본문(snake_case, 공백 제거, 숫자 10자리, 체크하지 않으면 `env: "REAL"` · 체크하면 `"DEMO"`) · `202`면 목록으로 돌아가 새 계좌가 `연동 중` · 코드별 오류 자리와 문구 · 실패 시 시크릿만 비움 · 두 번 제출 안 됨 · `http` 주소면 경고 |
 | 누출 | 성공 뒤와 실패 뒤 각각: query 캐시 · mutation 캐시 · 네비게이션 루트 상태를 문자열로 바꿔도 가짜 앱키 · 시크릿 · 계좌번호가 없다 · `console.log` · `info` · `warn` · `error` · `debug`가 그 값으로 불리지 않는다 · 성공 뒤 렌더 트리에 값이 없다 |
 
 **수동 확인.** 구현이 끝나면 로컬 백엔드를 `portfolio.credentials.store=memory`로 띄우고 Expo 웹이나 시뮬레이터에서 가짜 키로 등록 · 해제를 한 번씩 해 본다. 서버 · 개발 서버를 띄우는 일이라 그때 승인을 받는다. 운영 서버에 실제 키로 등록하지 않는다.

@@ -80,7 +80,7 @@
 
 ```json
 // 요청
-{ "app_key": "…", "app_secret": "…", "account_number": "00000000-01", "label": "생활비 계좌" }
+{ "app_key": "…", "app_secret": "…", "account_number": "00000000-01", "env": "REAL", "label": "생활비 계좌" }
 
 // 202
 { "account_id": "…", "link_state": "CONNECTING", "challenge": null }
@@ -90,6 +90,7 @@
 |---|---|
 | `app_key` · `app_secret` | 필수. 앞뒤 공백을 지운 값이 비어 있지 않고 각 1,024자 이하여야 하며, 지운 값을 저장한다. 상한은 둘을 담은 값이 SSM Standard 파라미터 값 상한(4KB) 안에 들게 한다. 내용은 해석하지 않는다 |
 | `account_number` | 필수. 앞뒤 공백을 지운 뒤 숫자 8자리 + 2자리. 하이픈은 있어도 없어도 된다 |
+| `env` | 필수. `REAL`(실전) 또는 `DEMO`(모의투자). 대소문자를 가린다. 수집기가 이 값으로 KIS 실전 서버와 모의 서버를 고른다(§6.1) |
 | `label` | 선택. 없거나 `null`이면 신규는 기본값(§3.4), 재연동은 기존 값 유지. 있으면 앞뒤 공백을 지운 뒤 1 ~ 30자(코드 포인트 수, 이모지도 한 글자). 빈 문자열은 거부 |
 
 KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null`이고 `link_state`는 `CONNECTING`이다.
@@ -103,7 +104,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 ```json
 { "accounts": [
     { "account_id": "…", "broker": "한국투자증권", "label": "한국투자 위탁",
-      "account_type": "GENERAL", "source": "KIS",
+      "account_type": "GENERAL", "source": "KIS", "env": "REAL",
       "link_state": "CONNECTING", "last_synced_at": null,
       "last_collection": { "state": "FAILED", "as_of": "2026-10-18",
                            "failure_reason": "SOURCE_API_ERROR" } } ] }
@@ -112,6 +113,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 - `DISCONNECTED`가 아닌 본인 계좌만 담는다. 정렬은 `account_type`, `label` 순이다.
 - `last_collection`은 계좌별 뷰와 같은 원천(`CollectionRunStatusPort`, 그 계좌의 최신 `collection_run`)이다. 실행이 하나도 없으면 `null`이다.
 - 최근 수집은 `account.linked_at`(마지막 등록 · 재연동 시각) 뒤에 요청된 실행에서 고른다. `account_ref`는 재연동해도 같으므로 실행이 어느 연동의 것인지는 이 시각으로 가른다. `linked_at`이 비어 있으면 거르지 않는다.
+- `env`는 `account.kis_env`다. 연동 때 받은 `REAL` · `DEMO`이고, 이 컬럼이 생기기 전에 연동한 계좌는 `null`이다. `null`인 계좌의 자격증명에는 `env` 키가 없어 수집기가 클러스터 설정을 따른다(§6.1).
 - `account_ref` · `credential_ref`는 어떤 응답에도 싣지 않는다.
 
 ### 3.4 상품코드와 계좌 속성
@@ -163,7 +165,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 
    ```sql
    INSERT INTO account (account_id, user_id, account_ref, broker, label, account_type, source,
-                        credential_ref, link_state, linked_at)
+                        credential_ref, kis_env, link_state, linked_at)
    VALUES (…, 'CONNECTING', now())
    ON CONFLICT (account_ref) DO NOTHING
    RETURNING account_id
@@ -174,7 +176,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 
 | 기존 행 | 처리 |
 |---|---|
-| 본인 · `DISCONNECTED` | 같은 행을 `CONNECTING`으로, `credential_ref`를 채우고 `linked_at`을 지금 시각으로 바꾼다. `label`은 요청에 있으면 그 값으로 바꾸고, 없으면 옛 값을 두되 연동 중인 다른 계좌와 겹치면 기본값을 다시 매긴다(§3.4). `account_id` · `user_id` · `account_ref` · `account_type` · `broker` · `source` · `last_synced_at`은 그대로 둔다 |
+| 본인 · `DISCONNECTED` | 같은 행을 `CONNECTING`으로, `credential_ref`를 채우고 `linked_at`을 지금 시각으로, `kis_env`를 요청의 `env`로 바꾼다. `label`은 요청에 있으면 그 값으로 바꾸고, 없으면 옛 값을 두되 연동 중인 다른 계좌와 겹치면 기본값을 다시 매긴다(§3.4). `account_id` · `user_id` · `account_ref` · `account_type` · `broker` · `source` · `last_synced_at`은 그대로 둔다 |
 | 본인 · 그 밖 | `409 ACCOUNT_ALREADY_LINKED`. 롤백 |
 | 다른 사용자 | `409 ACCOUNT_UNAVAILABLE`. 롤백 |
 
@@ -248,8 +250,10 @@ interface CredentialStore {
 - `Value`는 데이터 워커가 읽는 JSON과 같은 모양이다(`collect_kis_account.py` "자격증명").
 
   ```json
-  {"app_key": "…", "app_secret": "…", "cano": "<앞 8자리>", "acnt_prdt_cd": "<뒤 2자리>"}
+  {"app_key": "…", "app_secret": "…", "cano": "<앞 8자리>", "acnt_prdt_cd": "<뒤 2자리>", "env": "real"}
   ```
+
+  `env`는 요청의 `env`를 소문자로 바꾼 `real` · `demo`다. 수집기는 이 값을 먼저 보고, 키가 없으면 클러스터 설정(Airflow Variable `dataeng_kis_env`)을 따른다(dataeng `lib/kis.py` `env_for`). 백엔드는 언제나 이 키를 쓴다.
 
 - `DeleteParameter`. `ParameterNotFoundException`은 성공으로 본다.
 - 자격 증명은 `EnvironmentVariableCredentialsProvider`만 쓴다. 기본 체인은 환경변수가 없을 때 노드의 인스턴스 역할을 집을 수 있다.
@@ -321,16 +325,16 @@ CI는 실제 Postgres(`postgres:16-alpine`, `portfolio_test`)로 돈다. 실제 
 |---|---|
 | `KisAccountNumberTest` | 앞뒤 공백 · 하이픈 유무가 같은 10자리로 정규화된다 · 01/22 → 유형과 기본 `label` · 29 · 55 · 자릿수 · 숫자 아님은 거부 · 거부 메시지와 `toString`에 입력값이 없다 |
 | `AccountRefIssuerTest` | 같은 입력은 같은 값 · 소금이나 계좌번호가 다르면 다른 값 · `ar_` + 32hex · 고정 벡터 1건(가짜 소금 · 가짜 계좌번호) |
-| `SsmCredentialStoreTest` | `SsmClient` 목으로 요청 모양(이름, `SecureString`, `Overwrite`, 값 JSON의 네 키) · `ParameterNotFound` 삭제는 성공 · SDK 예외는 저장소 장애 예외 |
+| `SsmCredentialStoreTest` | `SsmClient` 목으로 요청 모양(이름, `SecureString`, `Overwrite`, 값 JSON의 다섯 키, `env`는 소문자) · `ParameterNotFound` 삭제는 성공 · SDK 예외는 저장소 장애 예외 |
 | 기동 검사 | 소금이 없거나 짧을 때, `portfolio.credentials.store`가 없을 때 컨텍스트가 뜨지 않는다(`ApplicationContextRunner`) |
 
 **통합** (`InMemoryCredentialStore`, MockMvc, 실제 JWT)
 
 | 사례 | 기대 |
 |---|---|
-| 신규 등록 | `202` · `CONNECTING` · 행의 `credential_ref` = `/stock-project/accounts/<account_ref>` · 저장소에 공백을 지운 값이 있다 |
+| 신규 등록 | `202` · `CONNECTING` · 행의 `credential_ref` = `/stock-project/accounts/<account_ref>` · 행의 `kis_env`와 저장소의 `env`가 요청 값이다 · 저장소에 공백을 지운 값이 있다 |
 | 기본 `label` 겹침 | 위탁 두 개를 `label` 없이 등록하면 `한국투자 위탁` · `한국투자 위탁 2` |
-| 해제 → 재등록 | 같은 `account_id` · `label`은 요청에 있을 때만 바뀐다 · 저장소 값이 덮어써진다 · 해제 전 연동의 수집 실패는 `last_collection`에 보이지 않는다 |
+| 해제 → 재등록 | 같은 `account_id` · `label`은 요청에 있을 때만 바뀐다 · 저장소 값이 덮어써진다 · `REAL`로 연동했던 계좌를 `DEMO`로 다시 연동하면 행과 저장소 모두 `DEMO`다 · 해제 전 연동의 수집 실패는 `last_collection`에 보이지 않는다 |
 | 본인이 이미 연동 중 | `409 ACCOUNT_ALREADY_LINKED` |
 | 다른 사용자의 계좌 | `409 ACCOUNT_UNAVAILABLE` · 그 행은 바뀌지 않는다 |
 | 등록 중 저장소 장애 | `503` · 신규면 행이 없고, 재연동이면 행이 `DISCONNECTED` 그대로 |
@@ -339,9 +343,9 @@ CI는 실제 Postgres(`postgres:16-alpine`, `portfolio_test`)로 돈다. 실제 
 | 해제와 재등록 경합 | 해제를 `delete`에서 멈춘 채 재등록을 보낸다. 재등록은 해제가 끝난 뒤 진행되고, 끝에 행은 `CONNECTING`이며 저장소에 새 값이 있다 |
 | 해제 중 저장소 삭제 실패 | `503` · 행은 연동 상태 그대로이고 `credential_ref`도 그대로 · 저장소를 고친 뒤 다시 부르면 `204` |
 | 해제 대상이 남의 계좌 · 없는 id · UUID가 아닌 id | `403 FORBIDDEN_ACCOUNT` |
-| `GET /accounts` | 본인 · 연동 중인 계좌만 · `last_collection`(실행 없음 → `null`, 최신 실행의 상태, 재연동 전 실행 제외) · `account_ref` · `credential_ref` 없음 |
+| `GET /accounts` | 본인 · 연동 중인 계좌만 · `env`(`kis_env`가 없는 행은 `null`) · `last_collection`(실행 없음 → `null`, 최신 실행의 상태, 재연동 전 실행 제외) · `account_ref` · `credential_ref` 없음 |
 | 남의 데이터 격리 | 다른 사용자 토큰으로 `GET`에 남의 계좌가 없고, `DELETE`는 `403`, 남의 계좌번호 등록은 `409` |
-| 형식 오류 · 깨진 JSON · 빈 `label` · IRP | 고정 코드 · 본문에 입력값이 없다 |
+| 형식 오류 · 깨진 JSON · 빈 `label` · `env` 없음 · `null` · 모르는 값(소문자 `real` 포함) · IRP | 고정 코드 · 본문에 입력값이 없다 |
 | 다른 컨트롤러의 깨진 JSON | 로그인의 깨진 JSON은 `INVALID_ACCOUNT_REQUEST`가 아니다 |
 | 토큰 없음 | `401` |
 | 누출 검사 | 위 성공 · 실패 · 장애 경로의 로그 전체(`OutputCaptureExtension`)와 응답 본문에 가짜 앱키 · 시크릿 · 계좌번호 문자열이 없다 |
@@ -375,7 +379,7 @@ CI는 실제 Postgres(`postgres:16-alpine`, `portfolio_test`)로 돈다. 실제 
 | `create_eod` 직전 `dim_account` 갱신 | 반영됨(dataeng `919508f`, airflow-dags `collection_run_daily`). 2026-10-18 가동일부터 적용 | §2.2 표의 지연 |
 | `dataeng-pipeline`이 `/stock-project/accounts/*`를 `GetParameter`(복호화 포함)할 수 있다 | 확인하지 않음. `kis_account_daily` DAG 주석이 "IAM이 `/stock-project/accounts/*`만 허용한다"고 적고 그 아래 `/stock-project/accounts/ar_me/kis`를 쓴다. 데이터팀이 2026-10-18에 실제 수집기와 같은 이미지 · Secret으로 읽어 보기로 했다 | 모든 등록 계좌가 `FAILED(CREDENTIAL_UNREADABLE)`로 끝나 `CONNECTING`에 머문다 |
 | `kis_account_daily`를 멈춘다 | 확인하지 않음. 이 DAG는 `ar_me` 한 계좌를 손으로 적어 같은 일 · 화 · 수 · 목 23:00에 수집한다 | 같은 실계좌를 API로 등록하면 같은 앱키로 같은 시각에 두 번 수집한다(토큰 발급 1분 제한). 레이크에 `ar_me`와 새 `account_ref` 두 갈래가 쌓인다 |
-| `collection_run_daily` 켜짐 · `KIS_ENV` | DAG는 일시정지로 생성된다. `KIS_ENV`는 Airflow Variable `dataeng_kis_env`(없으면 `real`)이고 워커가 부르는 모든 KIS 계좌에 한꺼번에 적용된다. DAG 주석은 테스트 계좌가 모의투자인 동안 `demo`로 둔다고 적었다. Airflow의 실제 상태와 값은 확인하지 않음 | 수집이 일어나지 않거나, 실계좌 키로 모의 서버를 불러 실패한다 |
+| `collection_run_daily` 켜짐 · 계좌별 실전/모의 | 계좌별 실전/모의는 dataeng main에 병합됨(`cbecec9`). 수집기는 자격증명의 `env`를 먼저 보고, 없으면 Airflow Variable `dataeng_kis_env`(없으면 `real`)를 따른다. Airflow 반영은 사용자가 확인했다. DAG 상태와 `dataeng_kis_env`의 실제 값은 확인하지 않음 | 수집이 일어나지 않거나, `env`가 없는 계좌가 계좌와 다른 서버로 불려 실패한다 |
 | IRP 수집 | 미지원. 수집기가 기간 체결(`TTTC0081R` · `CTSC9215R`)을 필수 조회로 다루고, IRP는 이 조회가 `APBK1744`로 막힌다 | IRP 등록을 받지 않는다(§3.4) |
 
 **데이터팀 요청**

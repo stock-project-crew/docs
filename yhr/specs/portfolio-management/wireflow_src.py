@@ -502,7 +502,7 @@ x, y = ph(360, B1, '계좌 연동', back=True)
 text(x, y + 6, 276, 16, '연동된 계좌', 10, MUT, bold=True)
 links = [('한국투자 위탁', '위탁 · 연동됨', None, MUT),
          ('한국투자 연금저축', '연금저축 · 연동 중', '다음 정기 수집 뒤 잔고가 반영돼요', MUT),
-         ('한국투자 위탁 2', '위탁 · 연동 중',
+         ('한국투자 위탁 2', '위탁 · 모의 · 연동 중',
           '첫 수집에 실패했어요. 앱키·계좌번호를 확인하고 해제한 뒤 다시 등록해 주세요', AMB_TX)]
 yy = y + 28
 for nm, st, note, nc in links:
@@ -529,13 +529,17 @@ for lb, val, c in [('앱키', '앱키 붙여 넣기', DIM), ('앱 시크릿', '�
     if lb == '앱 시크릿':
         text(x + 216, yy + 20, 48, 36, '보기', 10, PRI, align='right', bold=True)
     yy += 66
-text(x, y + 270, 276, 18, '위탁(01)·연금저축(22) 계좌만 연동할 수 있어요', 10, MUT)
-box(x, y + 298, 276, 70, 'ok')
-text(x + 12, y + 307, 252, 20, '입력값은 앱에 남기지 않아요', 11, GRN, bold=True)
-text(x + 12, y + 327, 252, 36, '앱키·시크릿은 서버의 시크릿 매니저에만 두고, 앱은 화면을 떠나면 지워요.', 10, SUB, valign='top')
-mono(x, y + 380, 276, 'POST /accounts → 202 CONNECTING\n첫 수집은 다음 정기 수집이 한다', h=40)
-rect(x, y + 455, 276, 44, PRI, 'none', 1, arc=8)
-text(x, y + 455, 276, 44, '연동하기', 13, '#FFFFFF', align='center', bold=True)
+    if lb == '계좌번호':
+        rect(x, yy, 18, 18, '#FFFFFF', LINE, 1, arc=4)
+        text(x + 26, yy, 250, 18, '모의투자 계좌', 11, TXT)
+        yy += 28
+text(x, y + 298, 276, 18, '위탁(01)·연금저축(22) 계좌만 연동할 수 있어요', 10, MUT)
+box(x, y + 324, 276, 70, 'ok')
+text(x + 12, y + 333, 252, 20, '입력값은 앱에 남기지 않아요', 11, GRN, bold=True)
+text(x + 12, y + 353, 252, 36, '앱키·시크릿은 서버의 시크릿 매니저에만 두고, 앱은 화면을 떠나면 지워요.', 10, SUB, valign='top')
+mono(x, y + 404, 276, 'POST /accounts → 202 CONNECTING\nenv = 체크 해제 REAL · 체크 DEMO', h=40)
+rect(x, y + 470, 276, 44, PRI, 'none', 1, arc=8)
+text(x, y + 470, 276, 44, '연동하기', 13, '#FFFFFF', align='center', bold=True)
 
 # P4 동기화
 x, y = ph(1160, B1, '동기화', back=False)
