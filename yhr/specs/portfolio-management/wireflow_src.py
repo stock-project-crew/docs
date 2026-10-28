@@ -469,14 +469,11 @@ y += 22
 rect(cx, y + 7, 44, 3, PRI)
 text(cx + 54, y, 190, 18, '주 흐름 (파랑)', 10, SUB)
 y += 22
-rect(cx, y + 7, 44, 3, GRN)
-text(cx + 54, y, 190, 18, '동기화 완료 복귀 (초록)', 10, SUB)
-y += 22
 text(cx, y, 240, 18, '‹ = 뒤로', 10, SUB)
 y += 20
-text(cx, y, 250, 44, '※ 탭바 이동은 인접 화면 간 화살표로 축약\n※ 계좌별→종목별·계좌 연동·동기화 진입은 화살표 생략', 9, MUT)
+text(cx, y, 250, 58, '※ 탭바 이동은 인접 화면 간 화살표로 축약\n※ 계좌별→종목별·계좌 연동 진입은 화살표 생략\n※ P4는 계좌별 하단의 동기화 카드', 9, MUT)
 
-y += 40
+y += 66
 text(cx, y, LW - 32, 16, '렌즈 (ETF 분해)', 10, MUT, bold=True)
 y += 20
 text(cx, y, 250, 46, 'lens_policy=OPTIONAL 인 뷰에만 노출\n비중 분석 · 종목별 · 요약 미니차트', 9, SUB)
@@ -541,30 +538,39 @@ mono(x, y + 404, 276, 'POST /accounts → 202 CONNECTING\nenv = 체크 해제 RE
 rect(x, y + 470, 276, 44, PRI, 'none', 1, arc=8)
 text(x, y + 470, 276, 44, '연동하기', 13, '#FFFFFF', align='center', bold=True)
 
-# P4 동기화
-x, y = ph(1160, B1, '동기화', back=False)
-text(x, y + 4, 276, 24, '포트폴리오를 불러오는 중', 15, TXT, bold=True)
-text(x, y + 26, 276, 14, '진행 중 · 부분 실패 동시 표기', 8, DIM)
-rows = [('한국투자증권 위탁', '완료 15:30', GRN_BG, GRN, GRN, '✓'),
-        ('한국투자증권 IRP', '완료 15:30', GRN_BG, GRN, GRN, '✓'),
-        ('한국투자증권 연금저축', '진행 중', BLU_BG, PRI, PRI, '●'),
-        ('한국투자증권 위탁 2', '실패 · 재시도 2/3', GRY_BG, MUT, DIM, '×')]
-for i, (nm, st, bg, fg, dot, mk) in enumerate(rows):
-    yy = y + 44 + i * 52
-    card(x, yy, 276, 44)
-    text(x + 12, yy, 20, 44, mk, 12, fg, bold=True)
-    text(x + 36, yy + 5, 150, 18, nm, 12, TXT if i < 3 else MUT, bold=True)
-    text(x + 36, yy + 22, 150, 16, st, 9, MUT)
-    if i == 3:
-        pill(x + 176, yy + 12, 88, 20, GRY_BG, MUT, '07-26 이월')
-    else:
-        pill(x + 196, yy + 12, 68, 20, bg, fg, st.split(' ')[0], size=9)
-box(x, y + 250, 276, 66, 'warn')
-text(x + 12, y + 259, 252, 20, '실패한 계좌도 총자산에 포함해요', 11, AMB_TX, bold=True)
-text(x + 12, y + 279, 252, 32, '마지막 성공 데이터로 이월해서 보여주고, 낡았다는 사실을 표시해요.', 10, SUB)
-mono(x, y + 328, 276, '202 Accepted · 계좌별 독립 재시도\ncarry-forward → source_as_of · is_carried_forward')
-text(x, y + 380, 276, 16, '진행률 3 / 4', 10, MUT, bold=True)
-bar(x, y + 400, 276, 8, PRI, 0.75)
+# P4 계좌 탭의 동기화 카드 — 요청 직후 · 수집 뒤 부분 실패 · 시한 초과
+x, y = ph(1160, B1, '계좌별 · 동기화', back=False, tab='계좌')
+
+
+def sync_card(cy, h, title, tc, sub, lines, closable):
+    card(x, cy, 276, h)
+    text(x + 12, cy + 6, 216 if closable else 252, 34, title, 11, tc, bold=True, valign='top')
+    if closable:
+        text(x + 216, cy + 6, 48, 18, '닫기', 10, PRI, align='right', bold=True)
+    ly = cy + 40
+    if sub:
+        text(x + 12, cy + 24, 252, 16, sub, 9, SUB)
+        ly = cy + 44
+    for nm, st, c in lines:
+        text(x + 12, ly, 120, 18, nm, 10, TXT)
+        text(x + 132, ly, 132, 18, st, 10, c, align='right')
+        ly += 20
+
+
+text(x, y + 4, 276, 14, '요청 직후 — 실행 RUNNING', 8, DIM)
+sync_card(y + 20, 86, '동기화 요청을 받았습니다 · 다음 수집 10-29(목) 23:00', TXT, None,
+          [('한국투자 위탁', '수집 대기', MUT), ('한국투자 연금저축', '수집 대기', MUT)], False)
+text(x, y + 112, 276, 14, '수집 뒤 — 실행 PARTIAL', 8, DIM)
+sync_card(y + 128, 90, '일부 계좌를 동기화하지 못했어요', AMB_TX, '실패한 계좌는 이전 값으로 총자산에 들어가요',
+          [('한국투자 위탁', '완료 · 10-29 기준', MUT), ('한국투자 연금저축', '수집 실패', AMB_TX)], True)
+text(x, y + 224, 276, 14, '시한 초과 — 실행 FAILED · PICKUP_TIMEOUT', 8, DIM)
+sync_card(y + 240, 70, '동기화하지 못했어요', AMB_TX, '요청 뒤 4일 안에 수집되지 않았어요',
+          [('한국투자 위탁', '수집되지 않았어요', AMB_TX)], True)
+mono(x, y + 320, 276, 'POST /sync {} → 202 · GET /sync/{run_id}\n탭 진입·앱 복귀·RUNNING이면 60초마다', h=36)
+rect(x, y + 362, 276, 40, PRI, 'none', 1, arc=8)
+text(x, y + 362, 276, 40, '지금 동기화', 12, '#FFFFFF', align='center', bold=True)
+rect(x, y + 410, 276, 40, '#FFFFFF', PRI, 1, arc=8)
+text(x, y + 410, 276, 40, '계좌 연동 관리', 12, PRI, align='center', bold=True)
 
 # 노트 1
 NX, NY, NW = 1560, 150, 460
@@ -573,7 +579,7 @@ text(NX + 20, NY + 18, NW - 40, 24, '연동 · 동기화 원칙', 14, TXT, bold=
 hr(NX + 20, NY + 50, NW - 40)
 notes = [('인증정보 비저장', 'KIS 앱키·시크릿은 시크릿 매니저에 두고 테이블에는 참조만 저장한다. '
                        '앱은 입력값을 보관하지 않는다.'),
-         ('항상 비동기', '동기화는 무겁고 느리다. 202로 즉시 응답하고 완료는 푸시·폴링으로 알린다.'),
+         ('항상 비동기', '202로 즉시 응답하고 수집은 다음 가동일 밤에 한다. 결과는 계좌 탭의 동기화 카드가 폴링으로 보인다.'),
          ('부분 실패 허용', '계좌별로 독립 재시도한다. KIS는 레이트리밋 스로틀 중심.'),
          ('캐리포워드', '실패해도 그날 position_line을 반드시 만든다. 빠뜨리면 그레인 유일성이 깨지고 '
                     '자산 변화 뷰의 항등식이 성립하지 않는다.'),
@@ -1064,8 +1070,6 @@ text(380, L4 + 108, 1840, 38,
 M1 = B1 + 300
 edge([(660, B1 + 385), (760, B1 + 385)], '＋ 계좌 추가')
 edge([(910, B1), (910, 118), (510, 118), (510, B1)], '202 → 목록', lseg=1)
-edge([(1310, B1 + 600), (1310, 790), (510, 790), (510, B2)],
-     '동기화 완료 → 포트폴리오', GRN, lseg=1)
 
 M2 = B2 + 300
 edge([(660, M2), (760, M2)], '종목 탭')
