@@ -220,7 +220,7 @@ INSERT INTO snapshot_run (as_of, finished_at)
 VALUES ((now() AT TIME ZONE 'Asia/Seoul')::date, now()) ON CONFLICT (as_of) DO NOTHING;
 ```
 
-**`F-PF3-COLLECTED` 실행의 한 계좌 수집을 끝낸다** — `state`는 `DONE` · `FAILED` · `REAUTH_REQUIRED`, `reason`은 `FAILED`일 때 `SOURCE_TIMEOUT`, 그 밖에는 빈 문자열. `DONE`이면 반영 완료 시각(`silver_synced_at`)을 함께 찍는다. 생성기는 그것이 찍힌 `DONE`만 집는다
+**`F-PF3-COLLECTED` 실행의 한 계좌 수집을 끝낸다** — `state`는 `DONE` · `FAILED`, `reason`은 `FAILED`일 때 `SOURCE_TIMEOUT`, 그 밖에는 빈 문자열. `DONE`이면 반영 완료 시각(`silver_synced_at`)을 함께 찍는다. 생성기는 그것이 찍힌 `DONE`만 집는다
 
 ```sql
 UPDATE collection_run
@@ -423,7 +423,7 @@ SELECT e.event_id, owner.email AS owner, e.title, e.read_at,
  WHERE e.event_id = :'event';
 ```
 
-### 7.4 PF1 · PF2 · PF4
+### 7.4 PF1 · PF2
 
 PF3의 `Q-PF3-ACCOUNT-VALUE`와 공통 `Q-USER-ACCOUNTS`를 함께 쓴다. `credential_ref` 값은 고르지 않고 비교 결과만 고른다.
 
@@ -453,22 +453,6 @@ UPDATE collection_run r
 ```sql
 DELETE FROM account WHERE account_id = :'account'
    AND NOT EXISTS (SELECT 1 FROM position_line WHERE account_id = :'account');
-```
-
-**`F-PF4-REAUTH-RUN` 계좌의 그날 수집을 재인증 요구로 끝낸다** — 데이터 워커가 `REAUTH_REQUIRED`를 낸 것과 같다. 생성기가 1분 안에 계좌를 `REAUTH_REQUIRED`로 옮긴다
-
-```sql
-INSERT INTO collection_run (run_id, account_ref, requested_by, as_of, requested_at, state, finished_at)
-SELECT gen_random_uuid(), a.account_ref, 'SCHEDULE', (now() AT TIME ZONE 'Asia/Seoul')::date,
-       now() - interval '1 minute', 'REAUTH_REQUIRED', now()
-  FROM account a WHERE a.account_id = :'account';
-```
-
-**`F-PF4-CARRY` 계좌의 그날 라인을 이월값으로 바꾼다**
-
-```sql
-UPDATE position_line SET is_carried_forward = true, source_as_of = :'source_as_of'::timestamptz
- WHERE account_id = :'account' AND as_of = :'as_of'::date;
 ```
 
 **`Q-PF1-LINK` 사용자 계좌의 연동 상태와 자격증명 참조 모양**
@@ -1232,6 +1216,13 @@ SELECT e.event_id, e.title, e.body, e.read_at IS NOT NULL AS read,
 
 **준비 데이터**
 
+**`F-N-CARRY` 계좌의 그날 라인을 이월값으로 바꾼다** — `account` · `as_of` · `source_as_of`
+
+```sql
+UPDATE position_line SET is_carried_forward = true, source_as_of = :'source_as_of'::timestamptz
+ WHERE account_id = :'account' AND as_of = :'as_of'::date;
+```
+
 **`F-N-FX-RATE` USD/KRW `BASE` 환율 한 행을 넣는다** — `as_of` · `rate`
 
 ```sql
@@ -1455,45 +1446,6 @@ SELECT :'today'::date, pl.account_id, pl.instrument_id, pl.quantity,
   FROM position_line pl JOIN account a USING (account_id) JOIN app_user u ON u.id = a.user_id
  WHERE u.email = :'email' AND pl.as_of = '2026-07-27'
 ON CONFLICT (as_of, account_id, instrument_id) DO NOTHING;
-```
-
-**`F-N-REAUTH-CARRY` `{d}`에 `…0003`만 수집이 재인증 요구로 끝난 상태를 만든다** — `F-PF11-CARRY`와 같고 마지막 수집 행의 상태만 `REAUTH_REQUIRED`(사유 없음)다. `R-LOCAL` 직후에 쓴다
-
-```sql
-SELECT c.prev_trading_day AS d, p.prev_trading_day AS prev
-  FROM dim_market_calendar c
-  JOIN dim_market_calendar p ON p.market = 'KR' AND p.date = c.prev_trading_day
- WHERE c.market = 'KR' AND c.date = (now() AT TIME ZONE 'Asia/Seoul')::date AND c.is_trading_day
-\gset
-
-BEGIN;
-INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
-    cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
-    fx_rate, fx_as_of, source_as_of, is_carried_forward, is_final)
-SELECT :'prev'::date, account_id, instrument_id, quantity,
-       cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
-       fx_rate, :'prev'::date, (:'prev' || ' 15:30:00+09')::timestamptz, false, true
-  FROM position_line
- WHERE as_of = '2026-07-27'
-   AND account_id IN ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002',
-                      '20000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004');
-
-INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
-    cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
-    fx_rate, fx_as_of, source_as_of, is_carried_forward, is_final)
-SELECT :'d'::date, account_id, instrument_id, quantity,
-       cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
-       fx_rate, :'d'::date, (:'d' || ' 15:30:00+09')::timestamptz, false, true
-  FROM position_line
- WHERE as_of = '2026-07-27'
-   AND account_id IN ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002',
-                      '20000000-0000-0000-0000-000000000004');
-
-INSERT INTO collection_run (run_id, account_ref, requested_by, as_of, requested_at, state, finished_at)
-SELECT gen_random_uuid(), account_ref, 'SCHEDULE', :'d'::date, now() - interval '2 minutes',
-       'REAUTH_REQUIRED', now() - interval '1 minute'
-  FROM account WHERE account_id = '20000000-0000-0000-0000-000000000003';
-COMMIT;
 ```
 
 **`F-N-NO-RUN-CARRY` `{d}`에 `…0003`만 수집 행이 없고 나머지 세 계좌는 수집이 실패한 상태를 만든다** — 네 계좌에 `{prev}` 확정 라인을 심고(모두 실측), `…0001` · `…0002` · `…0004`에 `{d}`의 `SCHEDULE` `FAILED` 수집 행을 넣는다. `{d}` 라인은 심지 않는다. `R-LOCAL` 직후에 쓴다
