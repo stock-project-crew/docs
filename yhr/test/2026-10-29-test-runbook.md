@@ -57,6 +57,12 @@ SNAPSHOT_RUNTIME_ENABLED=true BASIS_ENABLED=true ./gradlew bootRun --args='--spr
 
 로컬 기준 시각은 개발 머신의 시계다. 날짜 · 요일에 걸린 케이스는 `실행 시점`(§8)이 맞는 날에 돈다.
 
+### 2.2 웹에서 화면 읽기
+
+- 크롬 탭이 가려진 상태(`document.visibilityState = hidden`)면 앱의 조회 재시도와 시트 애니메이션이 멈춘다. 오류 화면이나 시트가 끝내 나오지 않으면 탭이 보이는 상태인지 먼저 본다
+- 앱은 한 번 받은 조회 결과를 같은 페이지 로드 안에서 다시 쓴다. 데이터를 바꾼 뒤나 로딩 화면을 볼 때는 페이지를 새로 고친 뒤 처음 들어간 화면을 읽는다
+- 웹에서는 체크 · 선택 상태가 `aria-checked` 같은 속성으로 나오지 않는다. 그런 상태는 화면 표시로 판정한다
+
 ## 3. 로그인
 
 토큰은 `~/.cache/stock-it/<환경>/<이메일>` 파일에 둔다. `<환경>`은 `local` · `cluster`다. 요청은 이 파일을 읽어 헤더에 넣는다(§4.1).
@@ -487,11 +493,13 @@ SELECT r.requested_by, r.as_of, r.state, r.failure_reason, r.requested_at, r.fin
  WHERE a.account_id = :'account' ORDER BY r.requested_at;
 ```
 
-**`Q-PF1-RAW` 원문 문자열이 들어 있는 행 수** — `needle`은 가짜 앱키 · 시크릿 · 계좌번호. `로컬`에서만 쓴다
+**`Q-PF1-RAW` 원문 문자열이 들어 있는 행 수** — `needle`은 가짜 앱키 · 시크릿 · 계좌번호. `로컬`에서만 쓴다. ID 열(UUID)은 빼고 찾는다. 샘플의 ID(`00000000-0000-0000-0000-000000000001` 등)가 가짜 계좌번호 `0000000001`을 품고 있어서다
 
 ```sql
-SELECT (SELECT count(*) FROM account a WHERE a::text LIKE '%' || :'needle' || '%') AS account_rows,
-       (SELECT count(*) FROM collection_run r WHERE r::text LIKE '%' || :'needle' || '%') AS collection_run_rows;
+SELECT (SELECT count(*) FROM account a
+         WHERE (to_jsonb(a) - 'account_id' - 'user_id')::text LIKE '%' || :'needle' || '%') AS account_rows,
+       (SELECT count(*) FROM collection_run r
+         WHERE (to_jsonb(r) - 'run_id')::text LIKE '%' || :'needle' || '%') AS collection_run_rows;
 ```
 
 **`Q-PF1-LINES` 사용자의 날짜 · 계좌별 라인**
@@ -1278,10 +1286,10 @@ UPDATE dim_market_calendar SET is_trading_day = false
  WHERE market = 'KR' AND date = (now() AT TIME ZONE 'Asia/Seoul')::date;
 ```
 
-**`F-N-HOLIDAY-TODAY-UNDO`**
+**`F-N-HOLIDAY-TODAY-UNDO`** — `F-00`과 같은 식으로 요일에 따라 되돌린다. 주말에 돌려도 오늘이 영업일이 되지 않는다
 
 ```sql
-UPDATE dim_market_calendar SET is_trading_day = true
+UPDATE dim_market_calendar SET is_trading_day = extract(isodow FROM date) < 6
  WHERE market = 'KR' AND date = (now() AT TIME ZONE 'Asia/Seoul')::date;
 ```
 
@@ -2037,9 +2045,9 @@ SELECT a.alert_id, u.email AS owner, a.status, a.deleted_at, a.trigger_spec, s.v
 | 값 | 뜻 |
 |---|---|
 | 언제든 | 시각 제약이 없다 |
-| 확정 전 | 화 · 수 · 목 23:00 전, 또는 금요일. 다음 픽업이 그날 확정 마감 전이라 이미 확정으로 판정되지 않는다(동기화 설계 §2.1 · §5.3) |
+| 확정 전 | 월 · 화 · 수 · 목 23:00 전, 또는 금요일. 다음 픽업이 그날 확정 마감 전이라 이미 확정으로 판정되지 않는다(동기화 설계 §2.1 · §5.3) |
 | 화 · 수 · 목 23:00 전 | 요청한 그날 밤 수집된다 |
-| 다음 수집 뒤 | 요청 뒤 첫 일 · 화 · 수 · 목 23:00 수집과 반영이 끝난 뒤. 수집은 데이터 쪽이 돌고, 반영은 생성기가 1분마다 집는다 |
+| 다음 수집 뒤 | 요청 뒤 첫 일 · 월 · 화 · 수 · 목 23:00 수집과 반영이 끝난 뒤. 수집은 데이터 쪽이 돌고, 반영은 생성기가 1분마다 집는다 |
 | 월요일 | 다음 픽업이 그날 확정 마감(화 08:00) 뒤라 이미 확정으로 판정된다 |
 | 비영업일 | 토 · 일 · 휴장일 |
 | 영업일 | KR 영업일 아무 때 |
