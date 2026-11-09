@@ -32,7 +32,7 @@
 
 ### 2.1 `USER` 행은 다음 가동일 밤에 수집된다
 
-`data.collection_run`의 `REQUESTED` 행을 집는 곳은 Airflow `collection_run_daily`의 `run_collection` 태스크 하나다. 이 DAG는 일 · 화 · 수 · 목 23:00(KST)에 돈다. `USER` 행도 그 실행에서 `SCHEDULE` 행과 함께 집힌다. 그래서 수동 동기화는 요청 즉시가 아니라 다음 가동일 밤에 수집된다. 이 설계는 그 지연을 숨기지 않고 응답 문장과 notice로 알린다(§4.1 · §4.4).
+`data.collection_run`의 `REQUESTED` 행을 집는 곳은 Airflow `collection_run_daily`의 `run_collection` 태스크 하나다. 이 DAG는 일 · 월 · 화 · 수 · 목 23:00(KST)에 돈다. `USER` 행도 그 실행에서 `SCHEDULE` 행과 함께 집힌다. 그래서 수동 동기화는 요청 즉시가 아니라 다음 가동일 밤에 수집된다. 이 설계는 그 지연을 숨기지 않고 응답 문장과 notice로 알린다(§4.1 · §4.4).
 
 데이터 쪽 픽업이 빨라져도 이 설계는 바뀌지 않는다. 다음 픽업 시각을 설정값(§6)으로 두었으므로 그 값만 바꾼다.
 
@@ -40,10 +40,10 @@
 
 | 요청 | 픽업 | 결과 |
 |---|---|---|
-| 화 · 수 · 목, 23:00 전 | 그날 23:00 | 같은 밤의 `SCHEDULE` 행이 확정 라인을 쓴다 |
+| 월 · 화 · 수 · 목, 23:00 전 | 그날 23:00 | 같은 밤의 `SCHEDULE` 행이 확정 라인을 쓴다 |
+| 월 · 화 · 수 · 목, 23:00 뒤 | 다음 가동일 23:00(마감 다음 날 08:00 후) | 그날이 이미 확정돼 `FINAL_EXISTS`. 라인 불변 |
 | 금 | 일 23:00(마감 월 08:00 전) | 금요일 라인이 바뀐다. 같은 밤 `SCHEDULE`(`as_of` 금)이 확정한다 |
-| 월 | 화 23:00(마감 화 08:00 후) | 그날이 이미 확정돼 `FINAL_EXISTS`. 라인 불변 |
-| 토 · 일 | 일 23:00 또는 화 23:00 | 비영업일이라 `NOT_TRADING_DAY`. 라인 불변 |
+| 토 · 일 | 일 23:00 또는 월 23:00 | 비영업일이라 `NOT_TRADING_DAY`. 라인 불변 |
 
 라인이 바뀌지 않는 요청도 수집은 한다. `last_collection` · `last_synced_at` · 연동 상태 전이가 갱신된다(스펙 §5.4). 그런 요청은 `ALREADY_FINAL`로 알린다(§5.3).
 
@@ -277,7 +277,7 @@
 
 | 키 | 기본값 | 쓰는 곳 |
 |---|---|---|
-| `portfolio.sync.pickup-cron` | `0 0 23 * * SUN,TUE,WED,THU` | 다음 픽업 시각(Spring `CronExpression`, Asia/Seoul). §4.1 문장 · §4.4 notice · §5.3 판정 |
+| `portfolio.sync.pickup-cron` | `0 0 23 * * SUN,MON,TUE,WED,THU` | 다음 픽업 시각(Spring `CronExpression`, Asia/Seoul). §4.1 문장 · §4.4 notice · §5.3 판정 |
 | `portfolio.sync.timeout` | `PT96H` | §5.2 시한 |
 
 시한 96시간은 가장 긴 픽업 간격(목 23:00 → 일 23:00, 72시간)에 수집 · 정제 · 반영 시간을 더하고 여유를 둔 값이다. 픽업 주기를 바꾸면 두 값을 함께 본다.
@@ -290,7 +290,7 @@ DB를 쓰는 테스트는 실제 PostgreSQL에 Flyway로 이 마이그레이션�
 
 - 계좌 `state` 도출: §4.2 표의 각 행.
 - 실행 `state`: 전부 `DONE` → `DONE`, 일부 → `PARTIAL`, 0 → `FAILED`, `REAUTH_REQUIRED`는 `DONE`으로 세지 않음, 시한 초과.
-- 다음 픽업과 `already_final`: 고정 시계로 화 장중 → 거짓, 월 → 참(마감 화 08:00 < 픽업 화 23:00), 금 → 거짓(픽업 일 23:00 < 마감 월 08:00), 토 → 참 · `finalized_at` null, 다음 영업일 모름 → 마지막 조건 거짓.
+- 다음 픽업과 `already_final`: 고정 시계로 화 장중 → 거짓, 목 23:00 뒤 → 참(마감 금 08:00 < 픽업 일 23:00), 금 → 거짓(픽업 일 23:00 < 마감 월 08:00), 토 → 참 · `finalized_at` null, 다음 영업일 모름 → 마지막 조건 거짓.
 - 문장: `POST` 응답 두 가지와 notice 두 가지의 날짜 · 요일 · 시각 표기.
 
 **DB 통합**
@@ -334,7 +334,7 @@ DB를 쓰는 테스트는 실제 PostgreSQL에 Flyway로 이 마이그레이션�
 
 | 항목 | 지금 | 영향 |
 |---|---|---|
-| `USER` 행 픽업 주기 | `collection_run_daily` 23:00(일 · 화 · 수 · 목) 안에서만 집힌다. 데이터 요구사항 Q1 미결 | 수동 동기화가 다음 가동일 밤에 수집된다(§2.1). 주기가 바뀌면 `pickup-cron`만 바꾼다 |
+| `USER` 행 픽업 주기 | `collection_run_daily` 23:00(일 · 월 · 화 · 수 · 목) 안에서만 집힌다. 데이터 요구사항 Q1 미결 | 수동 동기화가 다음 가동일 밤에 수집된다(§2.1). 주기가 바뀌면 `pickup-cron`만 바꾼다 |
 | `USER` 행 만료 | 없다 | 백엔드 시한(§5.2)이 실행을 닫는다. `collection_run` 행은 `REQUESTED`로 남는다 |
 | `collection_run` 행 | 운영 `data.collection_run`이 0행이다(2026-10-17 조회). `collection_run_daily`는 켜져 있다 | 원인은 확인하지 않았다. EOD 행도 없는 상태라 이 설계와 무관하게 수집이 돌지 않는다 |
 | 짧은 주기 픽업을 따로 둘 때 | — | `mark_synced`는 워커가 `collection_run_daily`에서만 돈다는 전제로 DONE 행을 일괄 표시한다. 픽업 DAG를 나누면 그 전제와 KIS 토큰 캐시(파드별 파일) 공유를 다시 봐야 한다 |
