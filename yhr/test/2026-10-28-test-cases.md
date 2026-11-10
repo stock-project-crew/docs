@@ -181,7 +181,7 @@
 | PF8-08 | ✕로 지우면 확인 뒤 삭제되고 자산 변화가 되돌아간다 | 로컬 | 1 | 통과 |
 | PF8-09 | 입출금도 배당 · 수수료도 빠지면 한 문장으로 알린다 | 로컬 | 2 | 통과 |
 | PF8-10 | 입력하면 미입력 계좌가 줄고 모두 입력하면 배당 · 수수료 문구만 남는다 | 로컬 | 2 | 통과 |
-| PF8-11 | 배당 · 수수료가 확보되고 입출금만 빠지면 입출금 문구만 나온다 | 로컬 | 2 | 유보 |
+| PF8-11 | 배당 · 수수료가 확보되고 입출금만 빠지면 입출금 문구만 나온다 | 로컬 | 2 | 통과 |
 | PF8-12 | 목록을 받는 동안 행 자리를 잡아 둔다 | 로컬 | 2 | 통과 |
 | PF8-13 | 목록을 받지 못하면 다시 시도할 수 있다 | 로컬 | 2 | 통과 |
 | PF8-14 | 그 기간에 입력이 없으면 비어 있다고 말한다 | 로컬 | 2 | 통과 |
@@ -383,7 +383,7 @@
 | N-13 | 토큰 없이는 어느 사용자 경로도 열리지 않는다 | 둘 다 | 1 | 통과 |
 | N-16 | 그날 수집 행이 없는 계좌도 마감 뒤 이월된다 | 로컬 | 1 | 통과 |
 | N-17 | 이틀 연속 실패하면 처음 실측한 기준일을 그대로 이어 간다 | 로컬 | 1 | 통과 |
-| N-18 | 기간 중 빠진 계좌와 기말 날 처음 잔고가 생긴 계좌는 입출금 미입력으로 세지 않는다 | 로컬 | 2 | 통과 |
+| N-18 | 기간 중 빠진 계좌와 기말 날 처음 잔고가 생긴 계좌는 입출금 미입력으로 세지 않는다 | 로컬 | 2 | 미실행 |
 | N-19 | 확정된 날의 라인은 수동 동기화가 바꾸지 않는다 | 로컬 | 1 | 통과 |
 | N-20 | 비영업일의 수집은 라인을 만들지 않는다 | 로컬 | 2 | 통과 |
 | N-21 | 반영이 끝나지 않은 수집은 처리하지 않는다 | 로컬 | 1 | 통과 |
@@ -410,7 +410,7 @@
 | N-42 | 삭제 확인을 두 번 눌러도 한 번만 지운다 | 로컬 | 3 | 통과 |
 | N-43 | 구성종목 커버리지가 UNAVAILABLE인 ETF도 분해하지 않는다 | 로컬 | 2 | 통과 |
 | N-45 | 수동 동기화 완료를 푸시로 알린다 | 연계 | 2 | 유보 |
-| N-46 | 배당 · 수수료는 번 돈에 들고, 원장의 입출금 행은 거부한다 | 로컬 | 1 | 유보 |
+| N-46 | 배당 · 수수료는 번 돈에 들고, 원장의 입출금 행은 거부한다 | 로컬 | 1 | 통과 |
 | N-47 | 외화 실현손익은 매입일 · 매도일 환율을 각각 쓴다 | 로컬 | 1 | 유보 |
 | N-48 | 데이터 계약 위반은 백엔드가 감지하지 않는다 | 연계 | 1 | 유보 |
 | N-49 | 체결 이력 중간의 설명되지 않는 수량 변동을 따로 알린다 | 로컬 | 2 | 유보 |
@@ -2834,7 +2834,7 @@
 
 ### PF7. 자산 변화를 본다
 
-`로컬` 케이스는 `R-LOCAL` 뒤에 돈다. 로컬 `yhr@a.com`의 7월은 기초 `2026-07-24`(기간 시작 전 라인이 없어 대체) · 기말 `2026-07-27`, 입금 `2026-07-27` 2,000,000원(`…0001`)이다. 배당 · 수수료 원장은 연결돼 있지 않아(`EmptyEarningsCashflowPort`) 두 환경 모두 `CASHFLOW_UNCOVERED`가 실린다. `연계`의 기대값은 `Q-PF7-PAIR` 결과다.
+`로컬` 케이스는 `R-LOCAL` 뒤에 돈다. 로컬 `yhr@a.com`의 7월은 기초 `2026-07-24`(기간 시작 전 라인이 없어 대체) · 기말 `2026-07-27`, 입금 `2026-07-27` 2,000,000원(`…0001`)이다. `R-LOCAL` 뒤에는 배당 · 수수료 · 세금 원장(`cln_cashflow`)과 커버리지가 비어 있어 세 유형이 모두 미확보다. `연계`의 모의계좌는 데이터가 다섯 유형 모두 `UNAVAILABLE`로 주어 `배당·수수료·세금` 문구가 나온다. `연계`의 기대값은 `Q-PF7-PAIR` 결과다.
 
 #### PF7-01 요약의 이번 달 자산은 자산 변화의 기말 − 기초다
 
@@ -2902,7 +2902,7 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `GET /portfolio/views/asset-change?period=CUSTOM&from=…&to=…`(`로컬`: `2026-07-01` · `2026-07-31`) ② `Q-PF7-PAIR`(같은 기간, `account=`) ③ `로컬`만: 웹 자산 변화 화면을 읽는다 |
-| 기대 결과 | ① `deposited = 0`, `investment_pnl.total = closing − opening`(계좌 편입 · 제외가 0일 때), `breakdown`에 `DEPOSIT` · `WITHDRAW`가 없다. `로컬`: `opening = 56800000`, `closing = 58000000`, `earned = 1200000`, `breakdown = [{INVESTMENT_PNL, 1200000}]`. `CASHFLOW_UNCOVERED.message = 4개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` ② `deposited = 0`, `investment_pnl`이 ①과 같다 ③ 문장 두 줄 `자산이 120만원 늘었어요.` · `전부 벌어서예요`. `넣은 돈` `0`과 `넣은 돈 입력 →`가 남고 `입금` 줄이 없다. `번 돈` `+1,200,000` · `투자손익` `+1,200,000` |
+| 기대 결과 | ① `deposited = 0`, `investment_pnl.total = closing − opening`(계좌 편입 · 제외가 0일 때), `breakdown`에 `DEPOSIT` · `WITHDRAW`가 없다. `로컬`: `opening = 56800000`, `closing = 58000000`, `earned = 1200000`, `breakdown = [{INVESTMENT_PNL, 1200000}]`. `CASHFLOW_UNCOVERED.message = 4개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` ② `deposited = 0`, `investment_pnl`이 ①과 같다 ③ 문장 두 줄 `자산이 120만원 늘었어요.` · `전부 벌어서예요`. `넣은 돈` `0`과 `넣은 돈 입력 →`가 남고 `입금` 줄이 없다. `번 돈` `+1,200,000` · `투자손익` `+1,200,000` |
 | 증거 | ① 응답 ② 질의 결과 ③ 스크린샷 |
 | 근거 절 | 포트폴리오 §2.9 투자손익 = 나머지 전부 · 넣은 돈은 사용자 입력 · §4.6 |
 | 환경 | 둘 다 |
@@ -2910,7 +2910,7 @@
 | 수단 | `API` · `DB` · `크롬` |
 | 자동화 | `자동-기존` `CashflowAssetChangeFlowTest.넣고_지우면_넣은_돈이_따라_움직인다` · `AssetChangeApiTest.입출금을_넣지_않은_계좌를_센다` · 프론트 `sentence.test.tsx › 넣은 것이 없으면 전부 벌어서다` · `assetChange.test.tsx › 넣은 돈이 0이어도 그룹과 입구가 남고, 0원 항목 줄은 없다` |
 | 결과 | 통과 |
-| 비고 | 실행: 2026-11-05 · `로컬` · `~/stock-it-evidence/2026-11-05/PF7-04/` |
+| 비고 | 실행: 2026-11-05 · `로컬` · `~/stock-it-evidence/2026-11-05/PF7-04/`. ①은 배당 · 수수료 · 세금 원장을 읽는 백엔드(`0a38fec`)에서 다시 봤다(2026-11-11 · `~/stock-it-evidence/2026-11-11/PF7-04/`) |
 
 #### PF7-05 기간을 바꾸면 그 기간으로 다시 계산된다
 
@@ -2940,15 +2940,15 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① 자산 변화 `전체 계좌 ▾`(접근성 이름 `계좌 필터 열기`) → `계좌 한국투자 위탁` → 시트를 닫는다 ② `한국투자 위탁 ✕`로 빼고 `계좌유형 연금`을 고른다 ③ ① ②와 같은 요청을 API로(`account=…0001` / `account=…0003&account=…0004`, 기간 `CUSTOM` `2026-07-01`~`2026-07-31`) ④ `Q-PF7-PAIR`(같은 기간, `account=…0001` / `account=…0003,…0004`) |
-| 기대 결과 | ① 요청에 `account=…0001`. 칩 `계좌 1 ▾`, 각주 `다른 계좌에서 옮긴 돈도 입금으로 표시돼요`. `기초자산` `30,760,000` · `넣은 돈` `+2,000,000` · `투자손익` `−800,000` · `기말자산` `31,960,000` ② 요청에 `account=…0003`과 `account=…0004`. 문장 `자산이 그대로예요`, `기초자산` `17,040,000` · `기말자산` `17,040,000`, `번 돈` 묶음이 없다 ③ `…0001`: `opening = 30760000`, `closing = 31960000`, `deposited = 2000000`, `earned = -800000`. `CASHFLOW_UNCOVERED.params.types = ["DIVIDEND","FEE","TAX"]`, `manual_uncovered_account_count = 0`. 연금: `opening = 17040000`, `closing = 17040000`, `deposited = 0`, `earned = 0`, `breakdown = []`, `manual_uncovered_account_count = 2` ④ 각 `opening_krw` · `closing_krw` · `deposited` · `investment_pnl`이 ③과 같다 |
+| 기대 결과 | ① 요청에 `account=…0001`. 칩 `계좌 1 ▾`, 각주 `다른 계좌에서 옮긴 돈도 입금으로 표시돼요`. `기초자산` `30,760,000` · `넣은 돈` `+2,000,000` · `투자손익` `−800,000` · `기말자산` `31,960,000` ② 요청에 `account=…0003`과 `account=…0004`. 문장 `자산이 그대로예요`, `기초자산` `17,040,000` · `기말자산` `17,040,000`, `번 돈` 묶음이 없다 ③ `…0001`: `opening = 30760000`, `closing = 31960000`, `deposited = 2000000`, `earned = -800000`. `CASHFLOW_UNCOVERED.params.types = ["DIVIDEND","FEE","TAX"]`, `account_count = 1`, `manual_uncovered_account_count = 0`, `message = 배당·수수료·세금 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요`. 연금: `opening = 17040000`, `closing = 17040000`, `deposited = 0`, `earned = 0`, `breakdown = []`, `account_count = 2`, `manual_uncovered_account_count = 2`, `message = 2개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` ④ 각 `opening_krw` · `closing_krw` · `deposited` · `investment_pnl`이 ③과 같다 |
 | 증거 | ① ② 스크린샷 · 네트워크 요청 ③ 응답 ④ 질의 결과 |
 | 근거 절 | 포트폴리오 §2.9 필터 · 계좌 간 이체 · §3.3 · §8.1 |
 | 환경 | 로컬 |
 | 등급 | 2 |
 | 수단 | `크롬` · `API` · `DB` |
-| 자동화 | `자동-기존` `AssetChangeApiTest.계좌를_걸면_그_계좌들_안에서_센다` · 프론트 `assetChange.test.tsx › 계좌를 걸면 옮긴 돈에 대한 각주가 붙는다` |
+| 자동화 | `자동-기존` `AssetChangeApiTest.계좌를_걸면_그_계좌들_안에서_센다` · `계좌를_걸면_그_계좌들_안에서_미확보를_센다` · 프론트 `assetChange.test.tsx › 계좌를 걸면 옮긴 돈에 대한 각주가 붙는다` |
 | 결과 | 통과 |
-| 비고 | 계좌를 걸어도 `BOUNDARY_CARRIED_FORWARD`는 걸지 않은 계좌(`…0004`)의 이월을 센다(`AssetChangeViewService.context`가 필터 없이 센다). 스펙은 필터와의 관계를 정하지 않아 기대값에서 뺐다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF7-06/`. 필터를 걸어도 `account_count = 4`다(D-22) |
+| 비고 | 계좌를 걸어도 `BOUNDARY_CARRIED_FORWARD`는 걸지 않은 계좌(`…0004`)의 이월을 센다(`AssetChangeViewService.context`가 필터 없이 센다). 스펙은 필터와의 관계를 정하지 않아 기대값에서 뺐다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF7-06/`. ③은 2026-11-11에 다시 봤다(`~/stock-it-evidence/2026-11-11/PF7-06/`) |
 
 #### PF7-07 기초 스냅샷이 없으면 실제 시작일을 알린다
 
@@ -2978,7 +2978,7 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `GET /portfolio/views/asset-change?period=THIS_MONTH` ② `Q-USER-ACCOUNTS`(`email=…`) ③ `로컬`만: 자산 변화 화면의 경고 줄을 읽는다 |
-| 기대 결과 | ① `notices`에 `code = CASHFLOW_UNCOVERED`, `severity = warn`, `params.types`가 `DIVIDEND` · `FEE` · `TAX`로 시작하고, `params.account_count` = ②에서 `DISCONNECTED`가 아닌 계좌 수. `로컬`: `types = ["DIVIDEND","FEE","TAX","DEPOSIT","WITHDRAW"]`, `account_count = 4`, `manual_uncovered_account_count = 3`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요`. 같은 응답에 `BOUNDARY_CARRIED_FORWARD`(`message = 기간 경계 시점에 1개 계좌가 이월값입니다`, `params.boundary = 2026-07-27`) ③ 배너 아래 `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` · `⚠ 기간 경계 시점에 1개 계좌가 이월값입니다` |
+| 기대 결과 | ① `notices`에 `code = CASHFLOW_UNCOVERED`, `severity = warn`, `params.types`가 `DIVIDEND` · `FEE` · `TAX`로 시작하고, `params.account_count` = 그 기간에 첫 잔고와 마지막 잔고 날짜가 다른 계좌 가운데 배당 · 수수료 · 세금 중 하나라도 확보하지 못한 계좌 수. `로컬`: `types = ["DIVIDEND","FEE","TAX","DEPOSIT","WITHDRAW"]`, `account_count = 4`, `manual_uncovered_account_count = 3`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요`. 같은 응답에 `BOUNDARY_CARRIED_FORWARD`(`message = 기간 경계 시점에 1개 계좌가 이월값입니다`, `params.boundary = 2026-07-27`) ③ 배너 아래 `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` · `⚠ 기간 경계 시점에 1개 계좌가 이월값입니다` |
 | 증거 | ① 응답 ② 질의 결과 ③ 스크린샷 |
 | 근거 절 | 포트폴리오 §2.9 경계 처리 · §4.6 · §8.2 `CASHFLOW_UNCOVERED` · `BOUNDARY_CARRIED_FORWARD` · §9.3 응답 · §10 현금흐름 미확보 경고 |
 | 환경 | 둘 다 |
@@ -2986,7 +2986,7 @@
 | 수단 | `API` · `DB` · `크롬` |
 | 자동화 | `자동-기존` `AssetChangeApiTest.기간_경계와_미확보_내역을_알린다` · `입출금을_넣지_않은_계좌를_센다` · `NoticeCollectorTest.배당_수수료와_입출금이_함께_빠지면_한_문장으로_알린다` · 프론트 `assetChange.test.tsx › 나머지 경고 둘은 줄로 쌓인다` |
 | 결과 | 통과 |
-| 비고 | 배당 · 수수료 원장이 연결되지 않아(`EmptyEarningsCashflowPort`) 이 경고는 지금 늘 실린다. 원장이 붙으면 "확보한 계좌만 있는" 경우를 이 케이스에 더한다. 실행: 2026-11-05 · `로컬` · `~/stock-it-evidence/2026-11-05/PF7-08/` |
+| 비고 | 배당 · 수수료 · 세금을 모두 확보하고 입출금만 빠진 경우는 PF8-11이 본다. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/PF7-08/` |
 
 #### PF7-09 실현손익 뷰 →는 같은 기간의 실현손익을 연다
 
@@ -3254,7 +3254,7 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `GET /portfolio/views/asset-change?period=THIS_MONTH` ② 자산 변화 화면의 경고 줄을 읽는다 |
-| 기대 결과 | ① `notices`에 `code = CASHFLOW_UNCOVERED`, `severity = warn`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요`, `params.types = [DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAW]`, `params.manual_uncovered_account_count = 3`, `params.account_count = 4` ② 경고 줄 `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
+| 기대 결과 | ① `notices`에 `code = CASHFLOW_UNCOVERED`, `severity = warn`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요`, `params.types = [DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAW]`, `params.manual_uncovered_account_count = 3`, `params.account_count = 4` ② 경고 줄 `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
 | 증거 | ① 응답 ② 스크린샷 |
 | 근거 절 | 포트폴리오 §4.6 · §8.2 · 입출금 설계 §4 |
 | 환경 | 로컬 |
@@ -3262,7 +3262,7 @@
 | 수단 | `API` · `크롬` |
 | 자동화 | `자동-기존` `AssetChangeApiTest.입출금을_넣지_않은_계좌를_센다` · `NoticeCollectorTest.배당_수수료와_입출금이_함께_빠지면_한_문장으로_알린다` · `assetChange.test.tsx` '나머지 경고 둘은 줄로 쌓인다' |
 | 결과 | 통과 |
-| 비고 | 문구가 스펙 §4.6 예시(`7월 입출금이 입력되지 않아 투자손익에 섞여 있을 수 있어요`)와 다르다. 입출금 설계 §7이 반영 후보로 올렸다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF8-09/` |
+| 비고 | 문구가 스펙 §4.6 예시(`7월 입출금이 입력되지 않아 투자손익에 섞여 있을 수 있어요`)와 다르다. 입출금 설계 §7이 반영 후보로 올렸다. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/PF8-09/` |
 
 #### PF8-10 입력하면 미입력 계좌가 줄고 모두 입력하면 배당 · 수수료 문구만 남는다
 
@@ -3273,7 +3273,7 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `POST /portfolio/cashflows` 본문 `{"account_id": "20000000-0000-0000-0000-000000000002", "type": "DEPOSIT", "amount": 100000, "occurred_on": "2026-07-25"}` ② `GET /portfolio/views/asset-change?period=THIS_MONTH` ③ 같은 본문으로 `…0003` · `…0004` ④ ②를 다시 ⑤ 자산 변화 화면의 경고 줄을 읽는다 |
-| 기대 결과 | ① `201`, `id` ② `CASHFLOW_UNCOVERED.message = 2개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요`, `manual_uncovered_account_count = 2`, `deposited = 2100000` ③ 둘 다 `201` ④ `message = 배당·수수료 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요`, `params.types = [DIVIDEND, FEE, TAX]`, `manual_uncovered_account_count = 0`, `deposited = 2300000` ⑤ `⚠ 배당·수수료 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요` |
+| 기대 결과 | ① `201`, `id` ② `CASHFLOW_UNCOVERED.message = 2개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요`, `manual_uncovered_account_count = 2`, `deposited = 2100000` ③ 둘 다 `201` ④ `message = 배당·수수료·세금 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요`, `params.types = [DIVIDEND, FEE, TAX]`, `manual_uncovered_account_count = 0`, `deposited = 2300000` ⑤ `⚠ 배당·수수료·세금 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요` |
 | 증거 | ①~④ 응답 ⑤ 스크린샷 |
 | 근거 절 | 포트폴리오 §4.6 · 입출금 설계 §4 |
 | 환경 | 로컬 |
@@ -3281,26 +3281,26 @@
 | 수단 | `API` · `크롬` |
 | 자동화 | `자동-기존` `AssetChangeApiTest.입출금을_넣지_않은_계좌를_센다` · `NoticeCollectorTest.입출금이_모두_들어왔으면_배당_수수료만_알린다` |
 | 결과 | 통과 |
-| 비고 | 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF8-10/` |
+| 비고 | 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/PF8-10/` |
 
 #### PF8-11 배당 · 수수료가 확보되고 입출금만 빠지면 입출금 문구만 나온다
 
 | 항목 | 내용 |
 |---|---|
-| 사전조건 | 배당 · 수수료를 확보한 계좌가 있다 |
-| 테스트 데이터 | `yhr@a.com` |
+| 사전조건 | `R-LOCAL` → `F-PF8-CASHFLOW-COVERED` |
+| 테스트 데이터 | `yhr@a.com` — 네 계좌의 배당 · 수수료 · 세금이 7월 전체에 확보돼 있고, 7월 입출금은 `…0001`에만 있다 |
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `GET /portfolio/views/asset-change?period=THIS_MONTH` |
-| 기대 결과 | ① `CASHFLOW_UNCOVERED.message = 3개 계좌에 이 기간 입출금이 입력되지 않아 투자손익이 정확하지 않을 수 있어요`, `params.types = [DEPOSIT, WITHDRAW]` |
+| 기대 결과 | ① `CASHFLOW_UNCOVERED.message = 3개 계좌에 이 기간 입출금이 입력되지 않아 투자손익이 정확하지 않을 수 있어요`, `params.types = [DEPOSIT, WITHDRAW]`, `params.account_count = 0`, `params.manual_uncovered_account_count = 3` |
 | 증거 | ① 응답 |
 | 근거 절 | 포트폴리오 §4.6 · 입출금 설계 §4 |
 | 환경 | 로컬 |
 | 등급 | 2 |
 | 수단 | `API` |
-| 자동화 | `자동-기존` `NoticeCollectorTest.입출금을_넣지_않은_계좌를_알린다` |
-| 결과 | 유보 |
-| 비고 | 배당 · 수수료를 읽는 포트가 빈 구현(`EmptyEarningsCashflowPort`)이라 배당 · 수수료가 늘 미확보다. 그 원천이 생기기 전에는 만들 수 없다 |
+| 자동화 | `자동-기존` `NoticeCollectorTest.입출금을_넣지_않은_계좌를_알린다` · `AssetChangeApiTest.세_유형을_모두_확보하고_입출금만_빠지면_입출금_문구만_나온다` |
+| 결과 | 통과 |
+| 비고 | KIS 수집은 수수료 · 세금을 확보하지 않아 `연계`에서는 이 상태를 만들 수 없다. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/PF8-11/` |
 
 #### PF8-12 목록을 받는 동안 행 자리를 잡아 둔다
 
@@ -4416,7 +4416,7 @@ PF11-01 ~ PF11-07은 같은 날 이어서 돈다. `로컬` 백엔드는 생성�
 | 수단 | `API` |
 | 자동화 | `자동-신규` |
 | 결과 | 실패 |
-| 비고 | 지금 코드는 필터와 무관하게 세어 `count = 1`을 싣는다(D-05 · SG-06). 같은 응답의 `CASHFLOW_UNCOVERED.params.account_count`는 판정하지 않는다(SG-08). 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF11-10/`. 계좌 필터 `…0001`에도 `BOUNDARY_CARRIED_FORWARD`가 실린다. D-05 |
+| 비고 | 지금 코드는 필터와 무관하게 세어 `count = 1`을 싣는다(D-05 · SG-06). 같은 응답의 `CASHFLOW_UNCOVERED.params.account_count`는 필터 안 계좌만 세어 `1`이다. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/PF11-10/`. 계좌 필터 `…0001`에도 `BOUNDARY_CARRIED_FORWARD`가 실린다. D-05 |
 
 #### PF11-11 연동된 계좌의 마지막 수집이 실패하면 계좌 연동 목록이 그 날짜와 함께 알린다
 
@@ -7058,11 +7058,11 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 항목 | 내용 |
 |---|---|
 | 사전조건 | `R-LOCAL` |
-| 테스트 데이터 | `hhj@a.com`(ETF 없음) · `jdh@a.com`(`…0006`에 TIGER) · `yhr@a.com` |
+| 테스트 데이터 | `hhj@a.com`(ETF 없음) · `jdh@a.com`(`…0006`에 TIGER, 두 계좌 모두 잔고가 07-24 · 07-27 이틀) · `yhr@a.com` |
 | 선행 | — |
 | 실행 시점 | 언제든 |
-| 절차 | ① `hhj@a.com`으로 `GET /portfolio/views/positions?lens=LOOK_THROUGH` ② `jdh@a.com`으로 `GET /portfolio/views/positions?lens=LOOK_THROUGH` ③ `hhj@a.com`으로 `GET /portfolio/views/asset-change?period=THIS_MONTH` |
-| 기대 결과 | ① `notices`에 `CONSTITUENT_UNAVAILABLE`이 없다 ② `CONSTITUENT_UNAVAILABLE.params = {count: 1, undecomposed_krw: 5500000, keys: ["133690"]}`(yhr의 11,000,000이 섞이지 않는다) ③ `CASHFLOW_UNCOVERED.params.account_count = 1` |
+| 절차 | ① `hhj@a.com`으로 `GET /portfolio/views/positions?lens=LOOK_THROUGH` ② `jdh@a.com`으로 `GET /portfolio/views/positions?lens=LOOK_THROUGH` ③ `jdh@a.com`으로 `GET /portfolio/views/asset-change?period=THIS_MONTH` |
+| 기대 결과 | ① `notices`에 `CONSTITUENT_UNAVAILABLE`이 없다 ② `CONSTITUENT_UNAVAILABLE.params = {count: 1, undecomposed_krw: 5500000, keys: ["133690"]}`(yhr의 11,000,000이 섞이지 않는다) ③ `CASHFLOW_UNCOVERED.params.account_count = 2`(jdh의 두 계좌만 센다. yhr의 네 계좌가 섞이지 않는다) |
 | 증거 | ①~③ 응답 |
 | 근거 절 | 포트폴리오 §3.8 "스코프는 파이프라인 2단계 앞에 선다" · §6.4 "모든 뷰는 인증 주체의 계좌만 집계한다" · §9.1 사용자 스코프 · §8.2 |
 | 환경 | 로컬 |
@@ -7070,7 +7070,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 수단 | `API` |
 | 자동화 | `자동-기존` `UserScopeIsolationTest` · `LensPreservationTest.계좌_필터가_미분해_집계를_좁힌다`. 안내 개수의 사용자 분리는 `자동-신규` |
 | 결과 | 통과 |
-| 비고 | 끝나면 `R-LOCAL`. 실행: 2026-11-04 · `로컬` · `~/stock-it-evidence/2026-11-04/N-06/` |
+| 비고 | 현금흐름 미확보는 그 기간에 잔고가 이틀 이상인 계좌만 따진다. `hhj@a.com`의 이번 달은 잔고가 07-27 하루뿐이라 경고가 없어 ③은 `jdh@a.com`으로 본다. 끝나면 `R-LOCAL`. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/N-06/` |
 
 #### N-07 판정할 수 없는 체결은 그 사정을 화면에 말한다
 
@@ -7252,15 +7252,15 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 선행 | PF2-11 |
 | 실행 시점 | PF2-11과 같은 날 |
 | 절차 | ① PF2-18 ①의 응답에서 `CASHFLOW_UNCOVERED`를 읽는다 ② 웹 `자산 변화` 경고 줄을 읽는다 |
-| 기대 결과 | ① `params.manual_uncovered_account_count = 3`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` ② `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
+| 기대 결과 | ① `params.manual_uncovered_account_count = 3`, `message = 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` ② `⚠ 3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
 | 증거 | ① 응답 ② 화면 |
 | 근거 절 | 입출금 설계 §4 "기간 중에 빠진 계좌는 기말 잔고에 없으므로 세지 않는다. 기말 날에 처음 잔고가 생긴 계좌도 세지 않는다" · 포트폴리오 §4.6 |
 | 환경 | 로컬 |
 | 등급 | 2 |
 | 수단 | `API` · `크롬` |
 | 자동화 | `자동-기존` `AssetChangeApiTest.기말에_처음_잔고가_생긴_계좌는_세지_않는다` · `입출금을_넣지_않은_계좌를_센다` |
-| 결과 | 통과 |
-| 비고 | 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/N-18/rerun/` |
+| 결과 | 미실행 |
+| 비고 | PF2-18 준비(PF2-11 ⑤까지)가 필요하다. 2026-11-09 실행(`~/stock-it-evidence/2026-11-09/N-18/rerun/`)은 배당 · 수수료 · 세금 원장을 읽기 전의 문구라 다시 돈다 |
 
 #### N-19 확정된 날의 라인은 수동 동기화가 바꾸지 않는다
 
@@ -7760,20 +7760,20 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 
 | 항목 | 내용 |
 |---|---|
-| 사전조건 | 배당 · 수수료 원장(`cln_cashflow` · `cln_cashflow_coverage`)을 읽는 구현 |
-| 테스트 데이터 | 배당 · 수수료 행과 `DEPOSIT` 행 하나 |
+| 사전조건 | `R-LOCAL` → `F-PF8-CASHFLOW-COVERED` → `F-N46-LEDGER` |
+| 테스트 데이터 | `yhr@a.com`. 원장에 `…0002` 배당 50,000원 · `…0001` 수수료 −3,000원(둘 다 2026-07-26). 원장에 넣으려는 `DEPOSIT` 행 하나(`…0003`) |
 | 선행 | — |
 | 실행 시점 | 언제든 |
-| 절차 | ① `GET /portfolio/views/asset-change?period=…` |
-| 기대 결과 | ① 배당은 `breakdown`의 `DIVIDEND`, 수수료 · 세금은 `FEE_TAX`로 `earned`에 든다. 원장의 `DEPOSIT` 행은 넣은 돈에 들지 않는다. 확보한 유형은 `CASHFLOW_UNCOVERED.params.types`에서 빠진다 |
-| 증거 | ① 응답 |
-| 근거 절 | 포트폴리오 §2.9 "배당과 수수료는 번 돈에 넣는다" · §9.1 자산 변화 "배당 · 수수료 · 세금은 번 돈에 귀속", "`cln_cashflow`에 `DEPOSIT` · `WITHDRAW`가 있으면 거부" · §4.6 · 데이터 §6.8 · §6.9 |
+| 절차 | ① `GET /portfolio/views/asset-change?period=THIS_MONTH` ② DB에 `cln_cashflow` `DEPOSIT` 행 `INSERT`를 시도한다 |
+| 기대 결과 | ① `breakdown`에 `DIVIDEND` `50000` · `FEE_TAX` `-3000`, `investment_pnl.total = -847000`, `earned = -800000`(원장이 있든 없든 같다), `deposited = 2000000`. `CASHFLOW_UNCOVERED.params.types = [DEPOSIT, WITHDRAW]` ② `cln_cashflow_type_check` 위반으로 실패한다 |
+| 증거 | ① 응답 ② 오류 메시지 |
+| 근거 절 | 포트폴리오 §2.9 "배당과 수수료는 번 돈에 넣는다" · §9.1 자산 변화 "배당 · 수수료 · 세금은 번 돈에 귀속", "`cln_cashflow`는 `DIVIDEND`·`FEE`·`TAX`만 읽는다" · §4.6 · 데이터 §6.8 · §6.9 |
 | 환경 | 로컬 |
 | 등급 | 1 — 배당 · 수수료가 번 돈에 들지 않거나 원장의 입출금이 넣은 돈에 섞이면 틀린 투자손익을 믿는다 |
-| 수단 | `API` |
-| 자동화 | `자동-신규` |
-| 결과 | 유보 |
-| 비고 | 원장을 읽는 포트가 빈 구현(`EmptyEarningsCashflowPort`)이라 배당 · 수수료가 늘 미확보다(PF8-11 비고) |
+| 수단 | `API` · `DB` |
+| 자동화 | `자동-기존` `AssetChangeApiTest.배당과_수수료는_번_돈에_들고_투자손익에서_빠진다` · `확보한_유형은_경고에서_빠진다` · `CashflowMirrorTest.원장은_입출금_유형을_받지_않는다` |
+| 결과 | 통과 |
+| 비고 | 원장 표의 `type` CHECK가 `DIVIDEND` · `FEE` · `TAX`만 받아 입출금 행은 들어올 수 없다. 실행: 2026-11-11 · `로컬` · `~/stock-it-evidence/2026-11-11/N-46/` |
 
 #### N-47 외화 실현손익은 매입일 · 매도일 환율을 각각 쓴다
 
@@ -8827,7 +8827,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 2 notice | §8.2 `CA_UNKNOWN` | 기업행위 이력 미확인 종목의 `instrument_id` 배열 | — | 시나리오 단계 · PF9-17 |
 | 2 notice | §8.2 `CASHFLOW_UNCOVERED` | 배당 · 수수료와 입출금이 함께 빠짐 | PF7-08 · PF8-09 | 덮임 |
 | 2 notice | §8.2 `CASHFLOW_UNCOVERED` | 배당 · 수수료만 빠짐 | PF8-10 | 덮임 |
-| 2 notice | §8.2 `CASHFLOW_UNCOVERED` | 입출금만 빠짐 | PF8-11(유보) | 덮임 |
+| 2 notice | §8.2 `CASHFLOW_UNCOVERED` | 입출금만 빠짐 | PF8-11 | 덮임 |
 | 2 notice | §8.2 `CASHFLOW_UNCOVERED` · §3.8 | 남의 계좌가 계좌 수에 들지 않는다 | — | N-06 |
 | 2 notice | §8.2 `PERIOD_TRUNCATED` | 기초 대체와 실제 시작일 | PF7-07 | 덮임 |
 | 2 notice | §8.2 `BOUNDARY_CARRIED_FORWARD` | 기말 경계 이월 | PF11-08 | 덮임 |
@@ -8983,7 +8983,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 8 검증 규칙 | §9.1 자산 변화 | 잔차 항목 없음 | PF11-08 | 덮임 |
 | 8 검증 규칙 | §9.1 자산 변화 | 계좌 편입 · 제외는 별도 항목 | PF2-11 | 덮임 |
 | 8 검증 규칙 | §9.1 자산 변화 | 배당 · 수수료 · 세금은 번 돈 | — | N-46 |
-| 8 검증 규칙 | §9.1 자산 변화 | `cln_cashflow`의 `DEPOSIT` · `WITHDRAW`는 거부 | — | N-46 |
+| 8 검증 규칙 | §9.1 자산 변화 | `cln_cashflow`는 `DIVIDEND` · `FEE` · `TAX`만 읽는다 | — | N-46 |
 | 8 검증 규칙 | §9 머리말 | 런타임 위반이면 집계하지 않는다 | — | N-27 |
 | 8 검증 규칙 | §9.3 요청 | 토큰 없거나 만료면 `401` | C2-01(뷰) | N-13 |
 | 8 검증 규칙 | §9.3 요청 | 사용자 ID를 요청에서 받지 않는다 | — | N-12 |
@@ -9067,7 +9067,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 11 입출금 | §2.2 날짜 | 상한(해제 계좌) — 마지막 잔고 날짜까지 | PF8-23 · PF2-16 | 덮임 |
 | 11 입출금 | §2.1 | `window`는 잔고가 없으면 `null` | — | PF8-28 |
 | 11 입출금 | §2.1 | 같은 날이면 `id` 순 | — | N-37 |
-| 11 입출금 | §4 | 입출금만 빠짐 문구 | PF8-11(유보) | 덮임 |
+| 11 입출금 | §4 | 입출금만 빠짐 문구 | PF8-11 | 덮임 |
 | 11 입출금 | §4 | 배당 · 수수료만 빠짐 문구 | PF8-10 | 덮임 |
 | 11 입출금 | §4 | 둘 다 빠짐 문구 | PF8-09 | 덮임 |
 | 11 입출금 | §4 | 기간 중 빠진 계좌는 세지 않는다 | — | N-18 |
@@ -9133,10 +9133,10 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 12 데이터 | §6.8 `cln_cashflow` | 미확보 유형은 `CASHFLOW_UNCOVERED` | PF7-08 | 덮임 |
 | 12 데이터 | §6.8 `cln_cashflow` | 배당 · 비용은 번 돈에 | — | N-46 |
 | 12 데이터 | §6.8 `cln_cashflow` | 매매대금이 섞이면 무의미 | — | N-48 |
-| 12 데이터 | §6.8 `cln_cashflow` | `DEPOSIT` · `WITHDRAW`가 있으면 거부 | — | N-46 |
+| 12 데이터 | §6.8 `cln_cashflow` | `type`은 `DIVIDEND` · `FEE` · `TAX`만 받는다 | — | N-46 |
 | 12 데이터 | §6.9 커버리지 | 체결 커버리지가 없으면 추정 판정 근거를 잃는다 | — | PF9-21 |
 | 12 데이터 | §6.9 커버리지 | `is_definitive` 참 + 되감은 수량 ≠ 0 → 영구 추정 | — | PF9-22 |
-| 12 데이터 | §6.9 커버리지 | 현금흐름 커버리지가 없으면 미확보 유형을 알리지 못한다 | — | N-46 |
+| 12 데이터 | §6.9 커버리지 | 커버리지가 없거나 확보 기간이 모자라면 그 유형은 미확보다 | PF8-11 · N-46 | 덮임 |
 | 12 데이터 | §6.10 `collection_run` | 최종 상태가 `DONE`이 아니면 이월 | PF11-01 · N-16 | 덮임 |
 | 12 데이터 | §6.10 `collection_run` | `DONE` + `silver_synced_at`이어야 완료 | — | N-21 |
 | 12 데이터 | §6.10 `collection_run` | 표가 없으면 수동 새로고침 · 연동 불가 | — | N-50 |

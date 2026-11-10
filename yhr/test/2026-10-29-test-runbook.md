@@ -166,7 +166,7 @@ docker compose -f <작업폴더>/back-end/docker-compose.yml exec -T \
 
 | ID | 언제 | 하는 일 |
 |---|---|---|
-| `R-LOCAL` | `로컬` 묶음을 시작할 때, 케이스의 사전조건이 앞 케이스에 깨졌을 때 | 샘플 두 파일을 다시 넣고(안내서 1.2) `F-00` · `F-01`을 적용한다. 샘플은 `app_user` 밖의 앱 표(계좌 · 라인 · 처리 기록 · 동기화 · 평단 · 실현손익 · 입출금 · 알림 · 기기 · `snapshot_run`)와 종목 · 수집 · 잔고 · 환율 · 시세 · 캘린더 미러를 비우고 다시 만든다. 체결 · 기업행위 미러(`cln_trade` · `cln_trade_coverage` · `corporate_action` · `ca_coverage`)는 `F-01`이 비운다. 브라우저 저장소의 마지막 동기화 실행 id(`sync.last_run_id`)는 남지만, 그 실행 조회가 `403`이면 앱이 지운다 |
+| `R-LOCAL` | `로컬` 묶음을 시작할 때, 케이스의 사전조건이 앞 케이스에 깨졌을 때 | 샘플 두 파일을 다시 넣고(안내서 1.2) `F-00` · `F-01`을 적용한다. 샘플은 `app_user` 밖의 앱 표(계좌 · 라인 · 처리 기록 · 동기화 · 평단 · 실현손익 · 입출금 · 알림 · 기기 · `snapshot_run`)와 종목 · 수집 · 잔고 · 환율 · 시세 · 캘린더 미러를 비우고 다시 만들며, 배당 · 수수료 · 세금 원장과 커버리지(`cln_cashflow` · `cln_cashflow_coverage`)는 비워 둔다. 체결 · 기업행위 미러(`cln_trade` · `cln_trade_coverage` · `corporate_action` · `ca_coverage`)는 `F-01`이 비운다. 브라우저 저장소의 마지막 동기화 실행 id(`sync.last_run_id`)는 남지만, 그 실행 조회가 `403`이면 앱이 지운다 |
 
 `연계`는 초기화하지 않는다. 테스트 계정의 상태는 앱 조작과 API로만 바꾼다.
 
@@ -759,6 +759,26 @@ SELECT opening, closing, opening_substituted, opening_krw, closing_krw, deposite
 PF10은 준비 데이터 · 판정 질의가 없다(종목 상세 구현이 없어 모든 케이스가 유보다). PF9-16의 `F-PF9-SEEDED`는 `평단 계산 켠 백엔드`(§2.1)에서 쓰고, 끝나면 `R-LOCAL`이다. PF8은 `F-PF3-DISCONNECT`를 함께 쓴다.
 
 PF11의 `F-…`는 `\gset`으로 날짜를 정하므로 `-f -`로 넘기는 §4.3의 방식 그대로 돈다. 오늘이 KR 영업일이 아니면 `\gset`이 행을 얻지 못해 멈춘다.
+
+**`F-PF8-CASHFLOW-COVERED` `yhr@a.com` 네 계좌의 배당 · 수수료 · 세금을 7월 전체에 확보로 둔다** — 로컬 7월의 원장을 세는 날은 07-25 ~ 07-27이다
+
+```sql
+INSERT INTO cln_cashflow_coverage (account_ref, type, state, covered_from, covered_to, computed_at)
+SELECT a.account_ref, t.type, 'COVERED', DATE '2026-07-01', DATE '2026-07-31', now()
+  FROM account a CROSS JOIN (VALUES ('DIVIDEND'), ('FEE'), ('TAX')) AS t(type)
+ WHERE a.account_id IN ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002',
+                        '20000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004')
+ON CONFLICT (account_ref, type) DO UPDATE SET state = EXCLUDED.state, covered_from = EXCLUDED.covered_from, covered_to = EXCLUDED.covered_to;
+```
+
+**`F-N46-LEDGER` 원장에 배당 · 수수료 행을 넣는다** — `…0002` 배당 50,000원, `…0001` 수수료 −3,000원. 금액은 계좌 현금 기준 부호다(배당 양수, 수수료 · 세금 음수). `F-PF8-CASHFLOW-COVERED` 뒤에 쓴다
+
+```sql
+INSERT INTO cln_cashflow (cashflow_id, account_ref, type, amount, currency, occurred_at, instrument_id)
+SELECT 'N46-DIV', account_ref, 'DIVIDEND', 50000, 'KRW', TIMESTAMPTZ '2026-07-26 12:00+09', NULL::uuid FROM account WHERE account_id = '20000000-0000-0000-0000-000000000002'
+UNION ALL
+SELECT 'N46-FEE', account_ref, 'FEE', -3000, 'KRW', TIMESTAMPTZ '2026-07-26 12:00+09', NULL::uuid FROM account WHERE account_id = '20000000-0000-0000-0000-000000000001';
+```
 
 **`Q-PF8-CASHFLOWS` 사용자의 입출금**
 
