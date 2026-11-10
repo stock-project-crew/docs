@@ -6,7 +6,7 @@
 
 **Architecture:** `GET /accounts`는 봉투 없는 응답이라 `ScreenFrame` 없이 `useAccountLinks`로 그린다. 해제는 `useMutation`으로, 등록은 자격증명이 mutation 캐시에 남지 않게 제출 핸들러가 `linkAccount`를 직접 부른다. 등록 · 해제 뒤에는 `invalidateAccountLinkData`가 포트폴리오 조회 전체를 무효화한다. KIS 전용 규칙(상품코드 · 기본 라벨 · 칸 검사)은 `screens/accountLink/form.ts`에 모은다.
 
-**Tech Stack:** React Native 0.81 · Expo SDK 54 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library(RNTL 14)
+**Tech Stack:** React Native 0.88 · Expo SDK 58 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library(RNTL 14)
 
 **Spec:** [`docs/yhr/specs/portfolio-management/2026-10-18-account-link-screen-design.md`](../specs/portfolio-management/2026-10-18-account-link-screen-design.md) (이하 "설계"). 서버 계약은 [`2026-10-16-account-link-api-design.md`](../specs/portfolio-management/2026-10-16-account-link-api-design.md)(이하 "API 설계"), 상위 스펙은 [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md), 화면 구조는 [`app-information-architecture.md`](../specs/app-information-architecture.md).
 
@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - 스펙 · 설계 · IA를 고치지 않는다. 막히거나 설계가 틀렸다고 보면 멈추고 보고한다.
-- 패키지를 설치하지 않는다. Expo SDK를 올리지 않는다(Expo Go 상한 54).
+- 패키지를 설치하지 않는다. Expo SDK를 바꾸지 않는다(스토어판 Expo Go에 맞춘 58).
 - 개발 서버 · 시뮬레이터 · 백엔드 기동, 실제 등록 요청은 사용자 승인 후에 한다.
 - 테스트 먼저. 실패를 눈으로 확인한 뒤 구현한다. 태스크 끝마다 `npx jest`와 `npx tsc --noEmit`이 통과한다.
 - 커밋은 사용자가 요청할 때만 한다. 각 태스크의 커밋 단계는 "요청받았을 때 이 메시지로"라는 뜻이다. 메시지는 한국어, 접두 `feat:` · `fix:` · `test:` · `docs:` · `chore:`, 끝에 `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.

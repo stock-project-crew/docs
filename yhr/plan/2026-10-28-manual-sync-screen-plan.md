@@ -6,7 +6,7 @@
 
 **Architecture:** 카드에 보일 실행 id는 계좌별 뷰의 `SYNC_IN_PROGRESS` notice가 주고, 없으면 `kvStore`에 남긴 마지막 실행 id다. `GET /sync/{run_id}`를 `useSyncRun`이 부르고, 탭 포커스 · 앱 복귀 · 새로고침 때와 `RUNNING`인 동안 60초마다 다시 묻는다. 앱이 켜진 동안 한 실행이 닫힌 것을 처음 보면 `invalidateAccountLinkData`로 포트폴리오 조회 전체를 한 번 다시 받는다. 실행 상태 판정은 `api/syncRun.ts`, 문구 규칙은 `screens/accounts/syncCopy.ts`에 순수 함수로 모은다.
 
-**Tech Stack:** React Native 0.81 · Expo SDK 54 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library(RNTL 14)
+**Tech Stack:** React Native 0.88 · Expo SDK 58 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library(RNTL 14)
 
 **Spec:** [`docs/yhr/specs/portfolio-management/2026-10-18-account-link-screen-design.md`](../specs/portfolio-management/2026-10-18-account-link-screen-design.md) (이하 "설계") §1 · §2.2 · §3.5 · §6 · §7 · §8의 5 ~ 8. 서버 계약은 [`2026-10-17-manual-sync-design.md`](../specs/portfolio-management/2026-10-17-manual-sync-design.md)(이하 "동기화 설계") §2.1 · §4, 상위 스펙은 [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) §2.3 · §7.6 · §10.
 
@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - 스펙 · 설계를 고치지 않는다. 막히거나 설계가 틀렸다고 보면 멈추고 보고한다. 백엔드 응답이 동기화 설계 §4와 어긋나 보여도 보고한다.
-- 패키지를 설치하지 않는다. Expo SDK를 올리지 않는다(Expo Go 상한 54).
+- 패키지를 설치하지 않는다. Expo SDK를 바꾸지 않는다(스토어판 Expo Go에 맞춘 58).
 - 개발 서버 · 시뮬레이터 · 백엔드 기동, 운영 서버로의 동기화 요청은 사용자 승인 후에 한다.
 - 테스트 먼저. 실패를 눈으로 확인한 뒤 구현한다. 태스크 끝마다 `npx jest`와 `npx tsc --noEmit`이 통과한다.
 - 커밋은 사용자가 요청할 때만 한다. 각 태스크의 커밋 단계는 "요청받았을 때 이 메시지로"라는 뜻이다. 메시지는 한국어, 접두 `feat:` · `fix:` · `test:` · `docs:` · `chore:`, 끝에 `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.

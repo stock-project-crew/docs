@@ -6,7 +6,7 @@
 
 **Architecture:** DB를 모르는 순수 계산기 `BasisCalculator`가 계좌 × 종목 하나의 입력으로 상태 한 행과 매도 결과들을 낸다. `BasisBuilder`가 `SnapshotJobs`의 다섯 번째 단계로 돌며 날짜 · 계좌를 고르고, 계좌마다 트랜잭션 하나로 읽고 쓴다. 응답과 프론트는 새 컬럼을 그대로 싣고 보여 준다.
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · Flyway · PostgreSQL 16 · JUnit 5 · AssertJ / React Native(Expo 54) · TypeScript · jest-expo
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · Flyway · PostgreSQL 16 · JUnit 5 · AssertJ / React Native(Expo 58) · TypeScript · jest-expo
 
 **Spec:** [평단 · 실현손익 생성기 설계](../specs/portfolio-management/2026-10-29-position-basis-design.md) — 이 계획의 §번호는 그 문서의 절이다. 상위 근거는 [포트폴리오 스펙](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md).
 

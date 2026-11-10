@@ -6,7 +6,7 @@
 
 **Architecture:** `LinkState`에서 `REAUTH_REQUIRED`를 빼고, 그 값을 읽던 notice 판정과 동기화 상태 도출을 지운다. 앱은 응답 타입에서 그 값을 빼고, 배지 · 상태 줄 · 동기화 줄 · 탭 점 조건에서 그 분기를 지운다. 탭 점(`accountTabNeedsLook`)과 배지(`StateBadge`의 `LINK_LABEL`)는 구조를 그대로 두어 다음 작업이 조건과 문구를 더할 수 있게 한다. 생성기의 재인증 전이를 지운 뒤 DB CHECK를 좁힌다(Task 8 · 9).
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · PostgreSQL 16 · JUnit 5 · AssertJ / React Native(Expo 54) · TypeScript · jest-expo
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · PostgreSQL 16 · JUnit 5 · AssertJ / React Native(Expo 58) · TypeScript · jest-expo
 
 **Spec:** [포트폴리오 스펙](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md) §7.1 · §7.2 · §7.5 · §8.2 · [계좌 연동 · 동기화 화면 설계](../specs/portfolio-management/2026-10-18-account-link-screen-design.md) §3.1 · §3.4 · §3.5 · [수동 동기화 설계](../specs/portfolio-management/2026-10-17-manual-sync-design.md) §4.2 · §5.2
 
@@ -18,7 +18,7 @@
 - `dataeng/`, 통합테스트 문서(`docs/yhr/test/`)는 고치지 않는다. 생성기(`snapshot/`)는 재인증 전이만 고친다(Task 8).
 - 마이그레이션은 `V15` 하나다. `data.collection_run` 미러(`db/external/V7`)는 데이터팀 계약이라 그대로 둔다.
 - DB를 쓰는 테스트는 브랜치 전용 DB에서만, 돌리기 전에 묻는다: `TEST_DB_URL='jdbc:postgresql://localhost:5432/portfolio_test_kis_only?currentSchema=app,data' ./gradlew test --rerun-tasks`. DB를 만드는 일도 승인을 받는다. DB 없는 단위 테스트는 묻지 않는다.
-- 앱: Expo SDK 54 고정. 끝에 `npx jest` · `npx tsc --noEmit` 통과.
+- 앱: Expo SDK 58(스토어판 Expo Go에 맞춤). 끝에 `npx jest` · `npx tsc --noEmit` 통과.
 
 ## Review Focus
 

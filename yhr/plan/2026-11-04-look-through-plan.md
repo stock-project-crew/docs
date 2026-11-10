@@ -6,7 +6,7 @@
 
 **Architecture:** `AggregateMapper.xml`의 `targetLine` 렌즈 분기를 "그대로 · 구성종목 · 기타" 세 갈래 `UNION ALL`로 바꾸고, 분해 판정과 비중은 공유 SQL 조각 `decomposableWeight` 하나가 정한다. 기타 라인은 원래 ETF에 `is_residual = true`로 묶여 축 SQL이 `OTHER`로 모은다. 응답 조립은 기존 정책 클래스에 플래그 두 개와 안내 두 개를 더한다.
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · Flyway · PostgreSQL 16 · JUnit 5 · AssertJ · Mockito / React Native(Expo 54) · TypeScript · jest-expo
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis · Flyway · PostgreSQL 16 · JUnit 5 · AssertJ · Mockito / React Native(Expo 58) · TypeScript · jest-expo
 
 **Spec:** [렌즈 분해 설계](../specs/portfolio-management/2026-11-04-look-through-design.md) — 이 계획의 §번호는 그 문서의 절이다. 상위 근거는 [포트폴리오 스펙](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md).
 
@@ -19,7 +19,7 @@
 - 마이그레이션 번호는 `V14`(미러, `db/external`). 병합 직전 origin/main에 V14가 생겼으면 다음 빈 번호로 옮긴다.
 - DB를 쓰는 테스트는 전용 DB에서만 돈다: `TEST_DB_URL='jdbc:postgresql://localhost:5432/portfolio_test_lens?currentSchema=app,data' ./gradlew test --rerun-tasks` (특정 클래스는 `--tests '<FQCN>'` 추가). 공유 `portfolio_test`에서 돌리지 않는다. DB 테스트는 돌리기 전에 사용자에게 묻는다. DB 없는 단위 테스트는 묻지 않는다.
 - 테스트 메서드 이름은 기존처럼 한국어 문장.
-- 앱: Expo SDK 54 고정. 끝에 `npx jest` · `npx tsc --noEmit` 통과.
+- 앱: Expo SDK 58(스토어판 Expo Go에 맞춤). 끝에 `npx jest` · `npx tsc --noEmit` 통과.
 
 ## Review Focus
 

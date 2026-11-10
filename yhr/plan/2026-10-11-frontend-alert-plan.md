@@ -13,13 +13,13 @@
 
 **Architecture:** 기존 front-end 관례를 그대로 쓴다 — 서버 상태는 TanStack Query, 화면 이동은 React Navigation(native-stack + bottom-tabs), 색은 `useTheme()` 토큰, 봉투는 `ScreenFrame`. 알림 목록·울린 알림 목록은 포트폴리오와 같은 봉투라 `envelope/`를 넓혀 재사용한다. 새 알림 흐름은 루트 스택 위의 모달 안에 중첩 스택으로 두고, 작성 중인 초안은 그 모달 범위의 Context + `useReducer`에 둔다(앱 전역 상태는 지금처럼 인증 하나뿐이다). 문장·현재값·검증 오류는 모두 서버의 미리보기 응답에서 받고, 프론트는 초안 ↔ 요청 JSON 변환과 입력 칸 규칙만 순수 함수로 갖는다.
 
-**Tech Stack:** React Native 0.81.5 · Expo SDK 54 · React 19.1 · TypeScript 5.9(strict) · React Navigation 7 · TanStack Query v5 · expo-secure-store · expo-notifications · expo-constants · Jest(jest-expo) + React Native Testing Library 14. 백엔드(Task 0): Spring Boot · MyBatis · JUnit 5.
+**Tech Stack:** React Native 0.88.1 · Expo SDK 58 · React 19.3 · TypeScript 6.0(strict) · React Navigation 7 · TanStack Query v5 · expo-secure-store · expo-notifications · expo-constants · Jest(jest-expo) + React Native Testing Library 14. 백엔드(Task 0): Spring Boot · MyBatis · JUnit 5.
 
 **Spec:** `docs/yhr/specs/buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md` · `docs/yhr/specs/app-information-architecture.md`
 
 ## Global Constraints
 
-- **Expo SDK 54 고정.** App Store판 Expo Go가 54까지만 받는다. 패키지는 항상 `npx expo install <pkg>`로 넣는다.
+- **Expo SDK는 스토어판 Expo Go가 지원하는 버전(SDK 58)에 맞춘다.** App Store 판 Expo Go는 최신 SDK 하나만 열어서, SDK가 다르면 실기기가 앱을 거부한다. 패키지는 항상 `npx expo install <pkg>`로 넣는다.
 - **설치 · 서버 기동 · 푸시 발송 · 병합 · DB 쓰기는 먼저 사용자 승인을 받는다.** 이 계획에서 해당하는 단계에는 `⛔ 승인` 표시가 있다. 승인 없이 넘어가지 않는다.
 - **백엔드 코드는 격리 worktree에서만 고친다.** `back-end/` 원래 경로에서는 다른 세션(계획 ②)이 작업 중이다. Task 0은 `superpowers:using-git-worktrees`로 만든 worktree에서 하고, main 병합은 승인을 받는다.
 - **front-end는 `feat/alert-tab` 브랜치에서 한다.** 계획 ②는 front-end를 건드리지 않는다.
@@ -7859,7 +7859,7 @@ git commit -m "feat: 지표·변형·연산자·기준값·유지로 조건을 �
 
 - [ ] **Step 1: ⛔ 승인 — 패키지 설치**
 
-사용자에게 묻는다: "`npx expo install expo-notifications expo-constants`로 두 패키지를 넣을까요? SDK 54에 맞는 버전을 고릅니다." 승인을 받은 뒤에만 실행한다.
+사용자에게 묻는다: "`npx expo install expo-notifications expo-constants`로 두 패키지를 넣을까요? 프로젝트 SDK에 맞는 버전을 고릅니다." 승인을 받은 뒤에만 실행한다.
 
 ```bash
 cd /Users/yhr/Dev/workspace/personal/stock-project/front-end

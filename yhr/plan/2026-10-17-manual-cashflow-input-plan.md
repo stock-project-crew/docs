@@ -6,7 +6,7 @@
 
 **Architecture:** 백엔드는 `com.stockproject.portfolio.cashflow` 패키지에 요청 해석(`CashflowRequestParser`) · 검증(`CashflowValidator`) · 쓰기 매퍼 · 서비스를 두고, 컨트롤러는 `api`에 둔다. 자산 변화와 목록이 같은 "견준 두 잔고"를 쓰도록 `view/SnapshotPairResolver`로 떼어 낸다. 앱은 스택 화면 `cashflows`를 React Query 조회 · 변경 훅으로 그리고, 저장 · 삭제 뒤 `['cashflows']` · `['asset-change']`를 무효화한다.
 
-**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis(애너테이션 매퍼 + XML) · PostgreSQL 16 · JUnit 5 · AssertJ · MockMvc / React Native 0.81 · Expo SDK 54 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library / Python 3 + Pillow(와이어플로우)
+**Tech Stack:** Java 21 · Spring Boot 3.4.5 · MyBatis(애너테이션 매퍼 + XML) · PostgreSQL 16 · JUnit 5 · AssertJ · MockMvc / React Native 0.88 · Expo SDK 58 · TanStack Query 5 · React Navigation 7 · jest-expo · Testing Library / Python 3 + Pillow(와이어플로우)
 
 **Spec:** [`docs/yhr/specs/portfolio-management/2026-10-16-manual-cashflow-input-design.md`](../specs/portfolio-management/2026-10-16-manual-cashflow-input-design.md) (이하 "설계"). 상위 스펙은 [`2026-07-28-portfolio-management-spec.md`](../specs/portfolio-management/2026-07-28-portfolio-management-spec.md), 화면 구조는 [`app-information-architecture.md`](../specs/app-information-architecture.md).
 
@@ -37,7 +37,7 @@ A의 경로는 worktree 루트 기준, B는 `front-end/` 기준, C는 `docs/` �
 - SQL은 스키마를 붙이지 않는다(`currentSchema=app,data`).
 - 문구는 설계 그대로 쓴다. 경고 문구 셋은 `N개 계좌에 이 기간 입출금이 입력되지 않아 투자손익이 정확하지 않을 수 있어요` · `배당·수수료 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요` · `N개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요`.
 - 금액은 1 이상의 정수, 15자리 이하. 메모는 100자 이하. 통화는 `KRW`만.
-- 앱은 Expo SDK 54를 넘는 의존성을 들이지 않는다. 새 패키지를 설치하지 않는다.
+- 앱은 Expo SDK를 바꾸지 않는다. 새 패키지를 설치하지 않는다.
 - `docs/hhj/` · `docs/jdh/` · `docs/team-architecture-agreement.md`를 근거로 쓰지 않는다.
 
 ## Review Focus

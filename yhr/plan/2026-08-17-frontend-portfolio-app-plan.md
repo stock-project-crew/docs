@@ -13,7 +13,7 @@
 
 **Architecture:** 6개 뷰가 **같은 응답 봉투**(`as_of` · `data` · `empty_reason` · `notices`)를 쓴다는 사실이 이 앱 구조의 축이다. 봉투를 다루는 층(배너 · 경고 · 빈 상태 · 로딩)을 화면 바깥에 한 번만 만들고, 화면은 `data`만 그린다. 서버 상태는 TanStack Query가 캐시하고, 클라이언트 상태는 인증 컨텍스트 하나뿐이며, 필터·정렬·렌즈는 화면 로컬 상태로 두고 쿼리 키에 실린다.
 
-**Tech Stack:** React Native 0.81.5 · Expo SDK 54 · React 19.1 · TypeScript 5.9 (strict) · React Navigation · TanStack Query v5 · expo-secure-store · Jest(jest-expo) + React Native Testing Library
+**Tech Stack:** React Native 0.88.1 · Expo SDK 58 · React 19.3 · TypeScript 6.0 (strict) · React Navigation · TanStack Query v5 · expo-secure-store · Jest(jest-expo) + React Native Testing Library
 
 ---
 
@@ -21,7 +21,7 @@
 
 이 절의 규칙은 모든 태스크의 요구사항에 암묵적으로 포함된다.
 
-- **Expo SDK 54를 올리지 않는다.** App Store 판 Expo Go가 54에서 멈춰 있어 그 위로 올리면 실기기가 앱을 거부한다. 패키지 설치는 항상 `npx expo install`을 쓴다 — SDK에 맞는 버전을 골라준다.
+- **Expo SDK는 스토어판 Expo Go가 지원하는 버전(SDK 58)에 맞춘다.** App Store 판 Expo Go는 최신 SDK 하나만 열어서, SDK가 다르면 실기기가 앱을 거부한다. 패키지 설치는 항상 `npx expo install`을 쓴다 — SDK에 맞는 버전을 골라준다.
 - **TypeScript strict.** `any`를 쓰지 않는다. API 응답 타입은 `src/api/types.ts` 한 곳에 정의하고 화면이 그 타입만 본다.
 - **서버 문구를 그대로 출력한다.** `notices[].message`와 `error.message`는 클라이언트가 다시 쓰지 않는다. `code`로 아이콘·색·후속 동작만 분기한다(스펙 §8.2). 클라이언트가 만드는 문구는 §A.5.4의 목록이 전부다.
 - **비율을 클라이언트가 계산하지 않는다.** 손익률·비중은 서버가 준 값을 그대로 쓴다(스펙 §1.5 · §3.2). 금액 뺄셈(`closing − opening`)만 예외로 허용한다 — 가산 가능한 값이다.
@@ -576,8 +576,7 @@ EXPO_PUBLIC_API_BASE_URL=http://192.168.0.12:8080
 
 ### A.7.4 알려진 위험
 
-- **Node v26 · npm 11 vs Expo SDK 54(2025-09 기준)**. 의존성 설치나 메트로 번들에서 문제가 나면 이 격차를 먼저 의심한다.
-- **Expo Go SDK 상한 54.** 패키지 설치는 `npx expo install`로만 한다.
+- **Expo Go는 최신 SDK 하나만 연다.** 패키지 설치는 `npx expo install`로만 한다.
 
 ---
 
@@ -661,7 +660,7 @@ front-end/
 2. `npx expo start`로 번들이 만들어지고 실기기에서 빈 화면이 뜬다.
 3. `npm test`가 실행되고(테스트 0개라도) 설정 오류가 없다.
 4. `App.tsx`가 삭제되고 `index.ts`가 `src/app/App`을 등록한다.
-5. 설치된 패키지 버전이 `package.json`에 기록되고 SDK 54와 호환된다.
+5. 설치된 패키지 버전이 `package.json`에 기록되고 프로젝트 SDK와 호환된다.
 6. 골든 7개가 `src/fixtures/golden/`에 있고 백엔드 원본과 내용이 같다.
 
 **검증 방법**
@@ -695,7 +694,7 @@ npx expo install @tanstack/react-query
 npm install --save-dev jest-expo jest @testing-library/react-native @types/jest
 ```
 
-`npx expo install`은 SDK 54에 맞는 버전을 고른다. **설치 후 `package.json`에 박힌 버전을 커밋 메시지에 남긴다.** Node 26과 SDK 54의 격차로 설치가 실패하면 그 오류를 먼저 보고한다(§A.7.4).
+`npx expo install`은 프로젝트 SDK에 맞는 버전을 고른다. **설치 후 `package.json`에 박힌 버전을 커밋 메시지에 남긴다.**
 
 - [x] **Step 3: 경로 별칭**
 
@@ -1145,7 +1144,7 @@ Task 6과 7은 병렬 가능하지만 `ui/` 부품을 서로 만들 수 있으�
 
 1. **백엔드가 뜨는지** — §A.7.1 절차로 샘플 데이터까지 넣고 `curl`로 로그인 토큰을 받아본다.
 2. **LAN IP와 기기 연결** — 개발 머신과 실기기가 같은 Wi-Fi에 있어야 한다.
-3. **의존성 설치가 되는지** — Node 26 · npm 11과 SDK 54의 격차(§A.7.4). Task 1 Step 2에서 막히면 거기서 멈추고 보고한다.
+3. **의존성 설치가 되는지** — Task 1 Step 2에서 막히면 거기서 멈추고 보고한다.
 
 ## D.3 다음 단계
 

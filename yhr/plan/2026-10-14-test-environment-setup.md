@@ -38,7 +38,7 @@ for d in docs back-end front-end dataeng; do git -C "$d" pull --ff-only; done
 | AWS CLI | v2 | 클러스터 접속 | `brew install awscli` |
 | Session Manager 플러그인 | — | 클러스터 API 터널 (`aws ssm start-session`) | `brew install --cask session-manager-plugin` — 설치기가 sudo 비밀번호를 묻는다. 일반 터미널 앱에서 실행한다 |
 | kubectl | — | 클러스터 조회 | `brew install kubectl` |
-| Expo Go (iOS 실기기) | **SDK 54** | 실기기 확인 · 푸시 수신 | App Store |
+| Expo Go (iOS 실기기) | **SDK 58** | 실기기 확인 · 푸시 수신 | App Store |
 
 **JDK 21은 Homebrew 포뮬러로 설치하고, `JAVA_HOME`을 그 경로로 지정한다.** `./gradlew`는 `JAVA_HOME`의 JDK로 뜨고 toolchain 21을 그 JDK로 채운다. 시스템 JDK 목록에 링크할 필요가 없고, `PATH`의 기본 `java`가 다른 버전이어도 두 머신에서 같게 돈다.
 
@@ -55,7 +55,7 @@ cd back-end && docker compose exec -T db psql -U portfolio -d portfolio -c 'sele
 
 Gradle은 따로 설치하지 않는다. 저장소의 `./gradlew`가 버전을 고정한다.
 
-**Expo SDK를 54 위로 올리지 않는다.** App Store 판 Expo Go가 54에서 멈춰 있어 그 위 SDK는 실기기가 거부한다.
+**Expo SDK는 스토어판 Expo Go가 지원하는 버전(SDK 58)에 맞춘다.** App Store 판 Expo Go는 최신 SDK 하나만 열어서, SDK가 다르면 실기기가 앱을 거부한다.
 
 ---
 
