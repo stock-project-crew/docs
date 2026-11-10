@@ -150,13 +150,13 @@ query/ManualCashflowMapper            + accountsWithEntries (§4)
 
 `query/ManualCashflowMapper.accountsWithEntries(scope, after, through, filter)`가 그 구간에 입력이 있는 계좌 집합을 돌려주고, 기말 계좌 중 기말보다 앞선 잔고가 있는 계좌(`SnapshotFactsMapper.accountsLinedBefore`)만 남기고 이것을 뺀 수가 미입력 계좌 수다.
 
-미입력 계좌가 하나 이상이면 `CASHFLOW_UNCOVERED`의 `params.types`에 `DEPOSIT` · `WITHDRAW`를 더하고 `params.manual_uncovered_account_count`에 그 수를 싣는다. 기존 `params.account_count`는 배당 · 수수료를 확보하지 못한 계좌 수 그대로다. 문구는 빠진 것에 따라 고른다.
+미입력 계좌가 하나 이상이면 `CASHFLOW_UNCOVERED`의 `params.types`에 `DEPOSIT` · `WITHDRAW`를 더하고 `params.manual_uncovered_account_count`에 그 수를 싣는다. `params.account_count`는 배당 · 수수료 · 세금 중 하나라도 확보하지 못한 계좌 수다. 문구는 빠진 것에 따라 고르고, 배당 · 수수료 · 세금 쪽은 빠진 유형의 이름(`배당` · `수수료` · `세금`을 이 순서로 `·`로 이은 것)을 `{유형}`에 넣는다.
 
 | 빠진 것 | `message` |
 |---|---|
 | 입출금만 | `2개 계좌에 이 기간 입출금이 입력되지 않아 투자손익이 정확하지 않을 수 있어요` |
-| 배당 · 수수료만 | `배당·수수료 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요` |
-| 둘 다 | `2개 계좌에 입출금이 입력되지 않았고 배당·수수료 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
+| 배당 · 수수료 · 세금 쪽만 | `{유형} 내역이 확보되지 않아 투자손익이 정확하지 않을 수 있어요` |
+| 둘 다 | `2개 계좌에 입출금이 입력되지 않았고 {유형} 내역도 없어 투자손익이 정확하지 않을 수 있어요` |
 
 - 넣은 돈을 세는 구간이 비어 있으면(§2.4) 판정하지 않는다. 그 구간에는 어떤 입력도 들어갈 수 없다.
 - 스냅샷이 없어 빈 응답을 내는 경우에는 입출금 미입력을 판정하지 않는다.
