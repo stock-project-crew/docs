@@ -93,7 +93,7 @@
 | `sync_run_id` | uuid FK `sync_run` | |
 | `account_id` | uuid FK `account` | |
 | `collection_run_id` | uuid NOT NULL | `data.collection_run.run_id`. 여러 실행이 같은 값을 가리킬 수 있다(§4.1) |
-| `final_state` | text null | 닫을 때 채운다. CHECK `DONE` · `FAILED` · `REAUTH_REQUIRED` |
+| `final_state` | text null | 닫을 때 채운다. CHECK `DONE` · `FAILED` |
 | `final_as_of` | date null | 닫을 때의 계좌 기준일(§4.2). 그 계좌에 라인이 없으면 null |
 | `final_failure_reason` | text null | 닫을 때의 계좌 사유 |
 
@@ -117,7 +117,7 @@
 
 | 계좌 | 처리 |
 |---|---|
-| `CONNECTING` · `CONNECTED` · `REAUTH_REQUIRED` | 대상 |
+| `CONNECTING` · `CONNECTED` | 대상 |
 | `DISCONNECTED`를 지정 | `409 ACCOUNT_DISCONNECTED` |
 | 전체 실행에서 `DISCONNECTED` | 대상에서 뺀다 |
 | 전체 실행인데 대상이 0개 | `409 NO_ACCOUNTS` |
@@ -182,7 +182,7 @@
 | `DONE` | 기록 없음 | `RUNNING` |
 | `DONE` | 기록 있음(결과 · 사유 무관) | `DONE` |
 | `FAILED` | — | `FAILED` |
-| `REAUTH_REQUIRED` | — | `REAUTH_REQUIRED` |
+| 그 밖의 값 | — | `RUNNING` |
 | 행이 없다 | — | `RUNNING` |
 
 `DONE`인데 생성기 결과가 `FINAL_EXISTS` · `NOT_TRADING_DAY`이거나 재시도 사유로 남은 경우도 `DONE`이다. 수집은 성공했고, 라인이 바뀌지 않는 사정은 `as_of`와 `ALREADY_FINAL`이 말한다. 재시도 사유를 기다리면 끝이 정해지지 않는다.
@@ -252,7 +252,7 @@
 
 시한이 지난 실행은 계좌가 모두 끝났어도 시한 규칙으로 닫는다. 읽는 쪽(§4.2)이 시한 뒤에 보여준 응답과 저장 결과가 어긋나지 않게 하려는 것이다.
 
-닫을 때 실행 `state`는 `DONE` 계좌 수로 정한다: 전부면 `DONE`, 0이면 `FAILED`, 그 사이면 `PARTIAL`. `REAUTH_REQUIRED` 계좌는 `DONE`이 아니다. 계좌마다 `final_state` · `final_as_of` · `final_failure_reason`을 쓴다.
+닫을 때 실행 `state`는 `DONE` 계좌 수로 정한다: 전부면 `DONE`, 0이면 `FAILED`, 그 사이면 `PARTIAL`. 계좌마다 `final_state` · `final_as_of` · `final_failure_reason`을 쓴다.
 
 시한 판정(계좌 결과 도출 · 실행 상태 결정)은 닫기 단계와 읽는 쪽(§4.2 · §4.4)이 같은 코드를 쓴다. 그래야 닫기 단계가 늦게 돌아도 응답이 바뀌지 않는다.
 
@@ -289,7 +289,7 @@ DB를 쓰는 테스트는 실제 PostgreSQL에 Flyway로 이 마이그레이션�
 **단위 (DB 없음)**
 
 - 계좌 `state` 도출: §4.2 표의 각 행.
-- 실행 `state`: 전부 `DONE` → `DONE`, 일부 → `PARTIAL`, 0 → `FAILED`, `REAUTH_REQUIRED`는 `DONE`으로 세지 않음, 시한 초과.
+- 실행 `state`: 전부 `DONE` → `DONE`, 일부 → `PARTIAL`, 0 → `FAILED`, 시한 초과.
 - 다음 픽업과 `already_final`: 고정 시계로 화 장중 → 거짓, 목 23:00 뒤 → 참(마감 금 08:00 < 픽업 일 23:00), 금 → 거짓(픽업 일 23:00 < 마감 월 08:00), 토 → 참 · `finalized_at` null, 다음 영업일 모름 → 마지막 조건 거짓.
 - 문장: `POST` 응답 두 가지와 notice 두 가지의 날짜 · 요일 · 시각 표기.
 

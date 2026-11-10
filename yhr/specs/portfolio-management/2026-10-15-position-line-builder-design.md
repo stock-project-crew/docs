@@ -25,7 +25,7 @@
 
 - `position_basis` · `realized_pnl_line`(1.5 · 1.6단계).
 - 수동 동기화 요청(`POST /sync` · `sync_run`)과 계좌 등록 · 해제 API. 이 생성기는 그 둘이 만든 `collection_run` 행과 `account` 행을 읽는다. 해제했던 계좌를 다시 연동하면 등록 API가 옛 `account` 행을 재사용한다(같은 `account_id`) — 생성기는 그 경우를 §6.1의 편입 규칙으로 다룬다.
-- `/reauth`. `REAUTH_REQUIRED`에서 `CONNECTED`로 돌아가는 전이는 그쪽 몫이다.
+- 재인증. 이번 범위는 KIS 계좌만 연동하고 증권사 재인증을 두지 않는다(포트폴리오 스펙 비범위).
 
 ## 2. 라인의 네 상태
 
@@ -139,7 +139,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 | `DONE`, 빌드 성공 | 그 계좌 라인 교체, `is_final = true` → `BUILT` | 그 계좌 라인이 확정이면 `SKIPPED` `FINAL_EXISTS`. 아니면 교체, `is_final = false` → `BUILT` |
 | `DONE`, 빌드 실패(§5.4) | `SKIPPED` + 사유. 라인을 건드리지 않는다 | 같다 |
 | `FAILED` | `SKIPPED` `RUN_NOT_DONE` | 같다 |
-| `REAUTH_REQUIRED` | `SKIPPED` `RUN_NOT_DONE` + 연동 상태 전이(§9) | 같다 |
+| `REAUTH_REQUIRED` | `SKIPPED` `RUN_NOT_DONE`. 연동 상태는 바꾸지 않는다(§9) | 같다 |
 
 `BUILT`이면 §5.6의 잠정 이월(같은 사용자의 다른 계좌 · 이 계좌의 이후 날짜)을 함께 쓴다.
 
@@ -315,10 +315,11 @@ UPDATE collection_run r
 | 계기 | 전이 |
 |---|---|
 | `DONE` 실행 처리 | `CONNECTING` → `CONNECTED` |
-| `REAUTH_REQUIRED` 실행 처리 | `CONNECTING` · `CONNECTED` → `REAUTH_REQUIRED` |
-| 그 밖 | 바꾸지 않는다. `REAUTH_REQUIRED` → `CONNECTED`는 재인증 흐름이, `DISCONNECTED`는 해제가 정한다 |
+| 그 밖 | 바꾸지 않는다. `DISCONNECTED`는 해제가 정한다 |
 
-전이는 그 실행이 그 계좌에서 `requested_at`이 가장 늦은 실행일 때만 한다. 재인증 뒤에 재인증 전 실행이 늦게 처리돼 상태가 되돌아가지 않게 한다.
+전이는 그 실행이 그 계좌에서 `requested_at`이 가장 늦은 실행일 때만 한다. 늦게 처리된 옛 실행이 상태를 정하지 않게 한다.
+
+`REAUTH_REQUIRED`는 데이터 계약에 남은 CODEF 수집의 종료 상태다. KIS 수집은 내지 않는다. 받으면 `FAILED`처럼 건너뛰고 연동 상태는 그대로 둔다.
 
 수집 결과 자체는 저장하지 않는다. 계좌별 뷰의 `last_collection`은 `CollectionRunStatusPort`가 그 계좌의 `requested_at`이 가장 늦은 실행에서 `state` · `as_of` · `failure_reason`을 읽어 낸다(스펙 §7.2). `failure_reason`은 코드 모양(`^[A-Z][A-Z0-9_]{0,63}$`)일 때만 그대로 싣고 아니면 `UNKNOWN`으로 바꾼다. 데이터 쪽 실제 값은 지금 `"{예외타입}: {메시지}"` 같은 자유 문자열이라(대조 문서 §3) 원천 응답이나 내부 식별자가 사용자 응답으로 나갈 수 있다.
 
@@ -378,7 +379,7 @@ UPDATE collection_run r
 | D-1 미확정에서 D `SCHEDULE` `DONE` | D 라인은 쓰되 확정은 D-1 뒤 |
 | 종목 미매칭 → 다음 회차에 매칭됨 | 재시도로 `BUILT`, `attempts = 2` |
 | 잔고 시각 < `requested_at` | `STALE_BALANCE`, 라인 불변 |
-| `REAUTH_REQUIRED` · 재인증 후 옛 `REAUTH_REQUIRED`가 늦게 처리됨 | 전이 · 되돌리지 않음 |
+| `REAUTH_REQUIRED` 실행 | `SKIPPED` `RUN_NOT_DONE`, 연동 상태 불변 |
 | `DISCONNECTED` 계좌 | 대상 아님 |
 | 한 계좌 확정 중 예외 | 다른 계좌는 확정, 그 날은 미확정 |
 | 같은 회차 두 번 · 두 스레드 동시 | 결과 동일 |

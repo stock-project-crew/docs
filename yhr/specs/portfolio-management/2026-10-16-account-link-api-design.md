@@ -22,8 +22,8 @@
 
 **만들지 않는다**
 
-- CODEF 경로. 기관 선택 · 1차 인증 · 계좌 선택 · RSA 전송이 따로 필요하다.
-- `POST /accounts/{id}/reauth`. KIS는 앱키 방식이라 추가인증이 없고, 데이터 수집기도 KIS 계좌에 `REAUTH_REQUIRED`를 내지 않는다.
+- KIS 밖 기관의 연동 경로(CODEF 경로 등). 이번 범위는 KIS만 연동한다(스펙 §7.1).
+- 재인증(`POST /accounts/{id}/reauth`). KIS는 앱키 방식이라 추가인증이 없고, 데이터 수집기도 KIS 계좌에 `REAUTH_REQUIRED`를 내지 않는다.
 - 첫 수집 요청. 등록은 `collection_run` 행을 만들지 않는다(§2.1). 사용자가 일으키는 수집은 `POST /sync` · `sync_run`의 몫이다.
 - 등록 때 KIS 호출로 키를 검증하는 일(§2.3).
 
@@ -54,7 +54,7 @@
 
 ### 2.2 `dim_account` 갱신 시점
 
-데이터 워커는 `collection_run`에 없는 두 사실, 즉 계좌가 연동 중인지와 KIS · CODEF 중 어느 쪽인지를 `silver.dim_account`에서 읽는다. `collection_run_daily`가 `create_eod` 직전에 `app.account`로 이 표를 새로 고치므로, 실행 시작 전까지의 등록 · 해제가 그날 밤 실행에 반영된다.
+데이터 워커는 `collection_run`에 없는 두 사실, 즉 계좌가 연동 중인지와 어느 수집 경로(`source`)인지를 `silver.dim_account`에서 읽는다. `collection_run_daily`가 `create_eod` 직전에 `app.account`로 이 표를 새로 고치므로, 실행 시작 전까지의 등록 · 해제가 그날 밤 실행에 반영된다.
 
 새로 고침이 실패하면 그날은 직전 `dim_account`로 진행한다. 그때는 직전 갱신 이후의 변경이 반영되지 않는다.
 
@@ -185,7 +185,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 
 `ON CONFLICT DO NOTHING`은 UNIQUE 위반 오류를 내지 않으므로 트랜잭션이 abort되지 않고 같은 트랜잭션에서 이어 읽을 수 있다. 동시에 들어온 두 등록은 행 잠금 때문에 차례로 처리되고, 뒤의 것은 앞의 것이 커밋한 행을 보고 `409`가 된다.
 
-저장소에 쓴 뒤 커밋이 실패하면 파라미터만 남는다. 행이 없거나 `DISCONNECTED`라 어느 `collection_run`에도 복사되지 않고, 같은 계좌의 다음 등록이 덮어쓴다. 롤백 뒤 보상 삭제는 하지 않는다. 그 사이에 다른 등록이 커밋되면 보상 삭제가 정상 파라미터를 지운다. 남은 파라미터는 데이터 워커의 IAM 와일드카드로 읽을 수 있다(§9의 5).
+저장소에 쓴 뒤 커밋이 실패하면 파라미터만 남는다. 행이 없거나 `DISCONNECTED`라 어느 `collection_run`에도 복사되지 않고, 같은 계좌의 다음 등록이 덮어쓴다. 롤백 뒤 보상 삭제는 하지 않는다. 그 사이에 다른 등록이 커밋되면 보상 삭제가 정상 파라미터를 지운다. 남은 파라미터는 데이터 워커의 IAM 와일드카드로 읽을 수 있다(§9의 3).
 
 `account.user_id` · `account_ref`는 이 흐름 어디에서도 바뀌지 않는다(스펙 §9.1).
 
@@ -219,7 +219,7 @@ account_ref = "ar_" + hex(HMAC-SHA256(salt, "<기관코드>:<계좌번호10자�
 파라미터    = "/stock-project/accounts/" + account_ref
 ```
 
-- 기관코드는 한국투자증권의 금융결제원 기관코드 `0243`이다. CODEF 기관코드도 같은 체계를 따르면 같은 계좌를 KIS와 CODEF 두 경로로 등록해도 같은 `account_ref`가 나와 UNIQUE가 중복 연동을 막는다. CODEF 기관코드 표에서 `0243`을 직접 확인하지는 않았다. 이 값은 `account_ref`를 정하므로 계좌를 등록한 뒤에는 바꾸지 않는다.
+- 기관코드는 한국투자증권의 금융결제원 기관코드 `0243`이다. 같은 계좌를 다른 경로로도 등록할 수 있게 되면 그 경로도 금융결제원 기관코드를 써야 같은 `account_ref`가 나와 UNIQUE가 중복 연동을 막는다. 이 값은 `account_ref`를 정하므로 계좌를 등록한 뒤에는 바꾸지 않는다.
 - 계좌번호는 하이픈을 뺀 숫자 10자리(8 + 2)다. 같은 계좌는 입력 모양과 관계없이 같은 문자열이 된다.
 - HMAC 키(소금)는 비밀값이고 바뀌면 안 된다(§6.2). 계좌번호 공간이 좁아 소금 없는 해시는 역산된다(스펙 §7.1).
 - 출력은 128비트(32hex)다. `trade_id`가 이 값을 접두로 갖는다(스펙 §7.1).
@@ -367,10 +367,8 @@ CI는 실제 Postgres(`postgres:16-alpine`, `portfolio_test`)로 돈다. 실제 
 
 1. **파라미터 이름의 사용자** — §7.1 "`credential_ref`가 가리키는 시크릿 매니저 키 이름에도 사용자가 들어가"와 달리 이름은 `/stock-project/accounts/<account_ref>`이고 사용자를 넣지 않는다(§5). 이름이 `collection_run`을 거쳐 데이터에 넘어가므로 §11.2 "사용자는 백엔드 안에만"과 부딪치고, 남의 자격증명을 막는 것은 서버가 토큰 사용자의 계좌로만 이름을 만든다는 규칙이기 때문이다.
 2. **재연동 시 계좌 행 재사용** — §7.1 "`account_id`를 그대로 쓰지 않는 것은 재등록 때 새 uuid가 나와"와 달리 해제한 계좌를 다시 연동하면 같은 행(같은 `account_id`)을 쓴다. V1 `account.account_ref`가 UNIQUE라 같은 계좌의 새 행을 넣을 수 없다.
-3. **KIS 등록 응답** — §8.5의 `POST /accounts` 응답 예시는 `REAUTH_REQUIRED` · `CONNECTED`만 보인다. KIS 등록은 첫 수집 전이라 `CONNECTING`과 `challenge: null`을 낸다.
-4. **상태 전이** — §7.2 상태도에 없는 `DISCONNECTED → CONNECTING`(재연동)과 `CONNECTING` · `REAUTH_REQUIRED → DISCONNECTED`(해제)를 허용한다.
-5. **`credential_ref` "단기 참조"와 전달 경로** — §7.7 · §11.2의 "단기 자격증명 참조"를 계좌의 SSM 파라미터 이름으로 읽었다(생성기 설계 §12의 5와 같다). 이름은 `account_ref`에서 바로 나오고 데이터는 `account_ref`를 `dim_account`로 갖고 있다. 그래서 데이터 워커의 IAM 와일드카드(`/stock-project/accounts/*`)만 있으면 `collection_run` 픽업을 거치지 않고도 모든 계좌의 자격증명을 읽을 수 있다. §7.1 "수집이 필요한 시점에 `collection_run` 픽업으로만 전달"은 두 팀의 관례로 지켜지고, 권한으로 강제되지는 않는다.
-6. **IRP 미지원** — §7.1은 KIS 경로의 계좌 종류를 제한하지 않고, §5.1 `account_type`은 `PENSION`을 둔다. 데이터 수집기가 IRP 체결 조회를 지원하기 전까지 IRP(`29`) 등록을 거부한다(§3.4).
+3. **`credential_ref` "단기 참조"와 전달 경로** — §7.7 · §11.2의 "단기 자격증명 참조"를 계좌의 SSM 파라미터 이름으로 읽었다(생성기 설계 §12의 5와 같다). 이름은 `account_ref`에서 바로 나오고 데이터는 `account_ref`를 `dim_account`로 갖고 있다. 그래서 데이터 워커의 IAM 와일드카드(`/stock-project/accounts/*`)만 있으면 `collection_run` 픽업을 거치지 않고도 모든 계좌의 자격증명을 읽을 수 있다. §7.1 "수집이 필요한 시점에 `collection_run` 픽업으로만 전달"은 두 팀의 관례로 지켜지고, 권한으로 강제되지는 않는다.
+4. **IRP 미지원** — §7.1은 KIS 경로의 계좌 종류를 제한하지 않고, §5.1 `account_type`은 `PENSION`을 둔다. 데이터 수집기가 IRP 체결 조회를 지원하기 전까지 IRP(`29`) 등록을 거부한다(§3.4).
 
 ## 10. 데이터 쪽 의존
 
