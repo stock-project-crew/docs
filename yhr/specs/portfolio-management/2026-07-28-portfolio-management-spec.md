@@ -212,7 +212,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 필터 | 계좌 / 시장 / 자산군. 모두 다중 선택이며 선택지는 카탈로그가 내린다(§6.4) |
 | 정렬 | 서버는 평가금액 내림차순 고정. 화면 정렬(평가금액·평가손익·손익률·이름)은 클라이언트가 한다 |
 | 렌즈 | 선택 — "구성종목 기준으로 보기" |
-| 하위 | 행 탭 → 종목 상세 |
+| 하위 | 종목 행 탭 → 종목 상세. 예수금 행과 렌즈를 켠 행은 누를 수 없다 |
 
 같은 종목을 여러 계좌에 보유하면 **항상 합산해 1행으로 표시**하고, 평단은 수량가중평균으로 계산한다. 계좌별 분해는 종목 상세에서 제공한다.
 
@@ -226,6 +226,8 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 **현재가와 매입금액은 행에 두지 않는다.** 현재가는 지표 카탈로그에 없고(§6.2), 매입금액은 `평가금액 − 평가손익`으로 즉시 유도된다.
 
 **예수금 의사종목도 행으로 남긴다.** 빼면 비중의 합이 100%가 되지 않고 평가금액 합계가 `total_assets_krw`와 어긋난다. 원가·손익 자리는 `—`이며, 목록에서 제외하려면 자산군 필터를 쓴다.
+
+**누를 수 있는 행은 종목 행뿐이다.** 손을 대면 바탕색이 바뀌고 종목 상세가 열린다. 예수금 행은 상세에 보여 줄 것이 없고, 렌즈를 켠 행은 구성종목 환산이라 상세의 보유와 맞지 않아 반응하지 않는다. 렌즈 토글 도움말에 `ETF 분해 모드에서는 종목 상세를 열 수 없어요`를 둔다.
 
 합계 줄은 필터를 반영한 `total`을 쓴다. 여기에 종목수를 병기하지 않는다 — `instrument_count`는 예수금을 세지 않아 목록의 행 수와 어긋난다.
 
@@ -288,7 +290,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 | 행 구성 | 1줄 `종목 · 신뢰도 배지 · 실현손익` / 2줄 `최근 매도일 · 매도금액 · 실현손익률` |
 | 펼침 | 종목 행을 탭하면 매도 체결이 펼쳐진다. 체결마다 매도일 · 수량 · 매도금액 · 취득원가 · 실현손익 · 등급 배지 |
 | 필터 | 계좌 — 전체 / 계좌유형(일반·연금) / 개별 계좌. 계좌유형은 그 유형의 계좌 ID로 펼쳐 요청한다 |
-| 통화 | 종목 행은 병기, 기간 합계는 원화(§3.7) |
+| 통화 | 원화(§3.7) |
 | 렌즈 | 없음 (ETF는 ETF 단위로 체결됨) |
 
 **미실현 평가손익은 이 뷰에 넣지 않는다.** 요약(총평가손익)과 종목별(종목당 평가손익)에서 이미 제공되며, 기간 확정값과 시점 평가값을 한 화면에서 더하면 어떤 질문에도 답하지 않는 숫자가 나온다.
@@ -401,11 +403,23 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 ### 2.10 종목 상세 (하위 화면)
 
-보유 요약 · **계좌별 분해**(계좌마다 다른 평단) · 해당 종목 거래내역과 실현손익 · 기업행위 이력 · `알림 걸기`.
+보유 요약 · **계좌별 분해** · 그 종목의 실현손익과 거래내역 · 기업행위 이력 · `알림 걸기`. 보이는 것은 그 종목의 내 보유와 내 거래뿐이다(§3.8).
 
-`알림 걸기`는 이 종목이 채워진 채 새 알림 흐름을 연다([앱 정보 구조](../app-information-architecture.md) §2.5).
+| 영역 | 내용 |
+|---|---|
+| 보유 요약 | 평가금액 · 평가손익 · 수량 · 평단. 종목별 행과 같은 스냅샷이라 값이 같다. 보유하지 않으면 `지금 보유하지 않은 종목이에요` |
+| 계좌별 | 계좌마다 수량 · 평단 · 평가금액. 이월된 계좌는 `07-24 기준`을 붙인다. 등급 배지는 달지 않는다 — 잔고 평단은 등급과 무관하다 |
+| 실현손익 | 그 종목의 전 기간 매도. 합계 · 원가 기준 표기 · `미포함 계좌 N개` · 계좌별 원가 근거 줄 · 매도 행(`추정` 배지) |
+| 거래내역 | 그 종목의 전 기간 체결. 페이지를 나누지 않는다 |
+| 기업행위 | 이력이 있을 때만 |
 
-보유 요약과 계좌별 평단은 잔고 기준, 실현손익의 취득원가는 재구성 기준이다. 같은 화면에 놓이지만 원가가 다르므로 실현손익 영역에 그 사실을 표기한다(§4.1).
+보유 요약과 계좌별 평단은 잔고 기준, 실현손익의 취득원가는 재구성 기준이다. 같은 화면에 놓이지만 원가가 다르므로 보유 중이면 실현손익 합계 아래에 `취득원가 기준이 달라 위 평단과 맞지 않아요`를 표기한다(§4.1).
+
+**계좌별 원가 근거 줄**은 지금 보유 중인 수량을 앞으로 팔 때 손익이 어떻게 계산될지를 말한다 — `한국투자 위탁 · 추정 — 이 계좌에서 팔면 손익이 추정치로 계산돼요. 거래내역이 1월 1일부터 있어요`. 등급은 계좌 × 종목마다 다르므로(§4.3) 계좌마다 한 줄이다. 이미 실현된 매도의 근거는 매도 행의 배지가 말한다.
+
+전 기간을 내리는 것은 이 화면의 질문이 "이 종목을 언제 얼마에 사고팔았나"라서다. 기간을 자르면 그 답의 일부가 사라진다. 보유하지 않은 종목도 열 수 있고, 비어 있는 영역은 영역마다 비었다고 말한다.
+
+`알림 걸기`는 이 종목이 채워진 채 새 알림 흐름을 연다([앱 정보 구조](../app-information-architecture.md) §2.5). 상장폐지 종목에는 두지 않는다.
 
 ---
 
@@ -548,6 +562,8 @@ LOOK_THROUGH : [AAPL 148,000] [MSFT 121,000] … [기타 16,000]
 | 섹터 · 자산군 · 계좌 · 포트폴리오 전체 | ✗ | 원화만 |
 
 이 표는 예시이고 **판정은 조회 시점에 "이 묶음이 단일 통화인가"로 한다.** 축 이름을 하드코딩하면 축이 늘 때마다 표를 고쳐야 한다. 시장 축이 ✓인 것도 정의상 단일 통화라서지 시장이라는 이름 때문이 아니다.
+
+실현손익은 원화만 쓴다. 매입일과 매도일의 환율이 달라 원화 실현손익이 현지 통화 손익과 비례하지 않는다(§4.3).
 
 "미국 자산이 달러로 얼마인가"는 비중 분석에서 통화 축이나 시장 축을 선택해 확인한다.
 
@@ -1227,7 +1243,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `LENS_METRICS_OMITTED` | `TOTAL_ONLY` 지표가 행에서 빠짐 (§6.2) | 생략된 지표 키 배열 |
 | `EXCLUDED_ACCOUNTS` | 실현손익 합계에서 빠진 계좌 (§2.8) | `count` |
 | `SEEDED_ROWS` | 추정 등급 행 존재 (§4.5) | `count` |
-| `CA_UNKNOWN` | 기업행위 이력 미확인 (§4.4) | `instrument_id` 배열 |
+| `CA_UNKNOWN` | 기업행위 이력 미확인 (§4.4). 실현손익 · 종목 상세 | `instrument_id` 배열 |
 | `CASHFLOW_UNCOVERED` | 현금흐름 미확보 계좌 (§4.6) | `types` · `account_count` · `manual_uncovered_account_count` |
 | `PERIOD_TRUNCATED` | 기초 스냅샷 대체와 실제 시작일 (§2.9) | 실제 시작일 |
 | `BOUNDARY_CARRIED_FORWARD` | 기간 경계 스냅샷에 이월 계좌 (§2.9) | `count` · 경계 시점 |
@@ -1281,6 +1297,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 - `Σ rows.market_value_krw = total.total_assets_krw`가 항상 성립한다. 손익 계열은 `securities_value_krw`를 기준으로 하므로 `securities_value_krw − cost_amount_krw = unrealized_pnl_krw`도 성립한다.
 - `lens = LOOK_THROUGH`이면 `TOTAL_ONLY` 지표가 `rows[]`에서 빠지고 `total`에만 남으며 `LENS_METRICS_OMITTED` notice가 붙는다. 위 예시의 `rows[]`에서 `cost_amount_krw` · `unrealized_pnl_krw` · `unrealized_pnl_pct` 세 개가 사라진다.
 - CASH 행의 원가·손익은 `null`로 내린다.
+- 종목별 응답의 종목 행에는 `instrument_id`를 싣는다. 종목 상세를 여는 키다. 예수금 행과 `LOOK_THROUGH` 응답의 행에는 싣지 않는다.
 
 ### 8.4 실현손익 · 자산 변화 응답
 
@@ -1327,16 +1344,35 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 ### 8.5 하위 화면 · 계좌 · 동기화 응답
 
 ```json
-// GET /portfolio/instruments/{id}
-{ "instrument": { "id": "...", "label": "삼성전자", "market": "KR", "currency": "KRW" },
-  "position": { "quantity": 10, "avg_cost": 65610, "market_value_krw": 712000,
-                "unrealized_pnl_krw": 55900, "unrealized_pnl_pct": 8.5 },
-  "by_account": [ { "account_id": "...", "label": "한국투자 위탁",
-                    "account_type": "GENERAL", "quantity": 7, "avg_cost": 64200 } ],
-  "trades": [ { "executed_at": "2026-03-11", "side": "BUY", "quantity": 5, "price": 62000 } ],
-  "basis": { "grade": "SEEDED", "coverage_start_at": "2026-01-01", "ca_unknown": true },
+// GET /portfolio/instruments/{id}  — data 부분. 봉투는 §8.2
+{ "instrument": { "id": "...", "symbol": "005930", "label": "삼성전자",
+                  "market": "KR", "currency": "KRW", "delisted_on": null,
+                  "last_close": 71200, "last_close_on": "2026-07-27" },
+  "position": { "quantity": 200, "avg_cost": 60000, "cost_amount_krw": 12000000,
+                "market_value_krw": 14240000,
+                "unrealized_pnl_krw": 2240000, "unrealized_pnl_pct": 18.7 },
+  "by_account": [ { "account_id": "...", "label": "한국투자 위탁", "account_type": "GENERAL",
+                    "quantity": 200, "avg_cost": 60000, "market_value_krw": 14240000,
+                    "is_carried_forward": false, "source_as_of": "2026-07-27T15:30:00+09:00",
+                    "basis": { "grade": "SEEDED", "seed_reason": "LATE_COVERAGE",
+                               "coverage_start_at": "2026-01-01", "ca_unknown": false } } ],
+  "realized": { "total": { "realized_pnl_krw": 277000, "excluded_account_count": 0 },
+                "rows": [ { "trade_id": "...", "account_id": "...", "account_label": "한국투자 위탁",
+                            "sold_at": "2026-05-12", "quantity": 5,
+                            "sell_amount_krw": 700000, "cost_basis_krw": 500000,
+                            "realized_pnl_krw": 198000, "grade": "VERIFIED", "ca_unknown": false } ] },
+  "trades": [ { "trade_id": "...", "account_id": "...", "account_label": "한국투자 위탁",
+                "executed_at": "2026-03-11T09:12:00+09:00", "executed_on": "2026-03-11",
+                "side": "BUY", "quantity": 5, "price": 62000, "fee": 90, "tax": 0, "currency": "KRW" } ],
   "corporate_actions": [ { "type": "SPLIT", "ratio": 2, "ex_date": "2026-04-15" } ] }
 ```
+
+- 응답은 §8.2 봉투를 쓰고 `empty_reason`은 늘 `null`이다. 종목 하나의 서술이라 비는 것은 화면 전체가 아니라 영역 하나씩이다.
+- `position`은 종목별 응답과 같은 `as_of` · 같은 식이다. 보유하지 않으면 `null`이고 `by_account`는 빈다.
+- `basis`는 `position_basis`의 계좌 × 종목 판정이라 `by_account` 안에 둔다. 행이 없으면 `null`이다.
+- `realized`는 그 종목의 전 기간 `realized_pnl_line`이다. `UNAVAILABLE` · `CONFLICT`는 목록과 합계에서 빼고 그 계좌 수를 `excluded_account_count`에 싣는다(§9.3). `trades`는 그 종목의 전 기간 체결이다. 둘 다 연동을 해제한 계좌의 것도 담고, 페이지를 나누지 않는다.
+- notices는 `FX_APPLIED` · `FX_STALE`(이 종목 라인의 환율만) · `CA_UNKNOWN`이다.
+- 종목 마스터에 없는 ID와 예수금 의사종목은 `404 INSTRUMENT_NOT_FOUND`다. 마스터에 있는 종목은 보유하지 않아도 `200`이다 — 마스터는 공용이라 숨길 것이 없고, 나머지는 전부 인증 주체의 계좌로 스코프된다.
 
 ```json
 // GET /sync/{run_id}
@@ -1539,7 +1575,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 계좌별 | default / **캐리포워드 배지**(`07-24 기준`) / 그룹 접힘 / 연동 해제 확인 |
 | 실현손익 | default / **해당 기간 매도 없음** / 추정 배지 / **등급 혼합(MIXED)** / **미포함 계좌 N개** / 전 계좌 UNAVAILABLE / 체결 펼침 / 지정 기간 입력 |
 | 자산 변화 | default / **기초 스냅샷 없음 → 실제 시작일 표시** / **계좌 편입·제외** / **현금흐름 미확보 경고** / 기간 경계 이월 경고 / **손실 케이스** / 실현·미실현 분해 생략 |
-| 종목 상세 | default / 거래내역 없음 / 기업행위 경고(`ca_unknown`) |
+| 종목 상세 | default / **보유하지 않음** / 거래내역 없음 / 기업행위 경고(`CA_UNKNOWN`) / 찾을 수 없음 |
 | 계좌 연동 | 입력 / 입력 오류 / **연동 중(첫 수집 전)** / **첫 수집 실패** / 연동됨 |
 | 동기화 | 진행 중 / **부분 실패** / 전체 실패 / 완료 |
 
