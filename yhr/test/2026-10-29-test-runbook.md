@@ -63,6 +63,17 @@ SNAPSHOT_RUNTIME_ENABLED=true BASIS_ENABLED=true ./gradlew bootRun --args='--spr
 - 앱은 한 번 받은 조회 결과를 같은 페이지 로드 안에서 다시 쓴다. 데이터를 바꾼 뒤나 로딩 화면을 볼 때는 페이지를 새로 고친 뒤 처음 들어간 화면을 읽는다
 - 웹에서는 체크 · 선택 상태가 `aria-checked` 같은 속성으로 나오지 않는다. 그런 상태는 화면 표시로 판정한다
 
+### 2.3 실기기(iPhone · Expo Go)
+
+- 폰에는 App Store의 Expo Go를 쓴다. 스토어판 Expo Go는 최신 SDK 하나만 열고 iOS에서는 옛 버전을 다시 받을 수 없다. 테스트 기간에는 Expo Go를 지우거나 다시 설치하지 않고, 폰의 App Store 자동 업데이트를 꺼 둔다
+- 폰과 Mac은 같은 Wi-Fi에 붙는다. Mac을 그 폰의 개인용 핫스팟에 붙이면 폰의 Expo Go가 Mac에 닿지 않는다
+- Mac의 LAN 주소는 `ipconfig getifaddr en0`으로 본다. 폰이 닿을 API를 LAN 주소에 연다
+  - `로컬`: 백엔드를 `--server.address=0.0.0.0`으로 띄우고, 앱 `.env`를 `EXPO_PUBLIC_API_BASE_URL=http://<LAN 주소>:8080`으로 둔다
+  - `연계`: `kubectl -n portfolio port-forward --address <LAN 주소> svc/portfolio-api 18080:8080`을 열고, 앱 `.env`를 `http://<LAN 주소>:18080`으로 둔다
+- Metro는 `npx expo start -c`로 띄운다. Mac의 Expo CLI 계정과 폰의 Expo Go 계정이 다르면 `these accounts need to match`로 열리지 않으므로 `npx expo start --offline -c`로 띄운다. 폰은 Expo Go에서 `exp://<LAN 주소>:8081`을 입력하거나 QR을 읽어 연다
+- 끝나면 앱 `.env`를 `http://localhost:8080`으로 되돌리고, 백엔드와 port-forward를 `127.0.0.1`로 돌린다
+- 앱이 완전히 꺼진 상태에서 누른 푸시는 Expo Go가 프로젝트를 열지 않는다(테스트 설계 §8)
+
 ## 3. 로그인
 
 토큰은 `~/.cache/stock-it/<환경>/<이메일>` 파일에 둔다. `<환경>`은 `local` · `cluster`다. 요청은 이 파일을 읽어 헤더에 넣는다(§4.1).
