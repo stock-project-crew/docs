@@ -1420,7 +1420,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 
 | UI 요소 | 모델 경로 |
 |---|---|
-| 로그인 | `POST /auth/login` → access token |
+| 로그인 | `POST /auth/login` → 접근 토큰 · 갱신 토큰 |
 | 화면에 보이는 자산의 범위 | 토큰 `sub` = `account.user_id` (§3.8) |
 | as-of 배너 | 응답 봉투 `as_of` |
 | 적용 환율 표기 | `FX_APPLIED` notice (`fx_rate` · `fx_as_of`) |

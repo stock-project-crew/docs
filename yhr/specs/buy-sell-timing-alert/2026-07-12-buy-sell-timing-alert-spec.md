@@ -623,7 +623,7 @@ kubectl -n portfolio logs -l app=portfolio-api --prefix --tail=-1 --since=1h | g
 - **세션이 끝나면 그 세션으로 등록한 기기로는 보내지 않는다.** 공용 기기에서 로그아웃한 사람의 알림이 오면 안 된다.
   - 로그아웃은 `POST /auth/logout`으로 세션을 끝내고, 서버가 그 세션의 기기 등록을 함께 지운다.
   - 유휴 만료 · 절대 상한으로 끝난 세션의 기기는 그때부터 발송에서 빠지고, 정리 작업이 지운다.
-  - 로그아웃은 서버의 답을 기다리느라 막히지 않는다. 응답 없음 · `5xx`이거나 3초 안에 답이 없으면 앱이 OS의 푸시 등록을 끊어 이 기기가 푸시를 받지 않게 하고, 앱이 켜져 있는 동안 로그아웃을 다시 보낸다.
+  - 로그아웃은 서버의 답을 기다리느라 막히지 않는다. 응답이 없거나 `5xx` · `408` · `429`이거나 3초 안에 답이 없으면 앱이 OS의 푸시 등록을 끊어 이 기기가 푸시를 받지 않게 하고, 앱이 켜져 있는 동안 로그아웃을 다시 보낸다.
   - 앱이 꺼져 다시 보내지 못해도 그 세션은 마지막 갱신 후 7일이면 끝난다.
   - 끊은 OS 등록은 다음에 이 기기에서 누가 로그인해 등록하면 다시 켜진다.
   - 기기 하나만 지울 때는 `DELETE /devices/{id}`를 쓴다.
@@ -740,6 +740,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 |---|---|---|
 | `device_id` | uuid PK | |
 | `user_id` | uuid | 지금 이 기기로 로그인한 사용자 |
+| `session_id` | uuid | 이 기기를 등록한 로그인 세션. 세션이 지워지면 기기도 지워진다 |
 | `expo_push_token` | text UNIQUE | |
 | `platform` | text | `IOS` · `ANDROID` |
 | `created_at` · `last_seen_at` | timestamptz | |
@@ -920,6 +921,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 { "expo_push_token": "ExponentPushToken[…]", "platform": "IOS" }
 // → 200
 { "device_id": "…" }
+// 등록은 이 요청의 로그인 세션에 묶인다
 
 // GET /alert-events/unread-count
 { "count": 3 }
