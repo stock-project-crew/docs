@@ -49,6 +49,10 @@ SNAPSHOT_RUNTIME_ENABLED=true ./gradlew bootRun --args='--spring.profiles.active
 
 알림 평가기 · 발송기 · 영수증 확인기를 끈 기동이 필요한 케이스는 사전조건에 `알림 스케줄 끈 백엔드`라고 적는다. 그때는 `ALERT_RUNTIME_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `enabled: ${ALERT_RUNTIME_ENABLED:true}`).
 
+수급 · 장중 데이터 닫힘(알림 §5.6)을 보는 케이스는 사전조건에 `데이터 닫힌 백엔드`라고 적는다. 그때는 `ALERT_FLOW_ENABLED=false ALERT_INTRADAY_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `flow-enabled: ${ALERT_FLOW_ENABLED:true}` · `intraday-enabled: ${ALERT_INTRADAY_ENABLED:true}`). 하나만 닫을 때는 그 변수만 더한다. 값은 기동할 때 읽으므로 바꾸면 다시 띄운다.
+
+운영은 두 값을 백엔드 `k8s/deployment.yaml`에 둔다. 바꾸려면 그 값을 고쳐 main에 푸시하고, Argo CD의 롤아웃이 끝난 뒤에 확인한다. 운영 배포라 사람이 승인한 뒤에만 한다.
+
 평단 · 실현손익 계산은 생성기 회차의 마지막 단계라 생성기 스위치와 평단 스위치를 함께 켜야 돈다. 로컬 기본은 끔이고 운영 배포는 켠다. 이것이 필요한 케이스는 사전조건에 `평단 계산 켠 백엔드`라고 적고 아래처럼 띄운다.
 
 ```bash
@@ -1138,7 +1142,7 @@ INSERT INTO market_data_run (market, kind, as_of, state, finished_at)
 VALUES (:'market', 'INTRADAY_QUOTE', :'at', 'DONE', now());
 ```
 
-**`F-AL5-PRIOR-FIRE` 알림이 `at`보다 `ago`분 앞에 울린 것으로** — 그 시점의 발화 한 행을 넣고 평가 상태를 그 시점으로 맞춘다. `known`은 지금 엣지 기준(`TRUE` · `FALSE`)
+**`F-AL5-PRIOR-FIRE` 알림이 `at`보다 `ago`분 앞에 울린 것으로** — 그 시점의 발화 한 행을 넣고 평가 상태를 그 시점으로 맞춘다. `known`은 지금 엣지 기준(`TRUE` · `FALSE`). `cadence`는 넣지 않는다 — 비어 있으면 알림의 평가 시점으로 읽는다(알림 §10.1 `alert_event`)
 
 ```sql
 INSERT INTO alert_event (event_id, alert_id, as_of, fired_at, title, body, lines, observed, read_at)
@@ -2007,6 +2011,47 @@ SELECT :'as_of'::date, pl.account_id, pl.instrument_id, pl.quantity,
   FROM position_line pl JOIN account a USING (account_id) JOIN app_user u ON u.id = a.user_id
  WHERE u.email = :'email' AND pl.as_of = :'from'
 ON CONFLICT (as_of, account_id, instrument_id) DO NOTHING;
+```
+
+**`F-N-FLOW-RANGE` 종목의 수급과 `DAILY_FLOW` 완료 신호를 기간 안의 국내 거래일마다** — 외국인 순매수 10억원, 기관 0원
+
+```sql
+INSERT INTO investor_flow_daily (instrument_id, date, foreign_net_buy_krw, institution_net_buy_krw)
+SELECT :'instrument', date, 1000000000, 0
+  FROM dim_market_calendar WHERE market = 'KR' AND is_trading_day AND date BETWEEN :'from' AND :'to';
+INSERT INTO market_data_run (market, kind, as_of, state, finished_at)
+SELECT 'KR', 'DAILY_FLOW', close_at, 'DONE', now()
+  FROM dim_market_calendar WHERE market = 'KR' AND is_trading_day AND date BETWEEN :'from' AND :'to';
+```
+
+**`F-N-BAR-RANGE` 종목의 일봉과 `DAILY_BAR` 완료 신호를 기간 안의 국내 거래일마다** — 종가 63,010원 그대로
+
+```sql
+INSERT INTO adjusted_price_daily (instrument_id, date, open, high, low, close, volume, adj_factor)
+SELECT :'instrument', date, 63010, 63510, 62510, 63010, 1000000, 1
+  FROM dim_market_calendar WHERE market = 'KR' AND is_trading_day AND date BETWEEN :'from' AND :'to';
+INSERT INTO market_data_run (market, kind, as_of, state, finished_at)
+SELECT 'KR', 'DAILY_BAR', close_at, 'DONE', now()
+  FROM dim_market_calendar WHERE market = 'KR' AND is_trading_day AND date BETWEEN :'from' AND :'to';
+```
+
+**`Q-N-CLOSURE` 사용자 알림의 평가 상태와 닫힘으로 건너뛴 표시** — `held`는 `alert_state.held_since`가 있는지다
+
+```sql
+SELECT a.name, a.cadence, s.last_result, s.unknown_reason,
+       to_char(s.evaluated_as_of AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI') AS evaluated_kst,
+       s.held_since IS NOT NULL AS held, left(s.spec_hash, 12) AS hash, s.version
+  FROM alert a JOIN alert_state s USING (alert_id) JOIN app_user u ON u.id = a.user_id
+ WHERE u.email = :'email' ORDER BY a.created_at;
+```
+
+**`Q-N-EVENT-CADENCE` 사용자 알림의 발화와 그 발화를 만든 평가 시점** — `cadence`가 비어 있으면 알림의 평가 시점으로 읽는다
+
+```sql
+SELECT a.name, e.cadence,
+       to_char(e.as_of AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI') AS as_of_kst, e.body
+  FROM alert_event e JOIN alert a USING (alert_id) JOIN app_user u ON u.id = a.user_id
+ WHERE u.email = :'email' ORDER BY e.as_of;
 ```
 
 **`Q-N-HASH` 알림의 평가 상태와 해시가 주입한 값인지**
