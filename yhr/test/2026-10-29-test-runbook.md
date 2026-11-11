@@ -758,6 +758,40 @@ SELECT opening, closing, opening_substituted, opening_krw, closing_krw, deposite
   FROM ends;
 ```
 
+**`F-PF7-SPLIT` 투자손익을 확정 · 평가로 나눌 수 있는 덧씌움** — 백엔드 `src/main/resources/db/sample/sample_split.sql`을 그대로 적용한다. `yhr`의 `국내주식`(`…0002`)에 07-23 확정 잔고(07-24 줄 복사), 체결 확보 구간 2026-01-01 ~ 2026-07-24, 07-24 생성기 처리 기록(`BUILT`)을 넣는다. 그래서 `2026-07-01 ~ 2026-07-24`로 보면 기초가 07-23으로 대체되고 이 계좌만 판정 대상이 된다. 7월 전체는 기말 07-27이 확정 전이라 나눠지지 않는다
+
+```bash
+docker exec -i -e PGOPTIONS='-c search_path=app,data' back-end-db-1 psql -U portfolio -d portfolio -v ON_ERROR_STOP=1 \
+  < <작업폴더>/back-end/src/main/resources/db/sample/sample_split.sql
+```
+
+**`F-PF7-SPLIT-SELL` 그 계좌의 07-24 매도 한 건** — 실현손익 `pnl`원, 취득원가 100,000원, `VERIFIED`
+
+```sql
+INSERT INTO realized_pnl_line (trade_id, account_id, instrument_id, sold_at, quantity,
+    sell_amount_local, cost_basis_local, sell_amount_krw, cost_basis_krw,
+    fee_tax, realized_pnl_local, realized_pnl_krw, grade, evaluated_as_of, position_closed, ca_unknown)
+VALUES (:'trade', :'account', :'instrument', '2026-07-24T10:00:00+09', 1,
+        100000 + :'pnl'::numeric, 100000, 100000 + :'pnl'::numeric, 100000,
+        0, :'pnl', :'pnl', 'VERIFIED', DATE '2026-07-24', false, false);
+```
+
+**`F-PF7-SPLIT-FOREIGN` 외화 계좌를 판정 대상으로** — `한국투자 IRP`(`…0004`, 미국 종목 · 달러 예수금)에 07-23 확정 잔고 · 확보 구간 · 생성기 처리 기록을 넣어 다섯 조건 중 외화 조건만 어기게 한다
+
+```sql
+INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
+    cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
+    fx_rate, fx_as_of, source_as_of, is_carried_forward, is_final)
+SELECT '2026-07-23', account_id, instrument_id, quantity,
+       cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
+       fx_rate, '2026-07-23', '2026-07-23T15:30:00+09', false, true
+  FROM position_line WHERE as_of = '2026-07-24' AND account_id = '20000000-0000-0000-0000-000000000004';
+INSERT INTO cln_trade_coverage (account_ref, covered_from, covered_to, is_definitive, empty_streak, computed_at)
+VALUES ('ar_9a52f3b1', DATE '2026-01-01', DATE '2026-07-24', false, 0, '2026-07-24T23:30:00+09');
+INSERT INTO basis_build (account_id, as_of, outcome, reason, built_at)
+VALUES ('20000000-0000-0000-0000-000000000004', DATE '2026-07-24', 'BUILT', NULL, '2026-07-24T23:40:00+09');
+```
+
 ### 7.6 PF8 · PF9 · PF10 · PF11
 
 PF10-03 · PF10-06 · PF10-07은 PF9-16의 `F-PF9-SEEDED`를 쓴다. `F-PF9-SEEDED`는 `평단 계산 켠 백엔드`(§2.1)에서 쓰고, 끝나면 `R-LOCAL`이다. PF8은 `F-PF3-DISCONNECT`를 함께 쓴다.
@@ -1904,6 +1938,13 @@ SELECT
       AND EXISTS (SELECT 1 FROM position_line x WHERE x.account_id = a.account_id AND x.as_of = up.prev_as_of)
       AND NOT EXISTS (SELECT 1 FROM position_line y WHERE y.account_id = a.account_id AND y.as_of = up.as_of))
       AS missing_line;
+```
+
+**`F-N-HOLD-LINES` 보유 라인 표를 25초 잠가 조회 응답을 늦춘다** — 백그라운드로 띄운다. 잠금이 풀리면 늦춰진 요청이 그대로 응답한다
+
+```bash
+docker exec -e PGOPTIONS='-c search_path=app,data' back-end-db-1 psql -U portfolio -d portfolio -qc \
+  "BEGIN; LOCK TABLE position_line IN ACCESS EXCLUSIVE MODE; SELECT pg_sleep(25); COMMIT;" &
 ```
 
 ### 7.10 시나리오 밖 케이스 — 알림
