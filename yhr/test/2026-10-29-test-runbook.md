@@ -754,9 +754,9 @@ SELECT opening, closing, opening_substituted, opening_krw, closing_krw, deposite
   FROM ends;
 ```
 
-### 7.6 PF8 · PF9 · PF11
+### 7.6 PF8 · PF9 · PF10 · PF11
 
-PF10은 준비 데이터 · 판정 질의가 없다(종목 상세 구현이 없어 모든 케이스가 유보다). PF9-16의 `F-PF9-SEEDED`는 `평단 계산 켠 백엔드`(§2.1)에서 쓰고, 끝나면 `R-LOCAL`이다. PF8은 `F-PF3-DISCONNECT`를 함께 쓴다.
+PF10-03 · PF10-06 · PF10-07은 PF9-16의 `F-PF9-SEEDED`를 쓴다. `F-PF9-SEEDED`는 `평단 계산 켠 백엔드`(§2.1)에서 쓰고, 끝나면 `R-LOCAL`이다. PF8은 `F-PF3-DISCONNECT`를 함께 쓴다.
 
 PF11의 `F-…`는 `\gset`으로 날짜를 정하므로 `-f -`로 넘기는 §4.3의 방식 그대로 돈다. 오늘이 KR 영업일이 아니면 `\gset`이 행을 얻지 못해 멈춘다.
 
@@ -841,6 +841,20 @@ UPDATE position_line SET is_final = true
  WHERE as_of = '2026-07-27' AND account_id = '20000000-0000-0000-0000-000000000001';
 INSERT INTO snapshot_run (as_of, finished_at) VALUES ('2026-07-27', now()) ON CONFLICT (as_of) DO NOTHING;
 COMMIT;
+```
+
+**`F-PF10-SOLD-TODAY` `yhr@a.com`이 NAVER를 오늘 다 팔았다** — 최신 스냅샷(07-27, 확정 전)에서 `…0002`의 NAVER 라인을 지운다. 07-24 확정 라인에는 40주가 남는다. `R-LOCAL`이 되돌린다
+
+```sql
+DELETE FROM position_line
+ WHERE as_of = '2026-07-27' AND account_id = '20000000-0000-0000-0000-000000000002'
+   AND instrument_id = '10000000-0000-0000-0000-000000000003';
+```
+
+**`F-PF10-GONE` SK하이닉스를 상세를 열 수 없는 종목으로 바꾼다** — 종목 마스터에서 예수금 의사종목으로 둔다. 종목별 화면을 받은 뒤에 쓰고, 케이스가 끝나면 곧바로 `R-LOCAL`
+
+```sql
+UPDATE instrument SET asset_class = 'CASH' WHERE instrument_id = '10000000-0000-0000-0000-000000000002';
 ```
 
 **`Q-PF9-TRADES` 사용자의 기간 매도 체결과 항등식** — 기간은 체결일(KST) 기준, 양 끝 포함. 원가가 없는 `UNAVAILABLE` · `CONFLICT` 행은 `identity_ok`가 null이다
@@ -990,6 +1004,16 @@ INSERT INTO instrument (instrument_id, isin, symbol, name, asset_class, market, 
  ('10000000-0000-0000-0000-000000000092', NULL, '102780', 'KODEX 삼성그룹', 'ETF', 'KR', 'KRW', NULL, false),
  ('10000000-0000-0000-0000-000000000093', NULL, 'AAPU', 'Direxion Daily AAPL Bull 2X Shares', 'ETF', 'US', 'USD', NULL, true)
 ON CONFLICT (instrument_id) DO NOTHING;
+```
+
+**`F-AL1-BOUGHT-TODAY` `jdh@a.com`이 NAVER를 오늘 샀다** — 최신 스냅샷(07-27, 확정 전)의 `…0005`에만 NAVER 10주 라인을 넣는다. 07-24 확정 스냅샷에는 없다. `R-LOCAL`이 지운다
+
+```sql
+INSERT INTO position_line (as_of, account_id, instrument_id, quantity,
+    cost_amount_local, market_value_local, cost_amount_krw, market_value_krw,
+    fx_rate, fx_as_of, source_as_of, is_carried_forward, is_final) VALUES
+ ('2026-07-27', '20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000003', 10,
+  2000000, 2000000, 2000000, 2000000, 1, '2026-07-27', '2026-07-27T15:30:00+09', false, false);
 ```
 
 **`F-AL1-EMPTY-MASTER` 종목 마스터를 비운다** — 포트폴리오 뷰도 함께 깨지므로 케이스가 끝나면 곧바로 `R-LOCAL`
@@ -1782,6 +1806,12 @@ VALUES ('T-NP-U01', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-
 INSERT INTO etf_coverage (etf_instrument_id, state, as_of)
 VALUES ('10000000-0000-0000-0000-000000000006', 'UNAVAILABLE', '2026-07-27')
 ON CONFLICT (etf_instrument_id) DO UPDATE SET state = 'UNAVAILABLE', as_of = EXCLUDED.as_of;
+```
+
+**`F-N96-UNAVAILABLE` `yhr@a.com`의 NAVER 매도를 모두 손익을 계산하지 못한 매도로** — `T-0004`는 샘플에서 이미 `CONFLICT`다. `R-LOCAL`이 되돌린다
+
+```sql
+UPDATE realized_pnl_line SET grade = 'UNAVAILABLE' WHERE trade_id = 'T-0003';
 ```
 
 **판정 질의**
