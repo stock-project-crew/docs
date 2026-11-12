@@ -3,7 +3,7 @@
 - **버전**: v1 (2026-07-28)
 - **상태**: 설계 합의 완료 → 구현 계획 착수 전
 - **범위**: 뷰 정의 및 화면 UX, 집계 모델, 데이터 모델(DB 저장 구조), 3원장과 신뢰도 등급, 계좌 연동·동기화 흐름과 상태, 인증과 사용자 스코프, 검증 규칙
-- **비범위(이번 스펙에서 다루지 않음)**: 데이터 수집 구현 상세(KIS TR별 호출 방식), KIS 밖 기관(CODEF 경로 · 토스 등)의 연동 · 수집, 증권사 자격증명 재인증, 인프라·파이프라인 구현, 알림 발송, PER/PBR 섹터 분위수, 벤치마크 비교
+- **비범위(이번 스펙에서 다루지 않음)**: 데이터 수집 구현 상세(KIS TR별 호출 방식), KIS 밖 기관(CODEF 경로 · 토스 등)의 연동 · 수집, 증권사 자격증명 재인증(추가인증을 요구하는 기관의 재인증 흐름. 연동한 계좌의 인증 정보 갱신은 §7.2), 인프라·파이프라인 구현, 알림 발송, PER/PBR 섹터 분위수, 벤치마크 비교
 - **관련 자료**: [`wireflow.drawio`](./wireflow.drawio) / [`wireflow.png`](./wireflow.png) / [`wireflow_src.py`](./wireflow_src.py)(두 산출물 생성기) · [1차 기능 명세·기술 검토](../2026-06-28-feature-spec-and-tech-review.md) · [매수·매도 타이밍 알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) · [앱 정보 구조](../app-information-architecture.md) · [데이터 요구사항](../data-requirements.md) · [팀 아키텍처 합의](../../../team-architecture-agreement.md)
 
 ---
@@ -264,7 +264,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 |---|---|
 | 그레인 | 계좌 1행 |
 | 행 구성 | 1줄 `기관 · 상태 배지 · 계좌 총자산 · 비중` / 2줄 `예수금 · 평가손익(금액/%)` |
-| 응답 키 | `market_value_krw`(계좌 총자산) · `deposit_krw` · `link_state` · `source_as_of` · `is_carried_forward` |
+| 응답 키 | `market_value_krw`(계좌 총자산) · `deposit_krw` · `link_state` · `source_as_of` · `is_carried_forward` · `collection_alert` |
 | 그룹 | **계좌유형별 소계** (일반 합계 / 연금 합계). 소계는 예수금을 포함한 계좌 총자산 기준이며 그룹 헤더 오른쪽에 둔다 |
 | 렌즈 | 없음 |
 | 하위 | 행 탭 → 종목별 뷰(계좌 필터 적용 상태) |
@@ -274,7 +274,7 @@ LOOK_THROUGH  [AAPL 148,000] [MSFT 121,000] … [기타 16,000]     Σ 보존
 
 **계좌유형은 행에 두지 않는다** — 그룹이 이미 말한다. **유가증권 평가금액도 두지 않는다** — 계좌 총자산과 예수금이 나란히 있으면 유도된다.
 
-**계좌 단위 상태는 행이 말한다.** 캐리포워드된 계좌는 `source_as_of`를 `07-24 기준` 배지로, 연동 이상은 `link_state`를 배지로 붙인다. 전역 경고 줄(`STALE_ACCOUNTS`)은 목록이 길어져 배지가 화면 밖으로 나갔을 때를 위해 함께 둔다.
+**계좌 단위 상태는 행이 말한다.** 캐리포워드된 계좌는 `source_as_of`를 `07-24 기준` 배지로, 연동 이상은 `link_state`를 배지로 붙인다. 인증에 실패한 계좌(`collection_alert.code = CREDENTIAL_INVALID`)는 이월 배지에 원인을 앞세워 `인증 실패 · 07-24 기준`으로 붙인다. 전역 경고 줄(`STALE_ACCOUNTS`)은 목록이 길어져 배지가 화면 밖으로 나갔을 때를 위해 함께 둔다. 수집 안내(§7.2)는 목록 위 안내 카드로 함께 보이고, 그 카드에서 인증 정보 갱신으로 들어간다.
 
 마지막 동기화 시각은 동기화 기능이 생기기 전까지 표시하지 않는다. 값이 없는 자리를 만들면 화면이 비어 보이고, 지어낸 값을 넣으면 화면이 거짓말을 한다.
 
@@ -847,6 +847,8 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `account_type` | enum | `GENERAL` · `PENSION` |
 | `source` | enum | `KIS` |
 | `credential_ref` | text null | 시크릿 매니저 키. KIS 앱키 · 시크릿을 가리킨다. 값 자체는 저장하지 않음 (§7.1) |
+| `account_number_masked` | text null | 화면에 보이는 가린 계좌번호(`****5678-01`). 원문은 시크릿 매니저에만 있다 (§7.1) |
+| `linked_at` | timestamptz null | 지금 자격증명으로 수집을 시작한 시각. 등록 · 다시 연동 · 인증 정보 갱신 때 찍는다 (§7.2) |
 | `link_state` | enum | 연동 상태만. `CONNECTING`·`CONNECTED`·`DISCONNECTED` (§7.2) |
 | `last_synced_at` | timestamptz null | |
 
@@ -1091,7 +1093,8 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 | | KIS (본인 계좌) |
 |---|---|
 | 입력 | 본인 앱키·시크릿·계좌번호 |
-| 저장 | 시크릿 매니저에 보관하고 테이블에는 `credential_ref`만 |
+| 저장 | 시크릿 매니저에 보관하고 테이블에는 `credential_ref`와 가린 계좌번호만 |
+| 갱신 | 앱키·시크릿 (§7.2) |
 | 소유 | 연동한 사용자의 계좌로 귀속 |
 | 특성 | 빠르고 안정적 |
 | 재시도 | 레이트리밋 스로틀 중심 |
@@ -1101,6 +1104,8 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 1차에서는 자동 연동만 지원한다. 수동 입력·CSV 업로드는 제공하지 않으며, 연동 불가 계좌는 안내만 표시한다.
 
 **자격증명은 사용자별로 격리된다.** 연동은 인증 주체의 계좌를 만드는 행위이므로 `account.user_id`가 그 자리에서 정해지고, `credential_ref`가 가리키는 시크릿 매니저 키 이름에도 사용자가 들어가 키 이름을 알아도 남의 것을 집을 수 없게 한다. 자격증명 값은 백엔드도 보관하지 않으며, 수집이 필요한 시점에 `collection_run` 픽업으로만 전달된다(§7.7 · §11.2).
+
+**계좌번호는 앱키와 따로 둔다.** 시크릿 매니저에는 계좌마다 값이 둘 있다. 수집기가 읽는 수집용 값(앱키 · 시크릿 · 계좌번호 · 실전/모의)과, 백엔드가 읽는 계좌 정보 값(계좌번호)이다. 백엔드는 계좌 정보 값만 읽을 수 있고 수집용 값은 쓰고 지우기만 한다. 인증 정보를 갱신하려면 수집용 값을 통째로 다시 써야 하는데, 계좌번호를 사용자에게 다시 받지 않고 채우기 위해서다. 백엔드가 뚫려도 드러나는 것은 계좌번호이고, 주문까지 낼 수 있는 앱키는 드러나지 않는다. 화면에는 가린 계좌번호만 보인다.
 
 **`account_ref`는 계좌가 특정된 시점에 발급한다.** `기관코드 + 계좌번호`를 소금과 함께 해시한 값이며, 계좌를 식별하는 유일한 안정적 입력이 그것이라 해제 후 재등록해도 같은 값이 나온다. 소금을 두는 이유는 계좌번호 공간이 좁아 해시만으로는 역산할 수 있어서다. `account_id`를 그대로 쓰지 않는 것은 재등록 때 새 uuid가 나와 과거 `cln_trade`와의 연결이 끊기기 때문이다 — `trade_id`가 이 값을 접두로 갖는다(§11.2).
 
@@ -1127,8 +1132,33 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 |---|---|
 | `link_state` | `account.link_state` |
 | `last_collection` | 최신 `collection_run`의 `state` · `as_of` · `failure_reason` |
+| `collection_alert` | 수집 결과에서 계산한 수집 안내(아래). 없으면 `null` |
+
+수집 결과는 `account.linked_at` 뒤에 요청된 실행만 본다. `account_ref`는 다시 연동해도 같으므로, 실행이 지금 자격증명의 것인지는 이 시각으로 가른다.
 
 캐리포워드 트리거는 계좌 상태와 무관하게 **"그날 `collection_run` 최종 상태가 `DONE`이 아니면 이월"** 이라는 단일 규칙이다. `DISCONNECTED` 계좌는 `collection_run`을 만들지 않으며, 이것이 §7.5의 "제외"를 구현한다.
+
+**인증 정보 갱신.** 연동한 계좌의 앱키 · 시크릿이 무효가 되면(사용자가 폐기 · 재발급한 경우 등) 사용자는 그 계좌의 인증 정보를 갱신한다. 해제한 뒤 다시 연동하지 않는다. 해제하면 그 계좌가 현재 화면과 총자산에서 빠지고(§7.5), 다시 연동하면 첫 성공 수집까지 연동 중으로 돌아간다.
+
+- 바꾸는 값은 앱키 · 시크릿과 라벨이다. 계좌번호 · 실전/모의는 바꾸지 않는다. 계좌번호가 다르면 다른 계좌이므로 새 연동이다.
+- 계좌 행 · `account_ref` · `link_state` · 과거 라인은 그대로다. `CONNECTING` · `CONNECTED` 계좌를 갱신할 수 있고, `DISCONNECTED` 계좌는 갱신할 수 없다.
+- 갱신은 `linked_at`을 갱신 시각으로 옮긴다. 옛 키로 실패한 수집이 새 키의 결과처럼 보이지 않는다.
+- 갱신할 때 키를 KIS로 확인하지 않는다. 등록과 같다(증권사 호출은 데이터 몫이다, §11.1). 틀린 키를 넣었는지는 다음 수집에서 드러난다.
+
+**수집 안내(`collection_alert`).** 계좌마다 많아야 하나이고, 위에서부터 먼저 맞는 것을 쓴다. 저장하지 않는다.
+
+| `code` | 조건 | 뜻 |
+|---|---|---|
+| `CREDENTIAL_INVALID` | 마지막 성공 뒤에 끝난 실패 가운데 `failure_reason`이 인증 실패 코드인 것이 있다 | 앱키 · 시크릿이 무효다. 갱신해야 풀린다 |
+| `REPEATED_FAILURE` | `CONNECTED`이고 최근 수집 기준일이 2일 이상 연속 실패했다 | 원인은 모른다. 앱키를 바꿨다면 갱신해야 한다 |
+| `CREDENTIAL_UPDATED` | `CONNECTED`이고 `linked_at` 뒤에 요청된 실행 가운데 끝난 것이 없다 | 갱신했고 다음 수집에서 확인한다 |
+
+- 인증 실패 코드는 데이터가 앱키 · 시크릿 무효를 따로 가려 주는 `failure_reason`(`SOURCE_CREDENTIAL_INVALID`)이다. 다시 수집해도 풀리지 않으므로 첫날부터 알린다.
+- 연속 실패는 원인을 가리지 않고 센다. 일시 장애나 데이터 쪽 오류일 수 있어 앱키 문제라고 단정하지 않는다. 단정하면 사용자가 멀쩡한 키를 다시 발급받는다.
+- 연속은 KR 영업일인 수집 기준일(`as_of`) 단위로 센다. 같은 날에 정기 · 수동 실행이 여럿이어도 하루이고, 그 가운데 하나라도 `DONE`이면 그날은 성공이다. 실행 단위로 세면 동기화를 여러 번 누른 날이 여러 날로 세지고, 비영업일에 누른 동기화까지 세면 한 밤의 장애가 여러 날로 세진다.
+- 한 번도 성공하지 않은 `CONNECTING` 계좌는 계좌번호가 틀렸을 수 있어 연속 실패 안내를 두지 않는다. 연동 화면의 첫 수집 실패 표시가 앱키 · 계좌번호를 함께 말한다.
+- 2일인 이유는 한 번의 일시 장애로는 띄우지 않기 위해서다.
+- `CONNECTED` 계좌는 성공한 수집이 있어야 되므로, `linked_at` 뒤에 요청된 실행 가운데 끝난 것이 없는 `CONNECTED` 계좌는 갱신 직후의 계좌다. `CONNECTING` 계좌는 갱신 직후인지 갓 연동했는지 가를 수 없어 연동 중으로 보인다.
 
 ### 7.3 캐리포워드 — 실패해도 라인은 만든다
 
@@ -1162,7 +1192,8 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 
 | 상황 | 총자산 | 표시 |
 |---|---|---|
-| 일부 계좌 실패 | **포함**(이월값) | 계좌별 뷰 배지 `07-26 이월` + 탭바 점 |
+| 일부 계좌 실패 | **포함**(이월값) | 계좌별 뷰 배지 `07-26 기준` + 탭바 점 |
+| 인증 실패 · 연속 실패(§7.2) | **포함**(이월값) | 인증 실패는 배지 `인증 실패 · 07-26 기준`, 연속 실패는 이월 배지 그대로. 계좌별 뷰 안내 카드 + 탭바 점. 조치는 인증 정보 갱신 |
 | 연동 해제 | **제외** | 해제한 순간 스냅샷 4개 뷰 · 카탈로그 · 보유 판정에서 빠진다. 자산 변화 뷰에는 `－ 계좌 제외` 항목 |
 
 계좌 단위 상태를 계좌별 뷰에 모으는 이유는 **조치와 표시가 같은 자리에 있어야 하기 때문**이다. 동기화도 해제도 그 화면에서 하고, 어느 계좌가 낡았는지는 계좌마다 다른 사실이라 전역 배너 한 줄로 말하면 어느 계좌인지 알 수 없다. 다른 화면을 보던 사용자에게는 탭바 점 하나로 알린다.
@@ -1227,7 +1258,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | | `GET /portfolio/views/asset-change?period=&account=` |
 | 하위 화면 | `GET /portfolio/instruments/{id}` |
 | 종목 검색 | `GET /instruments?q=&held=` — 앱 공통 ([알림 스펙](../buy-sell-timing-alert/2026-07-12-buy-sell-timing-alert-spec.md) §11.1) |
-| 계좌 | `GET /accounts` · `POST /accounts` · `DELETE /accounts/{id}` |
+| 계좌 | `GET /accounts` · `POST /accounts` · `DELETE /accounts/{id}` · `PUT /accounts/{id}/credentials` |
 | 동기화 | `POST /sync` → `202` · `GET /sync/{run_id}` |
 | 카탈로그 | `GET /portfolio/catalog` |
 
@@ -1274,6 +1305,9 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `PRICE_LAG_MARKET` | 판정 대상 라인(§7.4)의 시장별 가격 기준일이 화면 `as_of`보다 이르거나, 종가로 평가하지 못한 라인이 있다 (§5.4 · §7.4) | `markets`: 알릴 시장마다 `{market, price_as_of, quote_count}`. `price_as_of`는 판정 대상 라인 중 종가로 평가한 라인의 가장 이른 날짜이고, 그런 라인이 하나도 없을 때만 null이다. `quote_count`는 수집 시각 시세로 평가한 서로 다른 종목 수. 종가 문장은 `price_as_of`가 화면 `as_of`보다 이를 때만, 시세 문장은 `quote_count > 0`일 때만 만들고, 둘 다 없는 시장은 싣지 않는다. 문구는 시장마다 만든 문장을 ` · `로 잇는다. 예: `미국 종목은 11-06 종가 기준이에요` · `미국 종목은 11-06 종가 기준이에요 · 미국 1개 종목은 수집 시각 시세예요` · `미국 3개 종목은 수집 시각 시세예요` |
 | `ALREADY_FINAL` | EOD 확정 후 또는 비영업일 수동 동기화 요청 | 확정 시각 |
 | `FX_STALE` | 환율 폴백이 KR 영업일 5일을 넘음 (§5.3) | 통화쌍 · `fx_as_of` |
+| `CREDENTIAL_INVALID` | 인증에 실패한 계좌 존재 (§7.2). 계좌별 뷰 | `account_ids` |
+| `REPEATED_FAILURE` | 연속 실패한 계좌 존재 (§7.2). 계좌별 뷰 | `account_ids` · 가장 긴 `failed_days` |
+| `CREDENTIAL_UPDATED` | 인증 정보를 갱신하고 다음 수집을 기다리는 계좌 존재 (§7.2). 계좌별 뷰 | `account_ids` · `next_pickup_at` |
 
 **빈 상태는 notices가 아니라 봉투 필드로 표현한다.** `rows`가 비면 `empty_reason`이 필수다. 빈 상태마다 코드를 만들면 뷰가 늘 때마다 코드가 증식한다.
 
@@ -1282,7 +1316,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
              · NO_TRADES_IN_PERIOD · ALL_UNAVAILABLE
 ```
 
-**계좌 단위 상태는 notices에 넣지 않는다.** 전역 배너와 행 배지는 다른 물건이므로, 계좌별 뷰 응답의 행에 `link_state` · `last_collection`을 직접 싣는다(§7.2). 계좌별 뷰만 §8.3 공통 행 스키마를 확장하는 유일한 뷰다.
+**계좌 단위 상태는 notices에 넣지 않는다.** 전역 배너와 행 배지는 다른 물건이므로, 계좌별 뷰 응답의 행에 `link_state` · `last_collection` · `collection_alert`를 직접 싣는다(§7.2). notices에는 그런 계좌가 있다는 사실과 대상 계좌 id만 싣는다(`STALE_ACCOUNTS` · `CREDENTIAL_INVALID` · `REPEATED_FAILURE` · `CREDENTIAL_UPDATED`). 계좌별 뷰만 §8.3 공통 행 스키마를 확장하는 유일한 뷰다.
 
 ### 8.3 스냅샷 뷰 응답
 
@@ -1418,6 +1452,24 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 ```
 
 등록은 첫 수집 전이라 `CONNECTING`으로 끝난다. `challenge`는 등록 중 추가 인증을 요구하는 기관을 위한 자리이고, KIS 등록은 늘 `null`이다.
+
+```json
+// GET /accounts  — 계좌 하나
+{ "account_id": "...", "broker": "한국투자증권", "label": "한국투자 위탁", "account_type": "GENERAL",
+  "source": "KIS", "env": "REAL", "account_number_masked": "****5678-01",
+  "link_state": "CONNECTED", "last_synced_at": "...",
+  "last_collection": { "state": "FAILED", "as_of": "2026-07-27", "failure_reason": "SOURCE_CREDENTIAL_INVALID" },
+  "collection_alert": { "code": "CREDENTIAL_INVALID", "failed_days": 1, "next_pickup_at": null } }
+```
+
+```json
+// PUT /accounts/{id}/credentials  → 204
+{ "app_key": "…", "app_secret": "…", "label": "생활비 계좌" }
+```
+
+- `collection_alert`는 계좌별 뷰 행과 같은 값이다(§7.2). `failed_days`는 연속 실패한 수집 기준일 수, `next_pickup_at`은 `CREDENTIAL_UPDATED`일 때만 찬다.
+- `account_number_masked`는 계좌번호를 가린 값이다. 비어 있는 계좌는 인증 정보를 갱신할 수 없다.
+- 갱신 요청은 앱키 · 시크릿이 필수이고 `label`은 선택이다. 계좌번호 · 실전/모의는 받지 않는다(§7.2).
 
 ### 8.6 오류와 빈 상태
 
@@ -1613,11 +1665,12 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 요약 | default / **연동 계좌 없음(온보딩)** / 로딩 / **일간 변화 없음**(연동 첫날) |
 | 종목별 | default / **보유 종목 없음** / 필터 결과 없음 / **렌즈 ON — 2줄이 환산수량만 남고 시장·자산군 필터 비활성** |
 | 비중 분석 | default / 축 전환 / 렌즈 ON(기타 버킷·구성비중 기준일 표기) / **구성종목 데이터 없음** / 섹터 축 미분류 안내 |
-| 계좌별 | default / **캐리포워드 배지**(`07-24 기준`) / 그룹 접힘 / 연동 해제 확인 |
+| 계좌별 | default / **캐리포워드 배지**(`07-24 기준`) / **인증 실패 배지**(`인증 실패 · 07-24 기준`) / 연속 실패 안내 / 갱신 뒤 확인 대기 안내 / 그룹 접힘 / 연동 해제 확인 |
 | 실현손익 | default / **해당 기간 매도 없음** / 추정 배지 / **등급 혼합(MIXED)** / **미포함 계좌 N개** / 전 계좌 UNAVAILABLE / 체결 펼침 / 지정 기간 입력 |
 | 자산 변화 | default / **기초 스냅샷 없음 → 실제 시작일 표시** / **계좌 편입·제외** / **현금흐름 미확보 경고** / 기간 경계 이월 경고 / **손실 케이스** / 실현·미실현 분해 생략 |
 | 종목 상세 | default / **보유하지 않음** / 거래내역 없음 / 기업행위 경고(`CA_UNKNOWN`) / 찾을 수 없음 |
-| 계좌 연동 | 입력 / 입력 오류 / **연동 중(첫 수집 전)** / **첫 수집 실패** / 연동됨 |
+| 계좌 연동 | 입력 / 입력 오류 / **연동 중(첫 수집 전)** / **첫 수집 실패** / 연동됨 / **인증 실패** / 연속 실패 / 갱신 뒤 확인 대기 |
+| 인증 정보 갱신 | 입력(앱키 · 시크릿 빈 칸, 라벨은 지금 값, 계좌번호 · 실전/모의는 읽기 전용) / 입력 오류 / 저장 중 / 저장 실패 |
 | 동기화 | 진행 중 / **부분 실패** / 전체 실패 / 완료 |
 
 빈 상태는 `empty_reason`, 품질 경고는 `notices`, 계좌 단위 상태는 계좌별 뷰의 행 필드로 표현한다(§8.2).
@@ -1707,6 +1760,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 레버리지 구분 | 원천 확보 시 `instrument.is_leveraged` 축 활성화 |
 | 종목 마스터 인터페이스 | 스키마·갱신 주기·미매칭 처리 규칙 합의 (§11.2) |
 | ETF 구성비중 평탄화 제공 | 중첩 분해를 데이터 측에서 처리하는 형태 합의 (§11.2) |
+| 인증 실패 코드 | 데이터가 앱키 · 시크릿 무효를 `failure_reason`으로 따로 가려 준다(`SOURCE_CREDENTIAL_INVALID`). 그 코드가 오지 않으면 인증 실패도 연속 실패 안내로만 보인다(§7.2) |
 
 ---
 

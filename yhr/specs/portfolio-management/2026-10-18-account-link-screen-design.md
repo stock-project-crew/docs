@@ -1,6 +1,6 @@
 # 계좌 연동 · 동기화 화면 설계 — `account-link`
 
-[포트폴리오 스펙](2026-07-28-portfolio-management-spec.md) §2.7 · §7 · §10이 정한 "계좌 연동 · 해제는 계좌별 화면에서 들어가는 하위 화면에서 한다"와 §2.3 · §7.6의 "수동 동기화는 계좌별 화면에서 트리거한다"를 앱 화면으로 만드는 설계다. 서버 쪽은 [KIS 계좌 등록 · 해제 API 설계](2026-10-16-account-link-api-design.md)(이하 API 설계)와 [수동 동기화 설계](2026-10-17-manual-sync-design.md)(이하 동기화 설계)가 정했고 `back-end` main에 있다. 스펙과 이 문서가 다르면 스펙이 맞다. 스펙 문구를 해석한 곳은 [§8](#8-스펙을-이렇게-읽은-곳)에 모았다.
+[포트폴리오 스펙](2026-07-28-portfolio-management-spec.md) §2.7 · §7 · §10이 정한 "계좌 연동 · 해제는 계좌별 화면에서 들어가는 하위 화면에서 한다"와 §7.2의 인증 정보 갱신 · 수집 안내와 §2.3 · §7.6의 "수동 동기화는 계좌별 화면에서 트리거한다"를 앱 화면으로 만드는 설계다. 서버 쪽은 [KIS 계좌 등록 · 해제 · 인증 정보 갱신 API 설계](2026-10-16-account-link-api-design.md)(이하 API 설계)와 [수동 동기화 설계](2026-10-17-manual-sync-design.md)(이하 동기화 설계)가 정했고 `back-end` main에 있다. 스펙과 이 문서가 다르면 스펙이 맞다. 스펙 문구를 해석한 곳은 [§8](#8-스펙을-이렇게-읽은-곳)에 모았다.
 
 | 근거 | 위치 |
 |---|---|
@@ -18,12 +18,14 @@
 **만든다**
 
 - 계좌 탭(계좌별 화면) 하단의 `계좌 연동 관리` 버튼.
-- 연동 계좌 목록 화면 `account-link`: 목록 · 해제 · 추가 진입.
+- 연동 계좌 목록 화면 `account-link`: 목록 · 갱신 · 해제 · 추가 진입.
 - KIS 계좌 등록 폼 화면 `account-link/new`.
+- 인증 정보 갱신 폼 화면 `account-link/credentials`.
+- 수집 안내: 계좌 탭의 안내 카드와 계좌 행 배지, 연동 목록의 상태 줄(§3.1 · §3.6 · §3.7).
 - 계좌 탭의 점(IA §3).
 - 계좌 탭의 `지금 동기화`(전 계좌)와 동기화 카드.
 - 계좌별 화면의 `SYNC_IN_PROGRESS` · `ALREADY_FINAL` notice 자리.
-- `GET /accounts` 응답 타입과 조회, 등록 · 해제 요청, `POST /sync` · `GET /sync/{run_id}` 요청.
+- `GET /accounts` 응답 타입과 조회, 등록 · 해제 · 갱신 요청, `POST /sync` · `GET /sync/{run_id}` 요청.
 
 **만들지 않는다**
 
@@ -58,6 +60,22 @@
                                        ▲                          │ 위탁(01)·연금저축(22)만   │
                                        └──── 202 성공 시 돌아옴 ── │ [ 연동하기 ]              │
                                                                   └──────────────────────────┘
+
+계좌 탭 (계좌별)                 계좌 연동 (account-link)          인증 정보 갱신 (account-link/credentials)
+┌──────────────────────┐        ┌──────────────────────────┐      ┌──────────────────────────┐
+│ ┌ 수집 안내 카드 ──┐ │        │ 한국투자 위탁 [갱신][해제]│      │ ‹  인증 정보 갱신         │
+│ │ 한국투자 위탁 ·   │ │        │ 위탁 · 인증 실패 ·        │      │ 앱키                      │
+│ │ 인증에 실패했어요 │ │        │  인증 정보를 갱신해 주세요│      │ [                     ]   │
+│ │ [인증 정보 갱신]  │ │        │                          │      │ 앱 시크릿            👁   │
+│ └──────────────────┘ │        │                          │      │ [                     ]   │
+│ 한국투자 위탁         │        │                          │      │ 계좌번호   ****5678-01    │
+│ [인증 실패 · 07-24 기준]│      │                          │      │ 구분       실전           │
+└──────────────────────┘        └──────────────────────────┘      │ 라벨                      │
+                                                                  │ [한국투자 위탁        ]   │
+  카드 버튼 → 대상 계좌가 하나면 갱신 폼, 여럿이면 계좌 연동         │ 갱신한 키는 다음 수집에서 │
+  목록 행의 [갱신] → 갱신 폼                                       │ 확인돼요                  │
+  204 → 들어온 화면으로 돌아감                                     │ [ 갱신하기 ]              │
+                                                                  └──────────────────────────┘
 ```
 
 ### 2.2 화면별
@@ -85,7 +103,7 @@
 **계좌 연동 (`account-link`)**
 
 - 스택 화면이고 헤더는 `계좌 연동`이다(IA §6.1).
-- `GET /accounts`의 계좌를 서버 순서(계좌유형, 라벨) 그대로 한 줄씩 보인다. 한 줄은 `라벨 · 상품(위탁 / 연금저축) · 상태 줄(§3.1) · 해제`다. 상품은 `account_type`으로 정한다(`GENERAL` → 위탁, `PENSION` → 연금저축). `env`가 `DEMO`인 계좌는 상품 옆에 `모의`를 붙인다. `REAL`과 `null`에는 붙이지 않는다.
+- `GET /accounts`의 계좌를 서버 순서(계좌유형, 라벨) 그대로 한 줄씩 보인다. 한 줄은 `라벨 · 상품(위탁 / 연금저축) · 상태 줄(§3.1) · 갱신 · 해제`다. `갱신`은 `account_number_masked`가 있는 계좌에만 둔다. 없는 계좌는 서버가 갱신을 거절한다(API 설계 §3.6). 상품은 `account_type`으로 정한다(`GENERAL` → 위탁, `PENSION` → 연금저축). `env`가 `DEMO`인 계좌는 상품 옆에 `모의`를 붙인다. `REAL`과 `null`에는 붙이지 않는다.
 - 목록 아래에 `＋ 계좌 추가`를 둔다.
 - 뒤로 가면 계좌 탭이다.
 
@@ -97,6 +115,16 @@
 - 실패하면 이 화면에 머문다(§3.3).
 - 따로 둔 화면이라, 떠나면 입력값이 컴포넌트 상태와 함께 사라진다(§5.1).
 
+**인증 정보 갱신 (`account-link/credentials`)**
+
+- 루트 스택에 쌓이는 스택 화면이고 헤더는 `인증 정보 갱신`이다. 네비게이션 파라미터는 `account_id` 하나다. 계좌 id는 자격증명이 아니다.
+- 들어오는 곳은 두 군데다. 연동 목록 행의 `갱신`과, 계좌 탭 수집 안내 카드의 `인증 정보 갱신`(§3.6)이다. 카드의 대상 계좌가 하나이고 갱신할 수 있으면(§3.6) 바로 이 화면으로, 그 밖에는 `account-link`로 간다.
+- 계좌의 라벨 · 가린 계좌번호 · 실전/모의는 `['account-links']` 조회에서 `account_id`로 찾는다. 캐시에 없으면 그 조회를 부른다. 찾지 못하면 `계좌를 찾을 수 없어요`와 뒤로 가기만 보인다.
+- 칸은 등록 폼과 같은 순서다(§4). 앱키 · 시크릿은 빈 칸으로 시작하고, 계좌번호 · 실전/모의는 읽기 전용, 라벨은 지금 값으로 채운 입력 칸이다.
+- `account_number_masked`가 없는 계좌면 폼 대신 `이 계좌는 아직 인증 정보를 갱신할 수 없어요`와 뒤로 가기만 보인다. 서버가 거절하는 계좌다(API 설계 §3.6).
+- `204`면 화면을 닫고 들어온 화면으로 돌아간다. `CONNECTED` 계좌는 상태 줄과 카드가 `갱신했어요 · 다음 수집(…)에서 확인해요`로 바뀌고, `CONNECTING` 계좌는 `연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`로 돌아간다(§3.1 · §3.6).
+- 실패하면 이 화면에 머문다(§3.8).
+
 **해제**
 
 - 행의 `해제` → 확인 시트(`ConfirmSheet`) → `DELETE /accounts/{id}` → 무효화(§6.3).
@@ -105,17 +133,21 @@
 
 ### 3.1 목록 행의 상태 줄
 
-`link_state`와 `last_collection.state`로 정한다.
+`collection_alert.code`가 있으면 그것으로, 없으면 `link_state`와 `last_collection.state`로 정한다. 위에서부터 먼저 맞는 줄을 쓴다.
 
-| `link_state` | `last_collection` | 상태 줄 | 색 |
-|---|---|---|---|
-| `CONNECTING` | `null` · `REQUESTED` · `RUNNING` · `DONE` | 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요 | 보조 |
-| `CONNECTING` | `FAILED` | 첫 수집에 실패했어요. 앱키·계좌번호를 확인하고 해제한 뒤 다시 등록해 주세요 | 경고 |
-| `CONNECTED` | `FAILED`가 아님 | 연동됨 | 보조 |
-| `CONNECTED` | `FAILED` | 연동됨 · `MM-DD` 수집 실패 (`as_of`) | 경고 |
+| `collection_alert.code` | `link_state` | `last_collection` | 상태 줄 | 색 |
+|---|---|---|---|---|
+| `CREDENTIAL_INVALID` | — | — | 인증 실패 · 인증 정보를 갱신해 주세요 | 경고 |
+| `REPEATED_FAILURE` | — | — | `{failed_days}`일째 수집 실패 · 앱키를 바꿨다면 인증 정보를 갱신해 주세요 | 경고 |
+| `CREDENTIAL_UPDATED` | — | — | 연동됨 · 갱신했어요 · 다음 수집(`MM-DD(요일) HH:mm`)에서 확인해요 (`next_pickup_at`) | 보조 |
+| 없음 | `CONNECTING` | `null` · `REQUESTED` · `RUNNING` · `DONE` | 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요 | 보조 |
+| 없음 | `CONNECTING` | `FAILED` | 첫 수집에 실패했어요 · 앱키·시크릿이 틀렸다면 인증 정보를 갱신하고, 계좌번호가 틀렸다면 해제한 뒤 다시 등록해 주세요 | 경고 |
+| 없음 | `CONNECTED` | `FAILED`가 아님 | 연동됨 | 보조 |
+| 없음 | `CONNECTED` | `FAILED` | 연동됨 · `MM-DD` 수집 실패 (`as_of`) | 경고 |
 
 - `CONNECTING` + `DONE`은 수집은 끝났고 생성기가 아직 처리하지 않은 사이다. 연동 중으로 둔다.
-- 첫 수집 실패의 복구는 해제 뒤 재등록뿐이다(API 설계 §2.3). 문구가 그 길을 말한다.
+- 앱키 · 시크릿이 틀린 것은 인증 정보 갱신으로 고친다. 인증 실패 코드가 오지 않은 첫 수집 실패는 앱키 · 계좌번호 어느 쪽이 틀렸는지 모르므로 두 길을 함께 말한다. 계좌번호가 다르면 다른 계좌라 갱신으로 고칠 수 없다(API 설계 §2.3). 연속 실패 안내는 `CONNECTED` 계좌에만 온다(API 설계 §3.7).
+- 모르는 `collection_alert.code`는 없는 것으로 본다.
 - 모르는 `state` 값은 `link_state`만으로 고른다(`CONNECTING` → 연동 중, `CONNECTED` → 연동됨).
 - `failure_reason` 코드는 보이지 않는다.
 - 성공 수집 시각은 적지 않는다(§8의 5).
@@ -167,10 +199,10 @@
 
 ### 3.4 계좌 탭의 점
 
-- 계좌별 뷰 응답의 `notices`에 `STALE_ACCOUNTS`가 있으면 계좌 탭에 점을 단다(IA §3 · 스펙 §7.5). 숫자는 달지 않는다.
+- 계좌별 뷰 응답의 `notices`에 `STALE_ACCOUNTS` · `CREDENTIAL_INVALID` · `REPEATED_FAILURE` 가운데 하나라도 있으면 계좌 탭에 점을 단다(IA §3 · 스펙 §7.5). 숫자는 달지 않는다. `CREDENTIAL_UPDATED`는 사용자가 이미 조치한 뒤라 점을 켜지 않는다.
 - 탭 바가 계좌별 뷰 조회(`useAccounts`, 키 `['accounts']`)를 같이 쓴다. 앱이 열리면 이 조회가 한 번 나간다.
-- 첫 수집에 실패한 연동 중 계좌는 IA §3 조건에 없어 점을 켜지 않는다.
-- `tabBarBadge`로 숫자 없는 점을 그리는 방법은 확인하지 않았다. 구현 때 확인한다.
+- 첫 수집 전 계좌는 계좌별 뷰에 행이 없지만 수집 안내 notice에는 들어 있다(API 설계 §3.7). 그래서 인증 실패면 점이 켜진다. 인증 실패 코드가 아닌 실패로는 켜지지 않는다.
+- 점은 `Tabs.tsx`가 `tabBarBadge`로 그린다. 켜는 조건만 `accountTabNeedsLook`에서 바꾼다.
 
 ### 3.5 동기화 카드
 
@@ -213,6 +245,51 @@
 | 조회 오류(`403` 밖) | 제목 아래 `진행 상태를 불러오지 못했어요`. 다음 조회 때 다시 묻는다 |
 | `403 FORBIDDEN_SYNC_RUN` | 저장한 실행 id를 지우고 카드를 그리지 않는다. 다른 사용자의 실행이거나 없는 실행이다 |
 
+### 3.6 계좌 탭의 수집 안내 카드
+
+계좌별 뷰의 `CREDENTIAL_INVALID` · `REPEATED_FAILURE` · `CREDENTIAL_UPDATED` notice를 계좌 목록 맨 위(합계 줄 위)에 카드로 그린다. 계좌가 여러 화면 길이여도 열자마자 보이게 하려는 것이다. 빈 상태(`NO_HOLDINGS`)에서도 빈 상태 위에 그린다. 첫 수집 전 계좌의 안내가 여기에 실린다.
+
+| code | 색 | 본문 | 버튼 |
+|---|---|---|---|
+| `CREDENTIAL_INVALID` | 경고 | notice `message` | `인증 정보 갱신` |
+| `REPEATED_FAILURE` | 경고 | notice `message` | `인증 정보 갱신` |
+| `CREDENTIAL_UPDATED` | 보조 | notice `message` | 없음 |
+
+- 셋이 함께 오면 서버 순서대로 카드를 하나씩 쌓는다.
+- 버튼은 `params.account_ids`가 하나이고 그 계좌의 `account_number_masked`가 있으면(`['account-links']` 조회로 본다) 그 계좌의 `account-link/credentials`로, 그 밖에는 `account-link`로 간다. 목록에서는 갱신할 수 있는 계좌에만 `갱신`이 보인다.
+- 문구는 서버 `message` 그대로다. 앱이 라벨 · 날짜를 다시 조립하지 않는다.
+
+### 3.7 계좌 행 배지
+
+`badgeLabelOf`가 이렇게 고른다.
+
+| 조건 | 배지 |
+|---|---|
+| `collection_alert.code = CREDENTIAL_INVALID`이고 `is_carried_forward` | `인증 실패 · MM-DD 기준` (`source_as_of`) |
+| `collection_alert.code = CREDENTIAL_INVALID` | `인증 실패` |
+| `is_carried_forward` | `MM-DD 기준` |
+| 연동 상태 | 지금과 같다(`연동 중` · `연동 해제됨`) |
+
+- 인증 실패만 원인을 배지에 앞세운다. 갱신 말고는 풀리지 않아서다. 연속 실패는 원인을 모르므로 날짜 배지 그대로 두고 카드가 말한다.
+
+### 3.8 갱신 폼 화면
+
+**클라이언트 검사.** 앱키 · 시크릿 · 라벨을 등록 폼과 같은 규칙과 문구로 검사한다(§3.3). 계좌번호는 입력이 아니라 검사하지 않는다.
+
+**서버 응답.** 문구는 서버 `message`를 그대로 쓴다.
+
+| 응답 | 자리 |
+|---|---|
+| `204` | 들어온 화면으로 돌아간다 |
+| `400 INVALID_ACCOUNT_REQUEST` · `409 ACCOUNT_NUMBER_UNAVAILABLE` · `503 CREDENTIAL_STORE_UNAVAILABLE` · `500` · 그 밖 | 폼 위 한 줄 |
+| `403 FORBIDDEN_ACCOUNT` · `409 ACCOUNT_DISCONNECTED` | 화면을 닫고 §6.3 범위를 무효화한다. 이미 없거나 해제된 계좌다 |
+| 네트워크 오류 | 폼 위 한 줄. `NetworkError` 문구 |
+| `401` | `client.ts`의 전역 로그아웃 |
+
+- 실패하면 시크릿 칸만 비우고 앱키 · 라벨은 남긴다.
+- 보내는 동안 `갱신하기`가 로딩이고 다시 누를 수 없다.
+- 보내는 동안 화면을 떠나면 응답을 화면에 반영하지 않는다. 성공이면 무효화(§6.3)는 한다.
+
 ## 4. 입력 폼
 
 **계좌번호**
@@ -242,13 +319,31 @@
   "account_number": "<숫자 10자리>", "env": "REAL" | "DEMO", "label": "<공백 지운 라벨>" }
 ```
 
+**인증 정보 갱신 폼**
+
+등록 폼과 같은 칸 · 같은 순서이고, 바꿀 수 없는 칸은 읽기 전용으로 보인다.
+
+| 칸 | 갱신 폼 |
+|---|---|
+| 앱키 · 앱 시크릿 | 빈 칸으로 시작한다. 입력 칸 규칙은 등록과 같다(§5.3) |
+| 계좌번호 | 읽기 전용. `account_number_masked`를 그대로 보인다 |
+| 실전/모의 | 읽기 전용. `env`가 `REAL`이면 `실전`, `DEMO`이면 `모의`. `null`이면 이 줄을 두지 않는다 |
+| 라벨 | 지금 라벨로 채운 입력 칸. 규칙은 등록과 같다 |
+
+- 칸 아래 안내는 `갱신한 키는 다음 수집에서 확인돼요`다. 키를 바로 확인하지 않는다(API 설계 §3.6).
+- 요청은 `PUT /accounts/{id}/credentials`에 다음을 싣는다. `label`은 언제나 싣는다.
+
+```json
+{ "app_key": "<공백 지운 앱키>", "app_secret": "<공백 지운 시크릿>", "label": "<공백 지운 라벨>" }
+```
+
 ## 5. 자격증명 입력값 다루기
 
 ### 5.1 보관
 
-- 앱키 · 시크릿 · 계좌번호는 `account-link/new` 컴포넌트의 `useState`에만 둔다.
+- 앱키 · 시크릿 · 계좌번호는 `account-link/new`, 앱키 · 시크릿은 `account-link/credentials` 컴포넌트의 `useState`에만 둔다.
 - 다음에 두지 않는다: 컨텍스트 · 전역 상태, 네비게이션 파라미터(네비게이션 상태는 직렬화 · 복원 대상이다), `kvStore` · SecureStore, TanStack Query 쿼리 키, `useMutation`의 `variables`(mutation 캐시가 보관한다).
-- 등록은 `endpoints.ts`의 `linkAccount(body)`를 제출 핸들러가 직접 부른다. 본문은 제출 때 만들고 저장하지 않는다.
+- 등록은 `endpoints.ts`의 `linkAccount(body)`를, 갱신은 `updateAccountCredentials(accountId, body)`를 제출 핸들러가 직접 부른다. 본문은 제출 때 만들고 저장하지 않는다.
 - 성공하면 화면이 닫히며 상태가 사라진다. 실패하면 시크릿 칸을 비운다.
 
 ### 5.2 로그 · 오류
@@ -267,8 +362,8 @@
 
 ### 5.4 보이는 곳
 
-- 계좌번호는 폼에서만 보인다. `GET /accounts`는 계좌번호를 주지 않는다.
-- `EXPO_PUBLIC_API_BASE_URL`이 `https://`로 시작하지 않으면 폼 위에 `암호화되지 않은 연결이에요. 같은 네트워크나 port-forward에서만 실제 키를 넣으세요`를 둔다. 서버가 평문 HTTP로 열려 있다(API 설계 §6.4).
+- 계좌번호 원문은 등록 폼에서만 보인다. `GET /accounts`는 가린 계좌번호(`account_number_masked`)만 주고, 갱신 폼은 그 값을 읽기 전용으로 보인다.
+- `EXPO_PUBLIC_API_BASE_URL`이 `https://`로 시작하지 않으면 등록 · 갱신 폼 위에 `암호화되지 않은 연결이에요. 같은 네트워크나 port-forward에서만 실제 키를 넣으세요`를 둔다. 서버가 평문 HTTP로 열려 있다(API 설계 §6.4).
 
 ### 5.5 지키지 못하는 것
 
@@ -282,6 +377,12 @@
 ```ts
 type CollectionStatus = { state: string; as_of: string; failure_reason: string | null };
 
+type CollectionAlert = {
+  code: string; // CREDENTIAL_INVALID · REPEATED_FAILURE · CREDENTIAL_UPDATED. 모르는 값이 올 수 있다
+  failed_days: number;
+  next_pickup_at: string | null;
+};
+
 type LinkedAccount = {
   account_id: string;
   broker: string;
@@ -289,10 +390,14 @@ type LinkedAccount = {
   account_type: 'GENERAL' | 'PENSION';
   source: string;
   env: 'REAL' | 'DEMO' | null;
+  account_number_masked: string | null;
   link_state: AccountLinkState;
   last_synced_at: string | null;
   last_collection: CollectionStatus | null;
+  collection_alert: CollectionAlert | null;
 };
+
+type UpdateCredentialsRequest = { app_key: string; app_secret: string; label: string };
 
 type AccountListResponse = { accounts: LinkedAccount[] };
 type LinkAccountResponse = { account_id: string; link_state: AccountLinkState; challenge: null };
@@ -318,7 +423,8 @@ type SyncRun = {
 ```
 
 - `state`를 문자열로 둔다. `collection_run.state`는 데이터 쪽 값이라 모르는 값이 올 수 있다(§3.1). 동기화의 `state` · `failure_reason`도 문자열로 두고 모르는 값을 §3.5대로 그린다.
-- 기존 `AccountRowData.last_collection: null`("언제나 null")은 서버가 이미 값을 채우므로 `CollectionStatus | null`로 고친다. 계좌별 화면은 이 필드를 그리지 않는다.
+- `AccountRowData.last_collection`은 `CollectionStatus | null`이다. 계좌별 화면은 이 필드를 그리지 않는다.
+- `AccountRowData`에 `collection_alert: CollectionAlert | null`을 더한다. 배지가 쓴다(§3.7).
 
 ### 6.2 조회
 
@@ -346,7 +452,7 @@ type SyncRun = {
 
 ### 6.3 무효화
 
-등록 · 해제가 성공하면 `account-links` · `accounts` · `summary` · `positions` · `allocation` · `realized-pnl` · `asset-change` · `cashflows` · `catalog` · `instruments`를 무효화하고 `alert-preview`를 캐시에서 지운다. 해제는 총자산과 계좌 필터(카탈로그), 종목의 보유 여부를 바꾸고, 입출금 계좌 선택은 카탈로그를 쓴다. 알림 미리보기도 보유 여부를 담지만, 디바운스하는 편집 화면은 마운트 때 다시 받지 않아 무효화로는 낡은 응답이 남는다. 등록은 첫 수집 전이라 뷰가 당장 바뀌지 않지만 같은 목록을 쓴다. 해제 `403`도 같은 범위를 무효화한다.
+등록 · 해제 · 갱신이 성공하면 `account-links` · `accounts` · `summary` · `positions` · `allocation` · `realized-pnl` · `asset-change` · `cashflows` · `catalog` · `instruments`를 무효화하고 `alert-preview`를 캐시에서 지운다. 해제는 총자산과 계좌 필터(카탈로그), 종목의 보유 여부를 바꾸고, 입출금 계좌 선택은 카탈로그를 쓴다. 알림 미리보기도 보유 여부를 담지만, 디바운스하는 편집 화면은 마운트 때 다시 받지 않아 무효화로는 낡은 응답이 남는다. 등록은 첫 수집 전이라 뷰가 당장 바뀌지 않지만 같은 목록을 쓴다. 갱신은 라벨을 바꿀 수 있어 라벨을 싣는 뷰 · 카탈로그가 바뀌고, 수집 안내가 `CREDENTIAL_UPDATED`로 바뀐다. 해제 · 갱신의 `403`과 갱신의 `409 ACCOUNT_DISCONNECTED`도 같은 범위를 무효화한다.
 
 동기화는 두 번 무효화한다.
 
@@ -358,6 +464,7 @@ type SyncRun = {
 
 - `SYNC_IN_PROGRESS` · `ALREADY_FINAL`은 계좌별 화면만 그린다(`BY_SCREEN.accounts`). 동기화는 계좌별 화면에서 트리거하고(스펙 §2.3), 같은 문장을 다른 화면마다 다시 보일 까닭이 없다.
 - 두 코드는 `SCREEN_PLACED`에 둔다. 배너 캡션이 아니라 동기화 카드(§3.5)가 그린다. 캡션에도 두면 같은 문장이 화면에 두 번 나온다.
+- `CREDENTIAL_INVALID` · `REPEATED_FAILURE` · `CREDENTIAL_UPDATED`도 계좌별 화면만 그리고 `SCREEN_PLACED`에 둔다. 수집 안내 카드(§3.6)가 그린다. 서버도 계좌별 뷰에만 싣는다(API 설계 §3.7).
 
 ## 7. 테스트
 
@@ -366,10 +473,11 @@ type SyncRun = {
 **픽스처**
 
 - 계좌 탭과 점은 골든 `accounts.json`을 쓴다. 이 파일에 `STALE_ACCOUNTS`가 있어 점이 켜지는 경우가 된다. 꺼지는 경우는 그 안내를 뺀 사본이다.
-- `GET /accounts`는 백엔드 골든이 없어 `src/fixtures/accountLinks.ts`에 DTO(`AccountDto` · `CollectionStatus`)를 보고 손으로 쓴다. §3.1 표의 다섯 조합을 담고, `env`는 `REAL` · `DEMO` · `null`을 하나 이상씩 담는다. id · 라벨은 가짜다. `AccountListResponse`로 받아 `tsc`가 모양을 검사한다.
+- `GET /accounts`는 백엔드 골든이 없어 `src/fixtures/accountLinks.ts`에 DTO(`AccountDto` · `CollectionStatus`)를 보고 손으로 쓴다. §3.1 표의 일곱 줄을 담고, `env`는 `REAL` · `DEMO` · `null`을, `account_number_masked`는 값 · `null`을 하나 이상씩 담는다. id · 라벨은 가짜다. `AccountListResponse`로 받아 `tsc`가 모양을 검사한다.
 - 자격증명 값은 `test-app-key` · `test-app-secret` · `00000000-01` 꼴만 쓴다.
 - `GET /sync/{run_id}`도 백엔드 골든이 없어 `src/fixtures/syncRun.ts`에 DTO(`SyncRunResponse` · `SyncAccountDto`)를 보고 손으로 쓴다. 실행 `RUNNING` · `DONE` · `PARTIAL` · `FAILED`(`PICKUP_TIMEOUT`)와 §3.5 계좌 줄 표의 조합을 담는다. `SyncRun`으로 받아 `tsc`가 모양을 검사한다.
 - 동기화 notice는 골든 `accounts.json`과 빈 봉투에 `SYNC_IN_PROGRESS` · `ALREADY_FINAL`을 더한 사본이다. 문장 · `params` 모양은 동기화 설계 §4.4를 따른다.
+- 수집 안내는 골든 `accounts.json`의 행에 `collection_alert`를, 봉투에 세 notice를 더한 사본이다(빈 봉투 포함). 문장 · `params` 모양은 API 설계 §3.7을 따른다. 백엔드 골든이 그 모양으로 나오면 그것으로 바꾼다.
 
 **단위**
 
@@ -378,9 +486,12 @@ type SyncRun = {
 | 계좌번호 | 숫자만 남김 · 10자리에서 자름 · 하이픈 섞인 붙여넣기 · 표시용 하이픈 |
 | 기본 라벨 | `01` · `22` · 그 밖은 없음 |
 | 입력 검사 | 앞뒤 공백 · 1,024자 경계 · 라벨 30자 경계 · 이모지를 한 글자로 센다 |
-| 상태 줄 | §3.1 표 전체 · 모르는 `state` |
+| 상태 줄 | §3.1 표 전체 · 모르는 `state` · 모르는 `collection_alert.code` |
+| 배지 | §3.7 표 전체 |
+| 계좌 탭 점 | `STALE_ACCOUNTS` · `CREDENTIAL_INVALID` · `REPEATED_FAILURE`면 켜고 `CREDENTIAL_UPDATED`만 있으면 끈다 |
 | 동기화 카드 문구 | §3.5 제목 표와 계좌 줄 표 전체 · 모르는 `state` · `as_of` null |
-| notice 자리 | 계좌별에서 두 코드가 캡션 · 줄에 나오지 않는다 · 요약 등 다른 화면은 두 코드를 버린다 |
+| notice 자리 | 계좌별에서 동기화 두 코드와 수집 안내 세 코드가 캡션 · 줄에 나오지 않는다 · 요약 등 다른 화면은 이 코드들을 버린다 |
+| 갱신 요청 | `PUT /accounts/{id}/credentials` 경로 · 본문 세 필드(공백 제거) |
 | 동기화 요청 | `POST /sync` 본문 `{}` · `GET /sync/{id}` 경로 |
 
 **화면**
@@ -391,12 +502,14 @@ type SyncRun = {
 | 지금 동기화 | 목록과 `NO_HOLDINGS`에 있고 `NO_ACCOUNTS`에 없다 · 누르면 `POST /sync` → `accounts` · `account-links` 무효화 → 카드 · 보내는 동안 두 번 보내지 않음 · 오류면 서버 `message` 한 줄, 네트워크 오류 문구 |
 | 동기화 카드 | notice의 실행 id로 카드가 뜬다(빈 상태 포함) · 저장한 id만 있어도 닫힌 결과가 보인다 · `닫기`면 지워지고 카드가 사라진다 · `403`이면 지워지고 카드가 없다 · notice id가 다르면 그 id를 저장한다 · 닫힌 실행을 처음 보면(`RUNNING`에서 바뀐 때 · 처음부터 닫힌 때) §6.3 범위를 한 번 무효화하고, 같은 실행으로는 다시 하지 않는다 |
 | 동기화 조회 주기 | 가짜 타이머로: `RUNNING` · 탭 포커스 · 앱 `active`일 때만 60초마다 · 닫히면 멈춤 · 탭에 다시 들어오거나 앱이 앞으로 오면 다시 묻는다 |
-| 목록 | 상태 줄 문구 · `DEMO`인 행에만 `모의` · 빈 목록 · 조회 오류와 재시도 |
+| 목록 | 상태 줄 문구 · `DEMO`인 행에만 `모의` · `account_number_masked`가 있는 행에만 `갱신` · 빈 목록 · 조회 오류와 재시도 |
+| 수집 안내 카드 | 세 code의 색 · 문구 · 버튼 · 빈 상태에서도 뜬다 · 버튼은 계좌 하나이고 가린 계좌번호가 있으면 갱신 폼, 그 밖에는 `account-link` |
+| 갱신 폼 | 앱키 · 시크릿은 빈 칸, 계좌번호 · 실전/모의는 읽기 전용(`env` null이면 줄이 없다), 라벨은 지금 값 · 클라이언트 검사 · 요청 본문 · `204`면 들어온 화면으로 돌아가고 §6.3 무효화 · 코드별 오류 자리 · `403` · `409 ACCOUNT_DISCONNECTED`면 닫고 무효화 · 가린 계좌번호가 없는 계좌는 폼 대신 안내 · 실패 시 시크릿만 비움 · 두 번 제출 안 됨 · `http` 주소면 경고 · 캐시에 없는 계좌 |
 | 해제 | 시트 → `DELETE /accounts/{id}` → 목록 재조회와 §6.3 무효화 · `503`이면 시트 안에 오류 · `403`이면 목록 재조회 |
 | 폼 | 클라이언트 검사 문구 · 라벨 미리 채움과 사용자가 고친 라벨 유지 · 요청 본문(snake_case, 공백 제거, 숫자 10자리, 체크하지 않으면 `env: "REAL"` · 체크하면 `"DEMO"`) · `202`면 목록으로 돌아가 새 계좌가 `연동 중` · 코드별 오류 자리와 문구 · 실패 시 시크릿만 비움 · 두 번 제출 안 됨 · `http` 주소면 경고 |
-| 누출 | 성공 뒤와 실패 뒤 각각: query 캐시 · mutation 캐시 · 네비게이션 루트 상태를 문자열로 바꿔도 가짜 앱키 · 시크릿 · 계좌번호가 없다 · `console.log` · `info` · `warn` · `error` · `debug`가 그 값으로 불리지 않는다 · 성공 뒤 렌더 트리에 값이 없다 |
+| 누출 | 등록 · 갱신 폼의 성공 뒤와 실패 뒤 각각: query 캐시 · mutation 캐시 · 네비게이션 루트 상태를 문자열로 바꿔도 가짜 앱키 · 시크릿 · 계좌번호가 없다 · `console.log` · `info` · `warn` · `error` · `debug`가 그 값으로 불리지 않는다 · 성공 뒤 렌더 트리에 값이 없다 |
 
-**수동 확인.** 구현이 끝나면 로컬 백엔드를 `portfolio.credentials.store=memory`로 띄우고 Expo 웹이나 시뮬레이터에서 가짜 키로 등록 · 해제 · 지금 동기화를 한 번씩 해 본다. 웹은 백엔드 `portfolio.web-origins`(`APP_WEB_ORIGINS`)에 개발 서버 출처를 넣어야 부를 수 있다(`WebOriginCorsConfig`). 서버 · 개발 서버를 띄우는 일이라 그때 승인을 받는다. 운영 서버에 실제 키로 등록하지 않는다.
+**수동 확인.** 구현이 끝나면 로컬 백엔드를 `portfolio.credentials.store=memory`로 띄우고 Expo 웹이나 시뮬레이터에서 가짜 키로 등록 · 갱신 · 해제 · 지금 동기화를 한 번씩 해 본다. 웹은 백엔드 `portfolio.web-origins`(`APP_WEB_ORIGINS`)에 개발 서버 출처를 넣어야 부를 수 있다(`WebOriginCorsConfig`). 서버 · 개발 서버를 띄우는 일이라 그때 승인을 받는다. 운영 서버에 실제 키로 등록하지 않는다.
 
 ## 8. 스펙을 이렇게 읽은 곳
 
