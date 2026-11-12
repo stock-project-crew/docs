@@ -824,7 +824,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 
 - `as_of`는 이 사용자의 알림이 평가된 가장 최근 데이터 시점이다. 평가된 알림이 없으면 null이다.
 - `summary`는 서버가 완성한 조건 문장이다(§12.1). 목록은 `short`(카드·푸시용)만, 상세와 미리보기는 `short`·`sentence` 둘 다 싣는다. `message`와 같은 원리로 앱은 그대로 출력한다.
-- `unread`는 알림 탭 상단 `새로 울린 알림` 블록의 내용이며 최대 3건이다. 넘친 건수는 `unread_more`다.
+- `unread`는 알림 탭 상단 `새로 울린 알림` 블록의 내용이며 최대 3건이다. 울린 시각(`fired_at`) 최신순이고, 같으면 `event_id` 내림차순이다. 넘친 건수는 `unread_more`다.
 - `rows`는 서버가 §12.2의 순서로 정렬한다.
 - `last_fired_at`과 울린 시각 표시는 `fired_at`(기록 시각) 기준이다. 데이터 시점(`as_of`)은 `10:15 기준`·`9/26 종가 기준` 같은 기준 표기에만 쓴다. 기준 표기의 형식은 `cadence`와 `market`으로 정한다(§12.6). 발화 행(`unread` · 울린 알림 · 울린 알림 상세 · 알림 상세의 `recent_events`)의 `cadence`는 발화를 만든 평가 시점(`alert_event.cadence`)이다.
 - `data_closure`: 데이터 닫힘(§5.6)에 걸린 알림이면 `{ "kind": "AS_CLOSE" | "HELD", "message": "…" }`, 아니면 null. 목록과 상세가 같은 값을 싣고, 앱은 `message`를 그대로 출력한다.
@@ -864,7 +864,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
                        "as_of": "2026-09-26T10:15:00+09:00", "read": true } ] }
 ```
 
-`recent_events`는 최근 5건이다. 그 알림의 전체 발화는 `GET /alert-events?alert_id=`로 본다. `trigger_spec`이 응답에 있는 것은 `수정`이 프리셋 입력·조건 만들기 화면을 값이 채워진 채 열기 때문이다.
+`recent_events`는 울린 시각 최신순(같으면 `event_id` 내림차순)으로 최근 5건이다. 그 알림의 전체 발화는 `GET /alert-events?alert_id=`로 본다. `trigger_spec`이 응답에 있는 것은 `수정`이 프리셋 입력·조건 만들기 화면을 값이 채워진 채 열기 때문이다.
 
 ```json
 // GET /alert-events?cursor=&limit=20   (봉투)
@@ -879,7 +879,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
   "empty_reason": null, "notices": [] }
 ```
 
-정렬은 `as_of` 내림차순이다. `next_cursor`가 null이면 마지막 쪽이다.
+정렬은 울린 시각(`fired_at`) 내림차순이고, 같으면 `event_id` 내림차순이다. `next_cursor`가 null이면 마지막 쪽이다.
 
 ```json
 // POST /alerts/preview  요청: 저장 요청과 같은 모양 + 수정 중이면 "alert_id"
@@ -1062,7 +1062,7 @@ UNIQUE `(alert_id, as_of)` — 한 알림은 한 데이터 시점에 최대 한 
 |---|---|
 | 행 | 1줄 제목 · 미확인 점 / 2줄 본문(1줄 말줄임) / 3줄 시각 · `삭제된 알림` 배지 |
 | 시각 | 24시간 안이면 `2시간 전`, 그 밖은 `9/24 13:05` |
-| 정렬 | 데이터 시점 내림차순. 날짜로 묶지 않는다 |
+| 정렬 | 울린 시각 최신순. 날짜로 묶지 않는다 |
 | 머리 | `모두 읽음` |
 
 알림 상세의 `전체 →`로 들어오면 그 알림의 발화만 보인다.
