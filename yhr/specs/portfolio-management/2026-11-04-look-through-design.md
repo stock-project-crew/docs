@@ -201,7 +201,7 @@ w_eff = w ÷ max(Σw, 1)
 | `CONSTITUENT_UNAVAILABLE` (warn) | 미분해 ETF가 1개 이상 | `%d개 ETF는 구성종목으로 나누지 못해 그대로 표시했습니다` | `count` · `undecomposed_krw` · `keys` (지금과 같다) |
 | `FX_APPLIED` | §4.3의 세 번째 경우가 있었을 때 그 환율을 합친다 | 기존 문구 | 같은 통화쌍의 기준일이 여럿이면 가장 오래된 날. `FX_STALE`도 이 값으로 판정된다 |
 
-날짜는 다른 안내(`STALE_ACCOUNTS`의 `07-24` 등)와 같은 `MM-dd` 형식이다. 화면에서 가격 기준일은 배너 첫 줄의 스냅샷 기준일로, 구성비중 기준일은 배너 둘째 줄 캡션으로 함께 보인다.
+날짜는 다른 안내(`STALE_ACCOUNTS`의 `07-24` 등)와 같은 `MM-dd` 형식이다. 화면에서 보유 종목의 시장별 가격 기준일은 `PRICE_LAG_MARKET`이, 구성비중 기준일은 `CONSTITUENT_AS_OF`가 배너 둘째 줄 캡션으로 보인다.
 
 ### 5.3 실패
 

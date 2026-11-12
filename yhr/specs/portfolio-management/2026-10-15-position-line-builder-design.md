@@ -25,6 +25,7 @@
 
 - `position_basis` · `realized_pnl_line`(1.5 · 1.6단계).
 - 수동 동기화 요청(`POST /sync` · `sync_run`)과 계좌 등록 · 해제 API. 이 생성기는 그 둘이 만든 `collection_run` 행과 `account` 행을 읽는다. 해제했던 계좌를 다시 연동하면 등록 API가 옛 `account` 행을 재사용한다(같은 `account_id`) — 생성기는 그 경우를 §6.1의 편입 규칙으로 다룬다.
+- `PRICE_LAG_MARKET` 판정과 응답 조립. 생성기는 `price_as_of`를 저장하기만 하고, 안내는 조회 계층이 그 컬럼으로 판정한다.
 - 재인증. 이번 범위는 KIS 계좌만 연동하고 증권사 재인증을 두지 않는다(포트폴리오 스펙 비범위).
 
 ## 2. 라인의 네 상태
@@ -74,7 +75,8 @@ SnapshotJobs (@Scheduled PT1M, 모든 복제본, 끄고 켤 수 있음)
 | 표 | 쓰는 컬럼 | 쓰는 곳 |
 |---|---|---|
 | `collection_run` | 전부. 쓰기는 `credential_ref` 하나(§8) | 트리거 · 계좌별 뷰 |
-| `cln_balance` | `account_ref` · `instrument_id` · `quantity` · `avg_price` · `market_value` · `currency` · `source_as_of` | 종목 행 |
+| `cln_balance` | `account_ref` · `instrument_id` · `quantity` · `avg_price` · `currency` · `source_as_of` | 종목 행 |
+| `balance_close_valuation`(뷰) | `close_value` · `close_date` | 종목 행의 평가금액과 그 종가 날짜. `cln_balance` PK `(account_ref, instrument_id, source_as_of)`로 붙인다 |
 | `cln_deposit` | `account_ref` · `currency` · `amount` · `source_as_of` | 예수금 행 · 잔고 시각 |
 | `fx_rate` | `as_of` · `currency_pair` · `rate_type` · `rate` | 원화 환산. `USD/KRW` `BASE`만 쓴다 |
 | `instrument` | `instrument_id` · `asset_class` · `currency` | 매칭 확인 · 예수금 의사종목 |
@@ -122,6 +124,11 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 **재시도할 수 있는 사유**: `NO_BALANCE` · `STALE_BALANCE` · `UNMATCHED_INSTRUMENT` · `CASH_INSTRUMENT` · `FX_MISSING` · `CALENDAR_UNKNOWN`. 데이터가 늦게 도착해 생길 수 있는 실패다. 이 사유로 남은 실행은 그 `as_of`가 확정되기 전까지 매 회차 다시 처리하고 `attempts`를 올린다. 나머지 사유는 최종이다.
 
 확정 단계 행은 `ON CONFLICT (account_id, as_of) WHERE run_id IS NULL DO NOTHING`으로 넣는다. 행 수는 계좌 × 영업일 규모라 지우지 않는다.
+
+### 4.4 종가 평가 — 뷰 미러와 `position_line.price_as_of`
+
+- `db/external`: `balance_close_valuation`을 데이터 DDL(`dataeng/reverse_etl/ddl.py`)과 같은 정의의 뷰로 만든다. 뷰가 읽는 `cln_balance` · `instrument` · `dim_market_calendar` · `adjusted_price_daily`는 모두 미러가 있다(V2 · V5 · V7).
+- `db/migration`: `position_line`에 `price_as_of date NULL`을 더한다(스펙 `position_line` 표). 이미 쌓인 라인은 null로 둔다 — 과거 행은 다시 계산하지 않는다(스펙 §5.4).
 
 ## 5. 실행 처리 — `RunProcessor`
 
@@ -174,12 +181,15 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 | `instrument_id` | `cln_balance.instrument_id` |
 | `quantity` | `quantity` |
 | `cost_amount_local` | `avg_price × quantity`, 소수 4자리 HALF_UP(스펙 §9.1 "잔고 평단 기준") |
-| `market_value_local` | `market_value` |
+| `market_value_local` | `close_value` — 수량 × 그 시장 마지막 거래일 종가. 그 종가가 없으면 원천 평가금액(`market_value`)이다 |
+| `price_as_of` | `close_date` — 종가로 평가했으면 그 날짜, 원천 평가금액이면 null |
 | `fx_rate` · `fx_as_of` | `KRW`는 `1` · `as_of`. `USD`는 `fx_rate`에서 `currency_pair = 'USD/KRW'`, `rate_type = 'BASE'`, 날짜 ≤ `as_of`인 가장 최근 행의 `rate` · 그 날짜 |
 | `cost_amount_krw` · `market_value_krw` | `local × fx_rate`를 정수로 HALF_UP. 반올림은 여기서 한 번뿐이다 |
 | `source_as_of` | `t` |
 | `is_carried_forward` | `false` |
 | `is_final` | §5.1 표 |
+
+`cln_balance.market_value`를 그대로 쓰지 않는 이유: 조회 시각의 시세라 23:00 수집이면 미국 종목이 프리마켓 · 장중 가격이 된다(스펙 §5.4). 이월은 원래 라인의 `price_as_of`를 그대로 옮긴다.
 
 통화는 `cln_balance.currency`를 쓴다. `fx_as_of < as_of`(폴백)는 실패가 아니다 — 기존 `FX_APPLIED` · `FX_STALE` notice가 알린다(스펙 §5.3).
 
@@ -187,6 +197,7 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 
 - 종목은 `instrument`에서 `asset_class = 'CASH' AND currency = cln_deposit.currency`인 행.
 - `quantity` = `cost_amount_local` = `market_value_local` = `amount`. 환산은 종목 행과 같다. 원가와 평가금액이 같아야 하는 규칙(스펙 §5.2)을 계산이 그대로 만족한다.
+- `price_as_of`는 null이다. 예수금은 종가가 없다.
 - 금액이 0이어도 행을 만든다. 보유 종목도 예수금도 0인 계좌가 그날 라인 0개가 되지 않게 한다.
 
 ### 5.4 빌드 실패
@@ -200,7 +211,9 @@ CREATE UNIQUE INDEX uq_position_build_finalize ON position_build (account_id, as
 | `UNMATCHED_INSTRUMENT` | `cln_balance.instrument_id`가 null이거나 `instrument`에 없다 | ✔ |
 | `CASH_INSTRUMENT` | 그 통화의 `CASH` 의사종목이 없거나 둘 이상이다 | ✔ |
 | `FX_MISSING` | `KRW`가 아닌 행이 있는데 `as_of` 이하 환율 행이 하나도 없다 | ✔ |
-| `INVARIANT` | §5.5 위반, 또는 수치 컬럼(`quantity` · `avg_price` · `market_value` · `amount`)이나 통화가 null — 계약(데이터 요구사항 §6.5 · §6.6)이 NOT NULL로 정한 값이 비어 있다 | ✘ |
+| `INVARIANT` | §5.5 위반, 또는 수치 컬럼(`quantity` · `avg_price` · `close_value` · `amount`)이나 통화가 null — 계약(데이터 요구사항 §6.5 · §6.6)이 NOT NULL로 정한 값이 비어 있다 | ✘ |
+
+`UNMATCHED_INSTRUMENT`를 `INVARIANT`보다 먼저 판정한다. `balance_close_valuation`은 `instrument`와 내부 조인이라 미매칭 종목은 뷰 행이 없어 `close_value`가 비어 있다 — 순서가 바뀌면 재시도할 실패가 영구 실패가 된다.
 
 null 값을 계산 실패로 다루는 이유: 예외로 끝나면 그 실행이 처리 기록을 남기지 못해 마감 뒤에도 그날 확정을 막고(§6.2), 날짜 순서 때문에 그 뒤 모든 날짜의 확정도 멈춘다. 최종 사유로 남기면 그 계좌만 이월된다.
 
@@ -225,9 +238,9 @@ null 값을 계산 실패로 다루는 이유: 예외로 끝나면 그 실행이
 
 그 사용자의 직전 기준일은 그 사용자의 계좌에 라인이 있는 날 가운데 D보다 이른 가장 늦은 날이다. 조회 시 검증(§6.1)과 화면의 전일 비교(`SnapshotCalendarMapper`)가 쓰는 기준과 같다. 그래서 D가 화면에 뜰 때 검증이 요구하는 계좌와 잠정 이월이 채운 계좌가 일치한다. 직전 영업일이 아직 확정되지 않아 라인이 없는 아침에도 그 전 기준일의 값으로 채워진다.
 
-Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = false`. 금액 · `fx_rate` · `fx_as_of` · `source_as_of`는 원본 그대로다(스펙 §7.3). 이 행은 Y의 그날 실행이 성공하면 덮이고, 확정 단계가 직전 영업일 확정 라인으로 다시 계산한다(§6.3). 해제했다 다시 연동한 계좌는 사용자의 직전 기준일에 라인이 없으므로 잠정 이월되지 않는다.
+Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = false`. 금액 · `fx_rate` · `fx_as_of` · `price_as_of` · `source_as_of`는 원본 그대로다(스펙 §7.3). 이 행은 Y의 그날 실행이 성공하면 덮이고, 확정 단계가 직전 영업일 확정 라인으로 다시 계산한다(§6.3). 해제했다 다시 연동한 계좌는 사용자의 직전 기준일에 라인이 없으므로 잠정 이월되지 않는다.
 
-**이 계좌의 이후 날짜.** 같은 트랜잭션에서, X의 소유자에게 라인이 있고 아직 확정되지 않은(`snapshot_run`이 없는) D 이후 날짜 L마다, X의 L 라인이 없으면 방금 쓴 D 라인 한 벌을 L로 복사한다. `is_carried_forward = true`, `is_final = false`, 금액 · 환율 · `source_as_of`는 D 라인 그대로다.
+**이 계좌의 이후 날짜.** 같은 트랜잭션에서, X의 소유자에게 라인이 있고 아직 확정되지 않은(`snapshot_run`이 없는) D 이후 날짜 L마다, X의 L 라인이 없으면 방금 쓴 D 라인 한 벌을 L로 복사한다. `is_carried_forward = true`, `is_final = false`, 금액 · 환율 · `price_as_of` · `source_as_of`는 D 라인 그대로다.
 
 이 규칙이 없으면 처리 순서에 따라 화면이 깨진다. 예: 신규 계좌 Y의 D-1 EOD가 재시도로 남아 있는 아침에 다른 계좌만 새로고침하면 D 라인이 생기고, Y는 사용자의 직전 기준일(D-1 이전)에 라인이 없어 잠정 이월되지 않는다. 그 뒤 Y의 D-1 재시도가 성공하면 사용자의 직전 기준일이 D-1이 되고 Y는 그날 라인이 있으므로, 조회 시 검증이 Y의 D 라인을 요구한다. 이후 날짜로의 잠정 이월이 그 라인을 채운다. 확정 단계는 각 날짜를 직전 영업일 확정 라인으로 다시 계산한다(§6.3).
 
@@ -262,7 +275,7 @@ Y의 그 기준일 라인 한 벌을 D로 복사한다. `is_carried_forward = tr
 |---|---|---|
 | 확정 | 없음 — `SCHEDULE` `DONE`이 이미 썼다 | — |
 | 잠정 실측 | `is_final = true`로 올린다. 그날 성공한 실측이 직전 성공 스냅샷이다 | `PROMOTED` |
-| 잠정 이월 또는 없음 | 지우고, 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = true`, 금액 · `fx_*` · `source_as_of`는 원본 그대로. 직전 영업일 라인이 없으면 아무것도 쓰지 않는다(편입 전) | `CARRIED` |
+| 잠정 이월 또는 없음 | 지우고, 직전 영업일 라인 한 벌을 D로 복사한다. `is_carried_forward = true`, `is_final = true`, 금액 · `fx_*` · `price_as_of` · `source_as_of`는 원본 그대로. 직전 영업일 라인이 없으면 아무것도 쓰지 않는다(편입 전) | `CARRIED` |
 
 마감으로 확정했으면 `reason = 'DEADLINE'`.
 
@@ -333,7 +346,7 @@ UPDATE collection_run r
 
 기본을 끄는 이유: 운영 `data`에 `cln_*`가 없으면 켜는 즉시 매 회차 오류가 난다. 운영에서 켜는 것은 매니페스트 변경이며, 그 전에 운영 DB에서 읽기로 확인한다.
 
-- §4.1의 표가 `data`에 있다.
+- §4.1의 표와 `balance_close_valuation` 뷰가 `data`에 있다.
 - 백엔드 DB 계정이 그 표들을 `SELECT`할 수 있고, `collection_run.credential_ref`를 `UPDATE`할 수 있다(`has_table_privilege` · `has_column_privilege`).
 
 ## 11. 테스트
@@ -346,11 +359,12 @@ UPDATE collection_run r
 - `sample_portfolio.sql`의 `TRUNCATE` 목록에 `position_build`를 더한다. `account`를 FK로 가리키는 표가 목록에 없으면 Postgres가 `TRUNCATE`를 거부한다.
 - `sample_portfolio.sql`의 `TRUNCATE` 목록에 `collection_run` · `cln_balance` · `cln_deposit` · `fx_rate`도 넣는다. 수집 결과를 심는 테스트가 남긴 행이 샘플을 쓰는 화면 테스트(`last_collection: null`)에 섞이지 않게 한다.
 - `PositionLineInvariantsTest`: 편입 전 계좌 · 재연동 계좌는 누락이 아니라는 사례를 더한다.
+- `SchemaContractTest`: `balance_close_valuation` 미러의 컬럼 목록을 단언한다.
 - 알림 `HoldingReader`: `snapshot_run`이 없는 날의 확정 라인은 최신 확정본으로 읽지 않는다.
 
 **순수 단위**
 
-- `LineCalculator`: KRW 행 · USD 행 · 환율 폴백 · 원화 반올림 경계(.5) · 예수금 0원 · 수량 0 행 거름 · `instrument_id` null · 수치 · 통화 null · 실패 사유 각각.
+- `LineCalculator`: KRW 행 · USD 행 · 환율 폴백 · 원화 반올림 경계(.5) · 예수금 0원 · 수량 0 행 거름 · `instrument_id` null · 수치 · 통화 null · 실패 사유 각각. 종가 행은 `market_value_local = close_value` · `price_as_of = close_date`, 종가가 없는 행은 원천 평가금액 · `price_as_of` null, 예수금 행은 `price_as_of` null. 미매칭 종목은 `close_value`가 비어도 `UNMATCHED_INSTRUMENT`다.
 - `LineInvariants`: 규칙마다 위반 사례 하나.
 - 확정 판정: 대상 계좌 정의 · 마감 전후 · 캘린더 없음 · 대상 0개 · 오늘 이후 날짜 제외.
 - `failure_reason` 걸러내기.
@@ -360,7 +374,8 @@ UPDATE collection_run r
 | 시나리오 | 확인 |
 |---|---|
 | `SCHEDULE` `DONE` | 라인 값 · `is_final = true` · `source_as_of` · `snapshot_run` |
-| `SCHEDULE` `FAILED`, 직전 영업일 라인 있음 | 확정 이월 — 금액 · `fx_*` · `source_as_of` 보존 |
+| 종가 평가 | 미러 뷰로 그날 종가가 있는 종목은 `close_value` · `close_date`, 없는 종목은 원천 평가금액 · `price_as_of` null |
+| `SCHEDULE` `FAILED`, 직전 영업일 라인 있음 | 확정 이월 — 금액 · `fx_*` · `price_as_of` · `source_as_of` 보존 |
 | 계좌 A·B 중 A만 `USER` `DONE` | A 잠정 실측 + B 잠정 이월. `GET /portfolio/views/accounts`가 200이고 B에 기준일 배지 재료(`is_carried_forward`)가 있다 |
 | 직전 영업일이 아직 확정 전인 아침에 A만 `USER` `DONE` | B는 그 전 기준일 값으로 잠정 이월되고 화면이 200 |
 | 신규 계좌의 전날 EOD가 재시도 대기 중에 다른 계좌가 오늘 라인을 얻고, 그 뒤 재시도가 성공 | 신규 계좌의 전날 라인이 오늘로 잠정 이월되고 화면이 200 |
@@ -395,7 +410,7 @@ UPDATE collection_run r
 
 1. **편입 시점** — §9.1 "연동이 유효한 모든 계좌는 해당 `as_of`에 라인 존재"를 "직전 영업일에 라인이 있었던 계좌"로 읽었다(§6.1). 첫 수집 전 계좌와 재연동 직후 계좌는 이월할 직전 라인이 없다.
 2. **확정 전 수정** — §9.1 "당일 외의 `as_of` 행은 수정 불가"와 §5.4 "과거 `as_of` 행은 어느 경우에도 수정하지 않는다"를 "`snapshot_run`으로 확정되기 전에는 그 `as_of`의 행을 쓸 수 있다"로 읽었다. 자정을 넘겨 끝나는 EOD 수집(데이터 EOD는 23:00 KST 시작)과 다음 날 아침 마감 확정이 이 해석에 기댄다. 앞 날짜의 확정이 막히면 쓸 수 있는 기간이 그만큼 늘어난다. 확정 뒤에는 바꾸지 않는다.
-3. **잠정 실측 승격** — §5.4 "EOD 배치만 `is_final = true`"와 §7.3 · §9.1 "최종 상태가 `DONE`이 아니면 이월"에서, 같은 날 수동 동기화로 얻은 실측을 직전 성공 스냅샷으로 보고 확정으로 올렸다(§6.3). 장중 시세가 그날 확정값이 되며 기준일 배지는 붙지 않는다. 그 계좌 행의 `source_as_of`는 그 시각을 담는다.
+3. **잠정 실측 승격** — §5.4 "EOD 배치만 `is_final = true`"와 §7.3 · §9.1 "최종 상태가 `DONE`이 아니면 이월"에서, 같은 날 수동 동기화로 얻은 실측을 직전 성공 스냅샷으로 보고 확정으로 올렸다(§6.3). 수동 동기화 시각 기준의 종가 평가가 그날 확정값이 되며 기준일 배지는 붙지 않는다. 그 계좌 행의 `source_as_of`는 그 시각을 담는다.
 4. **잠정 이월** — §7.3의 이월을 확정 전 잠정 라인에도 적용했다(§5.6). 스펙은 이월을 실패 계좌에 대해서만 적었다.
 5. **`credential_ref` "단기 참조"** — §7.7 · §11.2는 픽업 시 단기 참조를 넘긴다고 적었다. 이 설계는 계좌의 SSM 파라미터 이름을 그대로 복사한다(§8). 접근 범위는 워커 IAM 정책과 파라미터 경로(`/stock-project/accounts/*`)가 한정한다.
 6. **잔고 한 벌** — 데이터 요구사항 §6.5 "백엔드는 최신 `source_as_of` 한 행만 쓴다"를 계좌 단위 한 벌로 읽었다(§5.2).
@@ -409,6 +424,7 @@ UPDATE collection_run r
 | 빠진 것 | 결과 |
 |---|---|
 | `cln_balance` · `cln_deposit`가 `data`에 없음 | 잡을 켤 수 없다(§10) |
+| `balance_close_valuation` 뷰가 `data`에 없음 | 잡을 켤 수 없다(§10). 켜면 잔고를 읽는 조회가 매번 오류로 끝나 확정이 멈춘다 |
 | `instrument_id` 매핑 | 보유 종목이 있는 계좌의 `DONE`이 마감까지 `UNMATCHED_INSTRUMENT`로 재시도하다 이월된다. 첫 라인이 없던 계좌는 편입되지 않는다 |
 | 픽업 조건 · `as_of` 타입 | `collection_run`이 `FAILED`로 끝난다 → 이월 |
 | `silver_synced_at` | 반영 전에 읽으면 `NO_BALANCE` · `STALE_BALANCE`로 재시도한다. 마감 전에 반영되면 정상 생성된다 |

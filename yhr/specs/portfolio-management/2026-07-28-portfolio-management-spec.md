@@ -543,7 +543,7 @@ LOOK_THROUGH : [AAPL 148,000] [MSFT 121,000] … [기타 16,000]
 | 단계 | 하는 일 | 입력 → 출력 | 시점 | 담당 |
 |---|---|---|---|---|
 | 0 | 잔고·구성종목 수집, 종목 마스터 갱신, 구성비중 중첩 평탄화 | 증권사 API · 운용사 파일 → 원본 · 마스터 | EOD 배치 | 데이터 |
-| 1 | 잔고를 계좌×종목 행으로 정규화. **매입금액은 잔고 평단 기준**, 평가금액은 현재가 기준. 원화 환산, 예수금을 `CASH` 종목으로 편입, 실패 계좌 이월 | 원본 잔고 · 환율 → `position_line` | EOD 배치 · 수동 동기화 | 백엔드 |
+| 1 | 잔고를 계좌×종목 행으로 정규화. **매입금액은 잔고 평단 기준**, 평가금액은 그 시장 마지막 거래일 종가 기준(§5.4). 원화 환산, 예수금을 `CASH` 종목으로 편입, 실패 계좌 이월 | 원본 잔고 · 종가 · 환율 → `position_line` | EOD 배치 · 수동 동기화 | 백엔드 |
 | 1.5 | 기업행위 보정, `opening_qty` 역산, 등급 판정 | `position_line` · `cln_trade` · `corporate_action` → `position_basis` | EOD 배치 | 백엔드 |
 | 1.6 | 매도 체결마다 실현손익 산출 | `cln_trade` · `position_basis` · `fx_rate` → `realized_pnl_line` | EOD 배치 | 백엔드 |
 | 2 | ETF 행을 구성비중대로 안분. 미매칭·비중 미달분을 기타 버킷으로. 총합 보존 검증 | `position_line` · 구성비중 · 구성종목 종가 → 전개 라인 | 조회 시 | 백엔드 |
@@ -800,6 +800,7 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | 테이블 | 컬럼 |
 |---|---|
 | `cln_balance` | `account_ref` · `isin` · `quantity` decimal(20,8) · `avg_price` decimal · `market_value` decimal · `currency` · `source_as_of` timestamptz |
+| `balance_close_valuation` | 뷰. `cln_balance` 행마다 종가 기준 평가 — `close_date` · `close_value` · `valuation_basis`(`CLOSE` · `KIS`) (§5.4) |
 | `cln_deposit` | `account_ref` · `currency` · `amount` decimal · `source_as_of` |
 | `cln_trade` | `trade_id` · `account_ref` · `isin` · `side` enum(`BUY`·`SELL`) · `quantity` · `price` · `fee` · `tax` · `currency` · `executed_at` timestamptz |
 | `cln_cashflow` | `account_ref` · `type` enum(`DIVIDEND`·`FEE`·`TAX`) · `amount` · `currency` · `occurred_at` timestamptz |
@@ -856,11 +857,12 @@ PK `(as_of, etf_instrument_id, underlying_instrument_id)`
 | `as_of` | date | 일자 단위. 당일 upsert, 과거 불변 |
 | `account_id` · `instrument_id` | uuid | |
 | `quantity` | decimal(20,8) | 소수 허용 |
-| `cost_amount_local` · `market_value_local` | decimal(20,4) | 매입금액은 `cln_balance.avg_price × quantity`. `position_basis`를 쓰지 않는다 |
+| `cost_amount_local` · `market_value_local` | decimal(20,4) | 매입금액은 `cln_balance.avg_price × quantity`. `position_basis`를 쓰지 않는다. 평가금액은 `balance_close_valuation.close_value`(§5.4) |
 | `cost_amount_krw` · `market_value_krw` | decimal(20,0) | 원화는 정수 |
 | `fx_rate` | decimal(18,6) | `market_value_krw`가 있으면 필수 |
 | `fx_as_of` | date | |
 | `source_as_of` | timestamptz | 계좌별 실제 데이터 시각 |
+| `price_as_of` | date null | 평가금액에 쓴 종가의 날짜(§7.4). 종가가 없어 원천 평가금액으로 대신했거나, `CASH` 행이거나, 이 컬럼이 생기기 전에 만든 라인이면 null |
 | `is_carried_forward` | bool | |
 | `is_final` | bool | EOD 배치만 true. 수동 동기화가 덮지 않는다 |
 
@@ -951,7 +953,7 @@ PK `(as_of, account_id, instrument_id)`
 
 연동을 늦게 시작한 사용자는 그 이전 `as_of`를 갖지 않는다. `as_of`는 전 사용자 공통의 영업일이지만 **어느 날짜가 그 사용자에게 존재하는가는 계좌가 정한다**(§3.8).
 
-`as_of`는 **그 날짜의 배치가 관측한 세계의 상태**다. 한국 EOD 시점에 미국 시장은 아직 열리지 않았으므로 미국 종목은 그때 조회 가능한 최신 종가(직전 미국 영업일)를 쓴다. 나중에 나온 미국 종가로 과거 행을 고치지 않는다 — 고치면 자산 변화와 일간 변화가 재현 불가능해진다. 시장별 가격 기준일은 `PRICE_LAG_MARKET` notice로 고지한다(§8.2).
+`as_of`는 **그 날짜의 배치가 관측한 세계의 상태**다. 평가금액은 수량 × **수집 시각 전에 장이 끝난 그 시장의 마지막 거래일 종가**다. 국내 장 마감 뒤에 수집하면 국내 종목은 그날 종가, 미국 종목은 직전 미국 거래일 종가가 된다. 원천 잔고의 평가금액은 조회 시각의 시세라서 쓰지 않는다 — 수집 시각에 따라 미국 종목이 프리마켓 · 장중 · 종가로 날마다 다른 기준이 된다. 계산은 데이터의 종가 평가 뷰(`balance_close_valuation`)가 하고, 그 날짜 종가가 아직 없으면 원천 평가금액으로 대신한다. 이 경우 라인의 `price_as_of`가 비어 있다. 나중에 나온 종가로 과거 행을 고치지 않는다 — 고치면 자산 변화와 일간 변화가 재현 불가능해진다. 시장별 가격 기준일은 `PRICE_LAG_MARKET` notice로 고지한다(§7.4 · §8.2).
 
 **확정과 잠정을 `is_final`로 가른다.** EOD 배치만 `is_final = true`로 쓰고, 그 행은 이후 수동 동기화가 덮지 않는다. 새로고침은 `collection_run`을 돌려 `last_collection`을 갱신하되 라인은 그대로 두고 "이미 확정된 값입니다"를 알린다. 당일 `is_final = false` 행은 동기화할 때마다 갱신한다. 과거 `as_of` 행은 어느 경우에도 수정하지 않는다.
 
@@ -1136,15 +1138,23 @@ View { view_key, question, grain, group_by[], metrics[], row_fields[],
 2. **자산 변화 뷰가 깨지지 않는다.** 기초·기말 스냅샷이 항상 존재해야 항등식이 성립한다.
 3. **오차가 정직하게 흘러간다.** 이월된 평가금액은 낡은 시세이지만, 그 오차는 다음 성공 동기화 시 자산 변화 뷰의 `설명되지 않는 변화`로 드러난다.
 
-### 7.4 as-of의 두 층
+### 7.4 as-of의 세 층
 
 | 층 | 의미 | 노출 |
 |---|---|---|
 | **화면 as-of** | 배치 실행 기준일 | 모든 뷰 상단 배너 (단일) |
 | **`source_as_of`** | 계좌별 실제 데이터 시각 | 계좌별 뷰, 지연 시 전역 배너 |
-| **시장별 가격 기준일** | 종목이 속한 시장의 종가 날짜. `source_as_of` 이전에 `close_at`이 지난 가장 최근 그 시장의 거래일로 **유도한다**(`dim_market_calendar`) — 저장하지 않는다 | `PRICE_LAG_MARKET` notice |
+| **시장별 가격 기준일** | 종목이 속한 시장의 종가 날짜. `source_as_of` 이전에 `close_at`이 지난 가장 최근 그 시장의 거래일이다(`dim_market_calendar`). 보유 라인은 평가에 쓴 종가 날짜를 `price_as_of`에 **저장한다** | `PRICE_LAG_MARKET` notice |
 
-세 번째 층은 한 계좌에 국내·미국 종목이 섞여 `source_as_of` 하나로 말할 수 없기 때문에 필요하다. `as_of` 생성 규칙(§9.1)이 쓰는 `dim_market_calendar`가 미국 시장과 마감 시각을 함께 가지므로 유도로 끝난다.
+세 번째 층은 한 계좌에 국내·미국 종목이 섞여 `source_as_of` 하나로 말할 수 없기 때문에 필요하다. 날짜는 종가 평가 뷰(`balance_close_valuation.close_date`)가 캘린더로 정하고, 스냅샷을 만들 때 라인에 옮겨 저장한다. 뷰는 조회할 때 계산되어 종가가 늦게 오면 답이 바뀐다. 화면에서 날짜를 다시 유도하면 저장된 평가금액과 날짜가 어긋날 수 있어서 저장한다. 이월 라인은 원래 라인의 `price_as_of`를 그대로 가진다. 렌즈의 구성종목은 보유 라인이 아니므로 같은 규칙을 조회할 때 그 구성종목의 시장으로 유도한다(§3.4).
+
+**`PRICE_LAG_MARKET` 판정.** 시장마다 판정해 알릴 시장만 싣는다.
+
+- 대상은 화면에 보이는 라인(필터 적용 뒤) 중 그 시장 종목의 라인이다. 렌즈와 상관없이 보유 라인으로 판정한다. `CASH` 행은 대상이 아니다.
+- 이월 라인은 뺀다. 그 시장 라인이 전부 이월일 때만 이월 라인으로 판정한다. 한 계좌가 며칠 전 값으로 이월돼 있다고 시장 전체를 그 날짜로 말하면 나머지 종목에는 틀린 말이 된다. 낡은 계좌는 계좌별 화면의 기준일 배지와 `STALE_ACCOUNTS`가 알린다.
+- `price_as_of`가 있는 라인 중 가장 이른 날이 화면 `as_of`보다 이를 때만 그 날짜를 알린다. 국내 장 마감 뒤에 수집하면 국내 종목은 화면 `as_of`와 같아 알리지 않는다.
+- `price_as_of`가 빈 라인은 수집 시각의 시세다. 하나라도 있으면 그 종목 수를 알린다 — 대부분 종가인데 일부만 시세일 때 "종가 기준"이라고만 하면 그 종목에는 틀린 말이 된다.
+- 현재 스냅샷 뷰 넷(요약 · 종목별 · 비중 · 계좌별)에 싣는다. 자산 변화 · 실현손익 · 종목 상세에는 싣지 않는다.
 
 집계는 단일 as-of 기준으로 정렬하고, 계좌마다 동기화 시각이 다른 현실은 두 번째 층에서 표현한다.
 
@@ -1261,7 +1271,7 @@ EOD 배치       데이터 잡이 스스로 REQUESTED 행 생성
 | `PERIOD_TRUNCATED` | 기초 스냅샷 대체와 실제 시작일 (§2.9) | 실제 시작일 |
 | `BOUNDARY_CARRIED_FORWARD` | 기간 경계 스냅샷에 이월 계좌 (§2.9) | `count` · 경계 시점 |
 | `SYNC_IN_PROGRESS` | 동기화 진행 중 | `sync_run_id` |
-| `PRICE_LAG_MARKET` | 시장별 가격 기준일이 화면 `as_of`보다 이르다 (§5.4) | 시장별 가격 기준일 |
+| `PRICE_LAG_MARKET` | 판정 대상 라인(§7.4)의 시장별 가격 기준일이 화면 `as_of`보다 이르거나, 종가로 평가하지 못한 라인이 있다 (§5.4 · §7.4) | `markets`: 알릴 시장마다 `{market, price_as_of, quote_count}`. `price_as_of`는 판정 대상 라인 중 종가로 평가한 라인의 가장 이른 날짜이고, 그런 라인이 하나도 없을 때만 null이다. `quote_count`는 수집 시각 시세로 평가한 서로 다른 종목 수. 종가 문장은 `price_as_of`가 화면 `as_of`보다 이를 때만, 시세 문장은 `quote_count > 0`일 때만 만들고, 둘 다 없는 시장은 싣지 않는다. 문구는 시장마다 만든 문장을 ` · `로 잇는다. 예: `미국 종목은 11-06 종가 기준이에요` · `미국 종목은 11-06 종가 기준이에요 · 미국 1개 종목은 수집 시각 시세예요` · `미국 3개 종목은 수집 시각 시세예요` |
 | `ALREADY_FINAL` | EOD 확정 후 또는 비영업일 수동 동기화 요청 | 확정 시각 |
 | `FX_STALE` | 환율 폴백이 KR 영업일 5일을 넘음 (§5.3) | 통화쌍 · `fx_as_of` |
 
@@ -1519,6 +1529,7 @@ empty_reason : NO_ACCOUNTS · NO_HOLDINGS · NO_MATCH_FILTER
 | 비영업일 `collection_run`은 라인을 만들지 않는다 |
 | `is_final = true`인 행은 수동 동기화가 덮지 않는다 |
 | `fx_rate` 결측 시 그 날짜 이하의 가장 최근 행으로 폴백하고 `fx_as_of`에 그 날짜를 기록 |
+| 종목 행의 평가금액은 `balance_close_valuation.close_value`, `price_as_of`는 `close_date`. `CASH` 행과 원천 평가금액으로 평가한 행은 `price_as_of` null. 이월 라인은 원본의 `price_as_of`를 유지 |
 | `position_line.cost_amount`는 잔고 평단 기준. `position_basis`를 참조하지 않는다 |
 | CASH 행은 원가 = 평가금액으로 생성(§5.2) |
 
@@ -1644,6 +1655,7 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 | 종목 마스터 | 데이터 → 백엔드 | 스키마 · 갱신 주기 · ISIN 미매칭 처리 · 알림 범위와의 합집합 · 상장폐지 행 유지 |
 | 영업일 캘린더 | 데이터 → 백엔드 | 알림과 같은 테이블. KR·US · 개장·마감 시각 · 범위 |
 | 구성종목 종가 | 데이터 → 백엔드 | 알림과 같은 수정주가 일봉. 미국 범위에 보유 ETF의 구성종목을 포함 |
+| 보유 종목 종가 평가 | 데이터 → 백엔드 | `balance_close_valuation` 뷰. 종가 날짜를 정하는 규칙 · 종가가 없을 때 대신하는 값 · 원래 가격으로 되돌리는 방법 |
 | ETF 구성비중(평탄화) | 데이터 → 백엔드 | 스키마 · `as_of` · 비중 합 보장 여부 · 깊이 제한 · 순환 참조 차단 |
 | 환율(일별) | 데이터 → 백엔드 | 통화쌍 · 소수 자릿수 · 결측 처리 |
 | 원본 잔고·거래·입출금 | 데이터 → 백엔드 | 정규화 수준 · 중복 처리 · 조회 기간 한계 |
@@ -1677,7 +1689,8 @@ look-through는 두 팀에 걸친다. **중첩 ETF를 펼쳐 `ETF → 최종 종
 - **배당의 종목별 귀속**: 계좌 단위 현금흐름으로만 집계한다. 자산 변화의 배당 행은 제공하되 어느 종목에서 나왔는지는 따지지 않는다.
 - **포트폴리오 스냅샷 비교·백테스트**: 후속 과제.
 - **과거 시점 화면 재현**: 전개 시 어느 `as_of`의 구성비중을 썼는지 기록하지 않고 조회 시 항상 최신을 쓰므로, 과거 날짜의 분해를 그때 보였던 값으로 재현하지 않는다.
-- **미국 종가의 당일 반영**: 한국 EOD 시점에 미국 시장이 열리지 않았으므로 직전 미국 영업일 종가를 쓰고 나중에 소급하지 않는다(§5.4).
+- **미국 종가의 당일 반영**: 수집 시각 전에 끝난 미국 거래일의 종가를 쓰고, 나중에 나온 종가로 소급하지 않는다(§5.4).
+- **미국 분할 기준일의 평가**: 미국 종목은 하루 전 종가로 평가하므로, 분할 기준일에 원천 수량이 수집 전에 분할 뒤 수량으로 바뀌어 있으면 그날 평가금액이 분할 비율만큼 어긋난다. 원천 수량이 언제 바뀌는지는 확인하지 않았다. 드문 일이라 막지 않는다.
 - **미실현 평가손익의 환손익 분리**: 미실현 평가손익은 양변을 같은 환율로 환산해 환손익이 애초에 들어가지 않는다(§5.3). 실현손익은 매입일·매도일 환율을 각각 적용해 환손익을 포함하며(§4.3), 이를 가격손익과 분리하지 않는다.
 - **사전 집계**: 보유 규모상 조회 시 집계로 충분하므로 집계 캐시나 전개 결과 저장을 두지 않는다(§3.3 · §3.4).
 - **범용 쿼리 엔드포인트**: 뷰 사양은 서버가 보유하며 임의 축 조합을 받지 않는다(§6.4).
