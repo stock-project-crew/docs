@@ -123,7 +123,7 @@
 | PF5-04 | 예수금 행이 있고 원가 · 손익은 비어 있다 | 둘 다 | 2 | 통과 |
 | PF5-05 | 원화 환산에 쓴 환율이 배너에 실린다 | 둘 다 | 2 | 통과 |
 | PF5-06 | 외화 한 통화만 모인 묶음에만 현지 통화가 병기된다 | 둘 다 | 2 | 통과 |
-| PF5-07 | 미국 종목의 가격 기준일이 화면 기준일보다 이르면 알린다 | 둘 다 | 1 | 유보 |
+| PF5-07 | 미국 종목의 가격 기준일이 화면 기준일보다 이르면 알린다 | 둘 다 | 1 | 통과 |
 | PF5-08 | 탭을 차례로 지나며 네 화면의 총자산이 같게 보인다 | 로컬 | 2 | 통과 |
 | PF5-09 | 요약의 비중 →은 시장 축 비중 분석을 연다 | 로컬 | 2 | 통과 |
 | PF5-10 | 계좌 행을 누르면 그 계좌로 거른 종목별이 열린다 | 로컬 | 2 | 통과 |
@@ -144,6 +144,9 @@
 | PF5-25 | 그날 환율이 없으면 그 날짜 이하 최근 환율로 환산하고 그 기준일을 알린다 | 로컬 | 1 | 통과 |
 | PF5-26 | 환율 폴백이 KR 영업일 5일을 넘으면 낡은 환율 경고가 뜬다 | 로컬 | 1 | 실패 |
 | PF5-27 | 환율 폴백이 KR 영업일 5일 이내면 낡은 환율 경고가 없다 | 로컬 | 2 | 실패 |
+| PF5-28 | 보유 라인의 평가금액은 그 시장 마지막 거래일 종가다 | 연계 | 1 | 통과 |
+| PF5-29 | 종가가 없는 종목은 원천 평가금액으로 평가하고 수집 시각 시세라고 알린다 | 로컬 | 1 | 통과 |
+| PF5-30 | 가격 기준일 판정은 이월 라인을 빼고, 전부 이월이면 이월 라인으로 한다 | 로컬 | 2 | 통과 |
 | PF6-01 | 축 세그먼트는 카탈로그가 켠 축만 그린다 | 로컬 | 2 | 통과 |
 | PF6-02 | 꺼진 축 · 이 화면에 없는 축 · 없는 축은 거절한다 | 로컬 | 3 | 통과 |
 | PF6-03 | 축을 바꾸면 그 축으로 다시 묶고 합계는 그대로다 | 로컬 | 1 | 통과 |
@@ -2156,15 +2159,15 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `GET /portfolio/views/summary` · `/positions` · `/allocation?axis=sector` · `/accounts` ② `Q-PF5-FX`(`email=…`) ③ `로컬`만: 웹의 요약 · 종목 · 비중 · 계좌 탭에서 배너 둘째 줄을 읽는다 |
-| 기대 결과 | ① 네 응답 모두 `notices`에 `code = FX_APPLIED`, `severity = info` 하나. `params.rates[0].pair = USD/KRW`, `rate`와 `fx_as_of`가 ②의 `fx_rate` · `fx_as_of`, `params.oldest_fx_as_of`가 ②의 가장 이른 `fx_as_of`. `로컬`: `message = USD/KRW 1,400.00 적용 · 기준 2026-07-24` ② `로컬`: `USD/KRW` · `1400.000000` · `2026-07-24` ③ 네 탭 모두 배너 첫 줄 `기준 2026-07-27 15:30`, 둘째 줄 `USD/KRW 1,400.00 적용 · 기준 2026-07-24` |
+| 기대 결과 | ① 네 응답 모두 `notices`에 `code = FX_APPLIED`, `severity = info` 하나. `params.rates[0].pair = USD/KRW`, `rate`와 `fx_as_of`가 ②의 `fx_rate` · `fx_as_of`, `params.oldest_fx_as_of`가 ②의 가장 이른 `fx_as_of`. `로컬`: `message = USD/KRW 1,400.00 적용 · 기준 2026-07-24` ② `로컬`: `USD/KRW` · `1400.000000` · `2026-07-24` ③ 네 탭 모두 배너 첫 줄 `기준 2026-07-27 15:30`, 둘째 줄 `USD/KRW 1,400.00 적용 · 기준 2026-07-24 · 미국 종목은 07-24 종가 기준이에요`(뒤의 문장은 PF5-07) |
 | 증거 | ① 응답 ② 질의 결과 ③ 스크린샷 |
 | 근거 절 | 포트폴리오 §2.3 · §5.3 · §8.2 `FX_APPLIED` |
 | 환경 | 둘 다 |
 | 등급 | 2 |
 | 수단 | `API` · `DB` · `크롬` |
-| 자동화 | `자동-기존` `NoticeCollectorTest.환율을_적용했으면_적용값과_기준일을_알린다` · 프론트 `notices.test.ts › 환율 안내는 여섯 화면 어디서나 캡션이다` · `summary.test.tsx › 환율 안내는 배너에 나온다` |
+| 자동화 | `자동-기존` `NoticeCollectorTest.환율을_적용했으면_적용값과_기준일을_알린다` · 프론트 `notices.test.ts › 환율 안내는 여섯 화면 어디서나 캡션이다` · `summary.test.tsx › 환율과 가격 기준일 안내가 배너에 나온다` |
 | 결과 | 통과 |
-| 비고 | 로컬의 `oldest_fx_as_of`가 `2026-07-24`인 것은 이월 계좌(`…0004`) 라인의 `fx_as_of` 때문이다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF5-05/`. `연계`는 미실행 |
+| 비고 | 로컬의 `oldest_fx_as_of`가 `2026-07-24`인 것은 이월 계좌(`…0004`) 라인의 `fx_as_of` 때문이다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF5-05/`. ③은 2026-11-12 · `로컬`에서 다시 봤다(`~/stock-it-evidence/2026-11-12/PF5-07/`). `연계`는 미실행 |
 
 #### PF5-06 외화 한 통화만 모인 묶음에만 현지 통화가 병기된다
 
@@ -2189,20 +2192,20 @@
 
 | 항목 | 내용 |
 |---|---|
-| 사전조건 | `로컬`: `R-LOCAL`. `연계`: `it1@a.com`이 미국 종목을 보유한다 |
-| 테스트 데이터 | `로컬`: `yhr@a.com`(`AAPL` · `MSFT`). `연계`: `it1@a.com` |
+| 사전조건 | `로컬`: `R-LOCAL`. 웹이 떠 있다. `연계`: `it1@a.com`이 미국 종목을 보유하고, 최신 스냅샷이 국내 장 마감 뒤 정기 수집으로 만들어졌다 |
+| 테스트 데이터 | `로컬`: `yhr@a.com`(07-27 스냅샷. 미국 라인 `price_as_of = 2026-07-24`, 국내 라인 `2026-07-27`). `연계`: `it1@a.com` |
 | 선행 | — |
 | 실행 시점 | 언제든 |
-| 절차 | ① `GET /portfolio/views/positions?lens=DIRECT` ② `GET /portfolio/views/summary` ③ 웹의 종목 탭 배너를 읽는다 |
-| 기대 결과 | ① ② `notices`에 `code = PRICE_LAG_MARKET`, `severity = info`, `params`에 시장별 가격 기준일(`US`). 값은 `source_as_of` 이전에 `close_at`이 지난 가장 최근 US 거래일(`dim_market_calendar`) ③ 미결: `PRICE_LAG_MARKET`의 `message` 문구와 화면 위치가 정해진 곳이 없다 |
+| 절차 | ① `GET /portfolio/views/summary` · `/positions?lens=DIRECT` · `/allocation?axis=sector` · `/accounts` ② `GET /portfolio/views/asset-change?period=THIS_MONTH` · `/portfolio/views/realized-pnl?period=THIS_YEAR` · `/portfolio/instruments/{미국 종목 id}` ③ `로컬`만: 웹의 요약 · 종목 · 비중 · 계좌 탭에서 배너 둘째 줄을 읽는다 |
+| 기대 결과 | ① 네 응답 모두 `notices`에 `code = PRICE_LAG_MARKET`, `severity = info` 하나. `params.markets`는 `US` 한 항목이고 `price_as_of` = 미국 라인 `price_as_of` 중 가장 이른 날, `quote_count = 0`. 국내 라인은 종가 날짜가 화면 기준일과 같아 `KR` 항목이 없다. `로컬`: `message = 미국 종목은 07-24 종가 기준이에요`. `연계`: 화면 기준일 직전 미국 거래일의 날짜 ② 세 응답 모두 `PRICE_LAG_MARKET`이 없다 ③ 네 탭 모두 배너 둘째 줄 `USD/KRW 1,400.00 적용 · 기준 2026-07-24 · 미국 종목은 07-24 종가 기준이에요` |
 | 증거 | ① ② 응답 ③ 스크린샷 |
-| 근거 절 | 포트폴리오 §5.4 · §7.4 · §8.2 `PRICE_LAG_MARKET` · 데이터 §4.2 |
+| 근거 절 | 포트폴리오 §5.4 · §7.4 `PRICE_LAG_MARKET` 판정 · §8.2 `PRICE_LAG_MARKET` · 데이터 §4.2 |
 | 환경 | 둘 다 |
 | 등급 | 1 — 안내가 없으면 미국 종목 값을 화면 기준일의 값으로 믿는다 |
 | 수단 | `API` · `크롬` |
-| 자동화 | `자동-신규` |
-| 결과 | 유보 |
-| 비고 | 시장별 가격 기준일은 유보다(설계 §8). 백엔드가 이 notice를 내지 않는다(`NoticeCollector`가 `PRICE_LAG_MARKET`에 null을 돌린다). 프론트 `notices.ts`의 어느 화면 목록에도 이 코드가 없어 와도 그리지 않는다 |
+| 자동화 | `자동-기존` `NoticeCollectorTest.미국_종가가_이르면_날짜로_알린다` · `날짜가_같고_시세가_없으면_싣지_않는다` · `알릴_시장만_싣는다` · `가격_기준일_안내는_동기화_안내_사이에_실린다` · `MarketPriceMapperTest.시장마다_가장_이른_종가_날짜와_시세_종목_수를_낸다` · 프론트 `notices.test.ts › 가격 기준일 안내는 스냅샷 네 화면의 캡션이다` · `summary.test.tsx › 환율과 가격 기준일 안내가 배너에 나온다` |
+| 결과 | 통과 |
+| 비고 | 실행: 2026-11-12 · `로컬` · `연계`(11-12 스냅샷, `미국 종목은 11-11 종가 기준이에요`) · `~/stock-it-evidence/2026-11-12/PF5-07/` |
 
 #### PF5-08 탭을 차례로 지나며 네 화면의 총자산이 같게 보인다
 
@@ -2587,6 +2590,63 @@
 ### PF6. 비중 축을 바꾸고 렌즈를 켠다
 
 `로컬` 케이스는 `R-LOCAL` 뒤에 돈다. 샘플에는 `etf_coverage` 행이 없어 `TIGER 미국나스닥100`(`133690`, 계좌 `…0003`)이 구성종목 미확보 ETF다. 렌즈 전개 분기(구성종목 행 · 기타 버킷)는 구현되지 않았다(`AggregateMapper.xml` `targetLine`, 테이블 `etf_constituent` 없음). 화면 라벨은 프론트 코드를 따른다 — 종목 탭 토글 `ETF 분해 모드`, 비중 탭 토글 `구성종목 기준으로 보기`(스펙과 다르다, D-13).
+
+#### PF5-28 보유 라인의 평가금액은 그 시장 마지막 거래일 종가다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | `it1@a.com`의 계좌가 국내 장 마감 뒤 정기 수집으로 확정됐다 |
+| 테스트 데이터 | `it1@a.com`. `{as_of}` = 최신 확정 기준일 |
+| 선행 | — |
+| 실행 시점 | 클러스터 가동 시간 안(그날 정기 수집이 확정된 뒤) |
+| 절차 | ① `Q-PF5-CLOSE`(`email=it1@a.com`, `as_of={as_of}`) |
+| 기대 결과 | ① 모든 행 `same = t`, `valuation_basis = CLOSE`, `market_value_local = close_value`(수량 × 그날 종가). 국내 행 `price_as_of = {as_of}`, 미국 행 `price_as_of` = `{as_of}` 직전 미국 거래일. `source_market_value`(증권사 조회 시각의 평가금액)와는 달라도 된다 |
+| 증거 | ① 질의 결과 |
+| 근거 절 | 포트폴리오 §5.4 · §7.4 · `position_line` `price_as_of` · 데이터 §5.1 · §6.5 `balance_close_valuation` |
+| 환경 | 연계 |
+| 등급 | 1 — 평가 기준이 수집 시각에 따라 바뀌면 미국 종목 값이 날마다 프리마켓 · 장중 · 종가로 섞여 일간 변화가 흔들린다 |
+| 수단 | `DB` |
+| 자동화 | `자동-기존` `ClosePriceValuationTest.종가가_있는_날은_종가로_라인을_만든다` |
+| 결과 | 통과 |
+| 비고 | 실행: 2026-11-12 · `연계` · 11-12 스냅샷 · `~/stock-it-evidence/2026-11-12/PF5-28/`. 국내 4 · 미국 2종목 모두 일치. 국내 `2026-11-12`, 미국 `2026-11-11`. 원천 평가금액과의 차이는 삼성전자 3,500원, NVDA $74.10, QQQ $8.00 |
+
+#### PF5-29 종가가 없는 종목은 원천 평가금액으로 평가하고 수집 시각 시세라고 알린다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | `R-LOCAL`. 생성기를 켠 백엔드 |
+| 테스트 데이터 | `test_empty@a.com`이 연동하는 가짜 계좌 `{a}`(`0000000001`, `DEMO`). 삼성전자 10주(원천 평가 715,000, 종가 71,200) · `AAPL` 5주(원천 평가 $1,000, 종가 없음). 환율 `2026-07-24` USD/KRW 1,400 |
+| 선행 | — |
+| 실행 시점 | 영업일(국내 장 마감 뒤, 자정 전) |
+| 절차 | ① `POST /accounts`(`test_empty@a.com`) 본문 `{"app_key": "test-app-key", "app_secret": "test-app-secret", "account_number": "0000000001", "env": "DEMO"}` → `{a}` ② `F-N-FX-RATE`(`as_of=2026-07-24`, `rate=1400`) ③ `F-PF1-EOD`(`account={a}`) → 1분 뒤 `F-PF5-NO-CLOSE`(`account={a}`) ④ 2분 뒤 `Q-PF1-RUNS`(`account={a}`) · `Q-PF5-CLOSE`(`email=test_empty@a.com`, `as_of={오늘}`) ⑤ `test_empty@a.com`으로 `GET /portfolio/views/summary` · `/positions?lens=DIRECT` |
+| 기대 결과 | ③ `kr_close = {오늘}` ④ `build_outcome = BUILT`. `005930`: `valuation_basis = CLOSE`, `market_value_local = 712000`, `price_as_of = {오늘}`. `AAPL`: `valuation_basis = KIS`, `market_value_local = 1000`(원천 평가금액), `price_as_of` 비어 있음. 두 행 `same = t` ⑤ 두 응답의 `notices`에 `PRICE_LAG_MARKET` 하나, `params.markets = [{market: US, price_as_of: null, quote_count: 1}]`, `message = 미국 1개 종목은 수집 시각 시세예요`. `KR` 항목이 없다 |
+| 증거 | ④ 질의 결과 ⑤ 응답 |
+| 근거 절 | 포트폴리오 §5.4 "그 날짜 종가가 아직 없으면 원천 평가금액으로 대신한다" · §7.4 `PRICE_LAG_MARKET` 판정 · §8.2 · 데이터 §5.1 · §6.5 `balance_close_valuation` |
+| 환경 | 로컬 |
+| 등급 | 1 — 안내가 없으면 수집 시각 시세로 평가한 종목을 종가로 믿는다 |
+| 수단 | `API` · `DB` |
+| 자동화 | `자동-기존` `ClosePriceValuationTest.종가가_없는_날은_원천_평가금액으로_라인을_만든다` · `NoticeCollectorTest.날짜와_시세를_함께_알린다` · `전부_시세면_시세_문장만_낸다` · `날짜가_같으면_시세_문장만_낸다` · `MarketPriceMapperTest.시세_종목은_서로_다른_종목으로_센다` |
+| 결과 | 통과 |
+| 비고 | 끝나면 `R-LOCAL`. 실행: 2026-11-12 · `로컬` · `~/stock-it-evidence/2026-11-12/PF5-29/` |
+
+#### PF5-30 가격 기준일 판정은 이월 라인을 빼고, 전부 이월이면 이월 라인으로 한다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | `R-LOCAL` |
+| 테스트 데이터 | `yhr@a.com`. 07-27 스냅샷에서 이월 계좌 `…0004`의 미국 라인 `price_as_of = 2026-07-23`, 나머지 미국 라인 `2026-07-24` |
+| 선행 | — |
+| 실행 시점 | 언제든 |
+| 절차 | ① `GET /portfolio/views/positions?lens=DIRECT` ② `GET /portfolio/views/positions?lens=DIRECT&account=20000000-0000-0000-0000-000000000004` |
+| 기대 결과 | ① `PRICE_LAG_MARKET.params.markets = [{market: US, price_as_of: 2026-07-24, quote_count: 0}]`, `message = 미국 종목은 07-24 종가 기준이에요`. 이월 라인의 `07-23`이 아니다 ② `price_as_of = 2026-07-23`, `message = 미국 종목은 07-23 종가 기준이에요` |
+| 증거 | ① ② 응답 |
+| 근거 절 | 포트폴리오 §7.4 `PRICE_LAG_MARKET` 판정 "이월 라인은 뺀다. 그 시장 라인이 전부 이월일 때만 이월 라인으로 판정한다" |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `API` |
+| 자동화 | `자동-기존` `MarketPriceMapperTest.전부_이월이면_이월_라인으로_판정한다` |
+| 결과 | 통과 |
+| 비고 | 실행: 2026-11-12 · `로컬` · `~/stock-it-evidence/2026-11-12/PF5-30/` |
 
 #### PF6-01 축 세그먼트는 카탈로그가 켠 축만 그린다
 
@@ -9283,7 +9343,10 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 2 notice | §8.2 `SYNC_IN_PROGRESS` | 열린 실행이 있으면 여섯 뷰에 | PF3-04 | 덮임 |
 | 2 notice | §8.2 `SYNC_IN_PROGRESS` · §8.6 | 스냅샷이 없는 사용자의 빈 봉투에도 | — | 시나리오 단계 · PF1-25 |
 | 2 notice | §8.2 `SYNC_IN_PROGRESS` | 닫혔거나 시한이 지난 실행만 있으면 없다 | PF3-15 ⑥ · PF3-06 ④ | 덮임 |
-| 2 notice | §8.2 `PRICE_LAG_MARKET` | 시장별 가격 기준일이 화면 `as_of`보다 이르다 | PF5-07(유보) | 덮임 |
+| 2 notice | §8.2 `PRICE_LAG_MARKET` · §7.4 | 판정 대상 라인의 가장 이른 종가 날짜가 화면 `as_of`보다 이르면 그 날짜 | PF5-07 | 덮임 |
+| 2 notice | §8.2 `PRICE_LAG_MARKET` · §7.4 | 종가로 평가하지 못한 라인이 있으면 그 종목 수 | PF5-29 | 덮임 |
+| 2 notice | §7.4 `PRICE_LAG_MARKET` 판정 | 이월 라인은 빼고, 전부 이월이면 이월 라인으로 | PF5-30 | 덮임 |
+| 2 notice | §7.4 `PRICE_LAG_MARKET` 판정 | 스냅샷 네 뷰에만 싣고 자산 변화 · 실현손익 · 종목 상세에는 싣지 않는다 | PF5-07 ② | 덮임 |
 | 2 notice | §8.2 `ALREADY_FINAL` | EOD 확정 뒤 수동 동기화 요청 | PF3-08 | 덮임 |
 | 2 notice | §8.2 `ALREADY_FINAL` | 비영업일 수동 동기화 요청 | PF3-09 | 덮임 |
 | 2 notice | §8.2 `FX_STALE` | 폴백이 KR 영업일 5일을 넘으면 통화쌍 · `fx_as_of` | — | 시나리오 단계 · PF5-26 |
@@ -9560,11 +9623,12 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 12 데이터 | §4.1 `instrument` | 상장폐지 종목을 지우면 과거 총자산에서 빠진다 — 지우지 않는다 | — | N-25 · N-29 |
 | 12 데이터 | §4.2 `dim_market_calendar` | 없으면 평일 근사 | — | N-26 |
 | 12 데이터 | §4.2 `dim_market_calendar` | 휴장일에는 스냅샷을 만들지 않는다 | — | N-20 |
-| 12 데이터 | §4.2 `dim_market_calendar` | 근사 중에는 `PRICE_LAG_MARKET`을 끈다 | PF5-07(유보) | 덮임 |
+| 12 데이터 | §4.2 `dim_market_calendar` | 없으면 종가 날짜를 정하지 못해 원천 평가금액으로 평가하고 `PRICE_LAG_MARKET`이 시세로 알린다 | — | (비고, 캘린더를 비우지 않았다. 종가가 없을 때의 같은 대체 경로는 PF5-29가 덮는다) |
 | 12 데이터 | §4.3 `corporate_action` | 커버리지 밖이면 `ca_unknown` · 실현손익 경고 | — | PF9-17 · PF9-23 |
 | 12 데이터 | §4.3 `corporate_action` | 커버리지 밖이면 종목 상세 경고 | PF10-07 | 덮임 |
 | 12 데이터 | §4.3 `corporate_action` | 커버리지 안인데 행이 빠지면 경고 없이 신뢰로 나간다 | — | N-48 |
 | 12 데이터 | §5.1 `adjusted_price_daily` | 구성종목 종가가 없으면 환산수량을 낼 수 없다 | — | 유보(설계 §8) |
+| 12 데이터 | §5.1 `adjusted_price_daily` | 생성기가 라인을 만들 때 보유 종목 종가가 없으면 원천 평가금액 · 시세 안내 | PF5-29 | 덮임 |
 | 12 데이터 | §6.1 `etf_constituent` | `UNAVAILABLE`(또는 행 없음) ETF는 미분해 · notice | PF6-08 · N-43 | 덮임 |
 | 12 데이터 | §6.1 `etf_constituent` | 늦게 오면 이전 구성비중과 `CONSTITUENT_AS_OF` | — | 유보(설계 §8) |
 | 12 데이터 | §6.1 `etf_constituent` | 비중 합을 백엔드가 정규화 · 잔차를 기타로 | — | 유보(설계 §8) |
@@ -9580,6 +9644,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 12 데이터 | §6.5 `cln_balance` | 그 계좌만 이월 · 배지 · 점 · 경고 | PF11-01 ~ PF11-05 | 덮임 |
 | 12 데이터 | §6.5 `cln_balance` | 다른 계좌는 그대로 진행 | PF11-01 ③ · PF3-16 | 덮임 |
 | 12 데이터 | §6.5 `cln_balance` | 여러 벌 중 최신 한 벌만 | — | N-22 |
+| 12 데이터 | §6.5 `balance_close_valuation` | 보유 종목을 그 시장 마지막 거래일 종가로 평가하고 그 날짜를 라인에 남긴다 | PF5-28 | 덮임 |
 | 12 데이터 | §6.6 `cln_deposit` | 빠지면 계좌 단위 이월 / 총자산 · 현금비중 감소 | — | N-23 |
 | 12 데이터 | §6.7 `cln_trade` | 실현손익만 영향 — 나머지 뷰는 거래 원장 없이 성립 | PF5-01 · PF7-02 | 덮임 |
 | 12 데이터 | §6.7 `cln_trade` | 거래내역 없으면 `UNAVAILABLE` | — | PF9-21 |

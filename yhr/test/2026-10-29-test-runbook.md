@@ -691,6 +691,50 @@ SELECT DISTINCT ON (i.currency) i.currency || '/KRW' AS pair, pl.fx_rate, pl.fx_
  ORDER BY i.currency, pl.fx_as_of;
 ```
 
+**`Q-PF5-CLOSE` 사용자의 그날 종목 라인과 종가 평가 뷰** — `email` · `as_of`. `same`은 라인의 평가금액과 종가 날짜가 뷰의 `close_value` · `close_date`와 같은지다. `source_market_value`는 원천 잔고의 평가금액(조회 시각의 시세)이다
+
+```sql
+SELECT i.symbol, i.market, pl.is_carried_forward AS carried, pl.quantity, pl.market_value_local, pl.price_as_of,
+       v.close_value, v.close_date, v.valuation_basis, b.market_value AS source_market_value,
+       pl.market_value_local = v.close_value AND pl.price_as_of IS NOT DISTINCT FROM v.close_date AS same
+  FROM position_line pl JOIN account a USING (account_id) JOIN app_user u ON u.id = a.user_id
+  JOIN instrument i USING (instrument_id)
+  JOIN cln_balance b ON b.account_ref = a.account_ref AND b.instrument_id = pl.instrument_id AND b.source_as_of = pl.source_as_of
+  LEFT JOIN balance_close_valuation v
+         ON v.account_ref = b.account_ref AND v.instrument_id = b.instrument_id AND v.source_as_of = b.source_as_of
+ WHERE u.email = :'email' AND pl.as_of = :'as_of'::date
+ ORDER BY i.market, i.symbol, pl.account_id;
+```
+
+**`F-PF5-NO-CLOSE` 계좌의 `REQUESTED` 수집을 국내 · 미국 종목 잔고와 함께 끝내되 미국 종목 종가는 없앤다** — `account`. 삼성전자 10주(평단 70,000 · 원천 평가 715,000)와 `AAPL` 5주(평단 $150 · 원천 평가 $1,000), 원화 예수금 1,000,000원. 국내 장이 마지막으로 끝난 날(`kr_close`로 출력)의 삼성전자 종가를 71,200으로 넣고, 최근 15일의 `AAPL` 일봉을 지운다. `F-PF1-EOD`보다 1초 넘게 뒤에 돌린다. `R-LOCAL`이 되돌린다
+
+```sql
+SELECT max(date) AS kr_close FROM dim_market_calendar
+ WHERE market = 'KR' AND is_trading_day AND close_at <= now()
+\gset
+\echo kr_close=:kr_close
+BEGIN;
+INSERT INTO adjusted_price_daily (instrument_id, date, open, high, low, close, volume, adj_factor)
+VALUES ('10000000-0000-0000-0000-000000000001', :'kr_close'::date, 71200, 71200, 71200, 71200, 1000000, 1)
+ON CONFLICT (instrument_id, date) DO UPDATE SET close = EXCLUDED.close, adj_factor = 1;
+DELETE FROM adjusted_price_daily
+ WHERE instrument_id = '10000000-0000-0000-0000-000000000004' AND date > (now() AT TIME ZONE 'Asia/Seoul')::date - 15;
+INSERT INTO cln_balance (account_ref, instrument_id, isin, quantity, avg_price, market_value, currency, source_as_of, ingest_id)
+SELECT a.account_ref, b.instrument_id, b.isin, b.quantity, b.avg_price, b.market_value, b.currency, now() - interval '1 second', 'np-local'
+  FROM account a CROSS JOIN (VALUES
+       ('10000000-0000-0000-0000-000000000001'::uuid, 'KR7005930003', 10, 70000, 715000, 'KRW'),
+       ('10000000-0000-0000-0000-000000000004'::uuid, 'US0378331005', 5, 150, 1000, 'USD')
+     ) AS b(instrument_id, isin, quantity, avg_price, market_value, currency)
+ WHERE a.account_id = :'account';
+INSERT INTO cln_deposit (account_ref, currency, amount, source_as_of)
+SELECT a.account_ref, 'KRW', 1000000, now() - interval '1 second' FROM account a WHERE a.account_id = :'account';
+UPDATE collection_run r
+   SET state = 'DONE', finished_at = now(), failure_reason = NULL, silver_synced_at = now()
+  FROM account a
+ WHERE a.account_id = :'account' AND r.account_ref = a.account_ref AND r.state = 'REQUESTED';
+COMMIT;
+```
+
 **`Q-PF5-DAILY` 직전 기준일과 일간 변화** — 요약 `daily_change_krw` · `daily_change_pct`와 대조. 직전 쪽도 오늘 연동이 유효한 계좌만 더한다. `isodow` 1 = 월, 5 = 금
 
 ```sql
