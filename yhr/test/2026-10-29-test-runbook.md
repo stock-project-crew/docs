@@ -49,6 +49,17 @@ SNAPSHOT_RUNTIME_ENABLED=true ./gradlew bootRun --args='--spring.profiles.active
 
 알림 평가기 · 발송기 · 영수증 확인기를 끈 기동이 필요한 케이스는 사전조건에 `알림 스케줄 끈 백엔드`라고 적는다. 그때는 `ALERT_RUNTIME_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `enabled: ${ALERT_RUNTIME_ENABLED:true}`).
 
+로그인 세션 수명은 세 값이다(포트폴리오 §8.8). 접근 토큰 `PORTFOLIO_AUTH_ACCESS_TTL`(기본 `PT30M`), 마지막 갱신 뒤 유휴 한도 `PORTFOLIO_AUTH_IDLE_TTL`(`P7D`), 로그인 뒤 절대 상한 `PORTFOLIO_AUTH_ABSOLUTE_TTL`(`P30D`). 세션 만료를 보는 케이스는 사전조건에 `세션 5분 백엔드`라고 적는다. 그때는 아래처럼 세 값을 함께 줄여 띄운다.
+
+```bash
+SNAPSHOT_RUNTIME_ENABLED=true PORTFOLIO_AUTH_ACCESS_TTL=PT2M PORTFOLIO_AUTH_IDLE_TTL=PT5M \
+  PORTFOLIO_AUTH_ABSOLUTE_TTL=PT5M ./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- 접근 토큰만 줄이면 앱이 `401`을 받고 조용히 갱신하므로 로그인 화면으로 가지 않는다(N-111).
+- 유휴 한도만 줄이면 웹 화면이 다시 보일 때 다시 받는 요청이 갱신을 일으켜 세션이 이어질 수 있다. 절대 상한도 5분으로 두어 로그인 5분 뒤에는 활동과 상관없이 세션이 끝나게 한다.
+- 세션의 절대 상한은 로그인할 때 정해진다. 기동 전에 만든 세션에는 줄인 값이 적용되지 않으므로 띄운 뒤 다시 로그인한다.
+
 수급 · 장중 데이터 닫힘(알림 §5.6)을 보는 케이스는 사전조건에 `데이터 닫힌 백엔드`라고 적는다. 그때는 `ALERT_FLOW_ENABLED=false ALERT_INTRADAY_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `flow-enabled: ${ALERT_FLOW_ENABLED:true}` · `intraday-enabled: ${ALERT_INTRADAY_ENABLED:true}`). 하나만 닫을 때는 그 변수만 더한다. 값은 기동할 때 읽으므로 바꾸면 다시 띄운다.
 
 운영은 두 값을 백엔드 `k8s/deployment.yaml`에 둔다. 바꾸려면 그 값을 고쳐 main에 푸시하고, Argo CD의 롤아웃이 끝난 뒤에 확인한다. 운영 배포라 사람이 승인한 뒤에만 한다.
@@ -80,7 +91,7 @@ SNAPSHOT_RUNTIME_ENABLED=true BASIS_ENABLED=true ./gradlew bootRun --args='--spr
 
 ## 3. 로그인
 
-토큰은 `~/.cache/stock-it/<환경>/<이메일>` 파일에 둔다. `<환경>`은 `local` · `cluster`다. 요청은 이 파일을 읽어 헤더에 넣는다(§4.1).
+접근 토큰은 `~/.cache/stock-it/<환경>/<이메일>` 파일에, 갱신 토큰은 `~/.cache/stock-it/<환경>/<이메일>.refresh` 파일에 둔다(권한 600). `<환경>`은 `local` · `cluster`다. 요청은 접근 토큰 파일을 읽어 헤더에 넣는다(§4.1). 접근 토큰은 30분이면 끝나므로 `401`이 나오면 갱신 함수로 두 파일을 함께 바꾼다. 갱신하면 두 토큰이 모두 바뀌고, 옛 갱신 토큰을 다시 쓰면 세션이 끊긴다(N-107).
 
 ### 3.1 `로컬` — 에이전트가 한다
 
@@ -91,7 +102,17 @@ login_local() {
   local d="$HOME/.cache/stock-it/local"; mkdir -p "$d"; chmod 700 "$d"
   jq -n --arg e "$1" '{email:$e,password:"local-dev-password"}' \
     | curl -sf -X POST http://localhost:8080/auth/login -H 'Content-Type: application/json' -d @- \
-    | jq -r .access_token > "$d/$1" && chmod 600 "$d/$1"
+    > "$d/$1.json" && chmod 600 "$d/$1.json"
+  jq -r .access_token "$d/$1.json" > "$d/$1" && jq -r .refresh_token "$d/$1.json" > "$d/$1.refresh"
+  chmod 600 "$d/$1" "$d/$1.refresh"; rm -f "$d/$1.json"
+}
+refresh_local() {
+  local d="$HOME/.cache/stock-it/local"
+  jq -n --rawfile r "$d/$1.refresh" '{refresh_token:($r|rtrimstr("\n"))}' \
+    | curl -sf -X POST http://localhost:8080/auth/refresh -H 'Content-Type: application/json' -d @- \
+    > "$d/$1.json" && chmod 600 "$d/$1.json"
+  jq -r .access_token "$d/$1.json" > "$d/$1" && jq -r .refresh_token "$d/$1.json" > "$d/$1.refresh"
+  chmod 600 "$d/$1" "$d/$1.refresh"; rm -f "$d/$1.json"
 }
 login_local yhr@a.com
 ```
@@ -106,11 +127,26 @@ login_cluster() {
   printf '%s 비밀번호: ' "$1"; read -rs pw; echo
   jq -n --arg e "$1" --arg p "$pw" '{email:$e,password:$p}' \
     | curl -sf -X POST http://localhost:18080/auth/login -H 'Content-Type: application/json' -d @- \
-    | jq -r .access_token > "$d/$1" && chmod 600 "$d/$1"
+    > "$d/$1.json" && chmod 600 "$d/$1.json"
   unset pw
+  jq -r .access_token "$d/$1.json" > "$d/$1" && jq -r .refresh_token "$d/$1.json" > "$d/$1.refresh"
+  chmod 600 "$d/$1" "$d/$1.refresh"; rm -f "$d/$1.json"
 }
 login_cluster it1@a.com
 login_cluster it2@a.com
+```
+
+에이전트는 갱신 토큰 파일로 접근 토큰을 이어 받는다. 비밀번호는 다시 묻지 않는다. 유휴 한도(7일)나 절대 상한(30일)을 넘기면 갱신이 `401`이고, 그때는 사람이 `login_cluster`를 다시 돌린다.
+
+```bash
+refresh_cluster() {
+  local d="$HOME/.cache/stock-it/cluster"
+  jq -n --rawfile r "$d/$1.refresh" '{refresh_token:($r|rtrimstr("\n"))}' \
+    | curl -sf -X POST http://localhost:18080/auth/refresh -H 'Content-Type: application/json' -d @- \
+    > "$d/$1.json" && chmod 600 "$d/$1.json"
+  jq -r .access_token "$d/$1.json" > "$d/$1" && jq -r .refresh_token "$d/$1.json" > "$d/$1.refresh"
+  chmod 600 "$d/$1" "$d/$1.refresh"; rm -f "$d/$1.json"
+}
 ```
 
 요청이 `401`이면 토큰이 만료된 것이다. 에이전트는 `로컬`이면 다시 로그인하고, `연계`면 사람에게 다시 돌려 달라고 한다.
@@ -408,8 +444,11 @@ SELECT pl.as_of, i.symbol, sum(pl.quantity) AS quantity,
 **`Q-X2-PUSH-DEVICES` 푸시 수신 기기와 지금 주인** — 푸시 토큰은 고르지 않는다
 
 ```sql
-SELECT d.device_id, u.email, d.platform, d.created_at, d.last_seen_at
+SELECT d.device_id, u.email, d.platform, left(d.session_id::text, 8) AS session,
+       to_char(s.last_refreshed_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI:SS') AS session_last_refreshed_kst,
+       d.created_at, d.last_seen_at
   FROM push_device d JOIN app_user u ON u.id = d.user_id
+  LEFT JOIN auth_session s ON s.session_id = d.session_id
  ORDER BY d.last_seen_at DESC;
 ```
 
