@@ -1208,6 +1208,32 @@ SELECT count(*) AS unread
  WHERE u.email = :'email' AND e.read_at IS NULL;
 ```
 
+**`F-AL3-FIRED-ORDER` `yhr@a.com`의 발화 울린 시각을 데이터 시점과 다른 순서로 둔다** — AL3-09의 사전조건(알림 넷이 한 번씩 울림) 뒤에 쓴다. `AL 삼성전자 63000`에 9/24 · 9/23 종가 발화를 같은 울린 시각(`2026-09-28 10:00`)으로 더하고(`event_id` `e0000000-…-0002` · `…-0001`), 기존 넷의 울린 시각을 애플 09:00 · SK하이닉스 08:30 · 삼성전자 가격 08:00 · 외국인 07:30으로 바꾼다. `R-LOCAL`이 되돌린다
+
+```sql
+BEGIN;
+CREATE TEMP TABLE ev AS
+SELECT e.*, a.name AS alert_name
+  FROM alert_event e JOIN alert a USING (alert_id) JOIN app_user u ON u.id = a.user_id
+ WHERE u.email = 'yhr@a.com';
+INSERT INTO alert_event (event_id, alert_id, as_of, fired_at, title, body, lines, observed, read_at, cadence)
+SELECT v.event_id, ev.alert_id, ev.as_of - v.back, TIMESTAMPTZ '2026-09-28 10:00:00+09',
+       ev.title, ev.body, ev.lines, ev.observed, NULL, ev.cadence
+  FROM ev CROSS JOIN (VALUES
+       ('e0000000-0000-0000-0000-000000000001'::uuid, interval '2 days'),
+       ('e0000000-0000-0000-0000-000000000002'::uuid, interval '1 day')) AS v(event_id, back)
+ WHERE ev.alert_name = 'AL 삼성전자 63000';
+UPDATE alert_event e SET fired_at = v.fired_at
+  FROM ev JOIN (VALUES
+       ('AL 애플 230',            TIMESTAMPTZ '2026-09-28 09:00:00+09'),
+       ('AL SK하이닉스 100000',   TIMESTAMPTZ '2026-09-28 08:30:00+09'),
+       ('AL 삼성전자 63000',      TIMESTAMPTZ '2026-09-28 08:00:00+09'),
+       ('AL 삼성전자 외국인',     TIMESTAMPTZ '2026-09-28 07:30:00+09')) AS v(alert_name, fired_at)
+       ON v.alert_name = ev.alert_name
+ WHERE e.event_id = ev.event_id;
+COMMIT;
+```
+
 **`Q-AL3-DELIVERIES` 사용자 발화의 기기별 발송 상태** — 토큰은 고르지 않는다
 
 ```sql
