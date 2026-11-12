@@ -623,7 +623,7 @@ SELECT (SELECT as_of FROM d) AS as_of,
   FROM l;
 ```
 
-**`Q-PF5-BY-INSTRUMENT` 종목별 수량 · 평단** — 종목별 뷰 행과 대조. 평단은 `Σ매입(현지) ÷ Σ수량`, 원화 0자리 · 달러 2자리 반올림
+**`Q-PF5-BY-INSTRUMENT` 종목별 수량 · 평단** — 종목별 뷰 행과 대조. 평단은 `Σ매입(현지) ÷ Σ수량`, 원화는 원 단위 아래를 버리고 달러는 2자리 반올림
 
 ```sql
 WITH me AS (SELECT id FROM app_user WHERE email = :'email'),
@@ -633,8 +633,8 @@ WITH me AS (SELECT id FROM app_user WHERE email = :'email'),
 SELECT i.symbol, i.name, i.currency,
        sum(pl.quantity) AS quantity,
        CASE WHEN i.asset_class = 'CASH' THEN NULL
-            ELSE round(sum(pl.cost_amount_local) / sum(pl.quantity),
-                       CASE i.currency WHEN 'KRW' THEN 0 ELSE 2 END) END AS avg_cost,
+            WHEN i.currency = 'KRW' THEN trunc(sum(pl.cost_amount_local) / sum(pl.quantity))
+            ELSE round(sum(pl.cost_amount_local) / sum(pl.quantity), 2) END AS avg_cost,
        sum(pl.market_value_krw) AS market_value_krw,
        sum(pl.market_value_local) AS market_value_local,
        count(DISTINCT pl.account_id) AS accounts

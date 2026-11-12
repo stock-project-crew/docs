@@ -1024,7 +1024,7 @@ Metric { key, label, additive, cash_included, lens_safe, formula, requires_ledge
 | `unrealized_pnl_krw` | 평가손익 | ○ | **제외** | `TOTAL_ONLY` | `Σ평가 - Σ매입` |
 | `unrealized_pnl_pct` | 평가손익률 | ✕ | **제외** | `TOTAL_ONLY` | `평가손익 ÷ Σ매입` |
 | `realized_pnl_krw` | 실현손익 | ○ | 제외 | `NEVER` | `Σ 실현손익` |
-| `avg_cost` | 평단 | ✕ | 제외 | `NEVER` | `Σ매입 ÷ Σ수량` — 잔고 평단·잔고 수량 기준 |
+| `avg_cost` | 평단 | ✕ | 제외 | `NEVER` | `Σ매입 ÷ Σ수량` — 잔고 평단·잔고 수량 기준. 현지 통화 소수 자릿수까지 내고, 원화는 원 단위 아래를 버린다(증권사 앱이 평단을 버려서 보여 주므로 1원도 어긋나지 않게 한다). 외화는 반올림한다 |
 | `weight_pct` | 비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `행 평가금액 ÷ total_assets_krw` |
 | `cash_ratio_pct` | 현금비중 | ✕ | 분모 포함 | `ROW_AND_TOTAL` | `CASH 평가 ÷ total_assets_krw` |
 | `instrument_count` | 종목수 | ✕ | 제외 | `ROW_AND_TOTAL` | `COUNT DISTINCT 종목` |

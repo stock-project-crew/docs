@@ -133,7 +133,7 @@ Authorization: Bearer <token>
 | 필드 | 계산 | 비고 |
 |---|---|---|
 | `quantity` | `Σ quantity` | |
-| `avg_cost` | `Σ cost_amount_local ÷ Σ quantity` | 현지 통화. 종목별 응답의 `avg_cost`와 같은 식 · 같은 반올림(통화 소수 자릿수, HALF_UP)이라 PF10-01이 두 값을 비교한다 |
+| `avg_cost` | `Σ cost_amount_local ÷ Σ quantity` | 현지 통화. 종목별 응답의 `avg_cost`와 같은 식 · 같은 끝자리 처리(통화 소수 자릿수, 원화는 버림 · 외화는 반올림 — 포트폴리오 스펙 §6.2 `avg_cost`)라 PF10-01이 두 값을 비교한다 |
 | `cost_amount_krw` · `market_value_krw` | `Σ` | |
 | `unrealized_pnl_krw` | `market_value_krw − cost_amount_krw` | |
 | `unrealized_pnl_pct` | `unrealized_pnl_krw ÷ cost_amount_krw × 100` | 종목별 응답과 같은 반올림. 분모가 0이면 `null` |
