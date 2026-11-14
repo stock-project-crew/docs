@@ -1,0 +1,544 @@
+scope	file	line	tokens	text
+main	res/application.yaml	77	스펙 §8.4	평가기 · 발송기 · 영수증 확인기. 끄면 이 파드는 API만 한다(알림 스펙 §8.4).
+main	res/db/sample/sample_alert_market.sql	69	데이터 요구사항 §4.2	완료 신호. 일별 신호의 as_of는 그 거래일의 close_at이다(데이터 요구사항 §4.2).
+main	res/db/external/V7__portfolio_collection_mirror.sql	2	docs/yhr/specs/data-requirements.md / §6.4 · §6.5 · §6.6 · §6.10	컬럼과 타입은 데이터 요구사항 문서(docs/yhr/specs/data-requirements.md) §6.4 · §6.5 · §6.6 · §6.10을 따른다.
+main	res/db/external/V5__alert_market_data_mirror.sql	2	docs/yhr/specs/data-requirements.md / §4 · §5	컬럼과 타입은 데이터 요구사항 문서(docs/yhr/specs/data-requirements.md) §4 · §5를 따른다.
+main	res/db/external/V5__alert_market_data_mirror.sql	3	(N1)	물리 이름은 미결이다(N1). 바뀌면 이 파일과 매퍼 XML만 고친다.
+main	res/db/migration/V10__sync_run.sql	1	설계 §3	수동 동기화 요청의 실행 기록 (수동 동기화 설계 §3).
+main	res/db/migration/V6__alert_runtime.sql	1	스펙 §9 · §10.1	알림 평가 런타임과 전달의 백엔드 소유 테이블 (알림 스펙 §9 · §10.1).
+main	res/db/migration/V8__position_build.sql	1	설계 §4.3	보유 스냅샷 생성기의 처리 기록 (보유 스냅샷 생성기 설계 §4.3).
+main	snapshot/SnapshotRuntimeConfig.java	13	설계 §10	* 읽기 권한을 확인한 뒤 켠다(설계 §10). 알림 런타임을 꺼도 돌도록 스케줄링을 스스로 켠다.
+main	snapshot/CredentialFiller.java	8	설계 §8	* 데이터가 만든 EOD 행에 credential_ref를 채운다 (설계 §8). 데이터 워커가 이 값이 찬 REQUESTED만 집어야 쓸모가 있다.
+main	snapshot/CollectionRunMapper.java	10	데이터 요구사항 §6.10	* data.collection_run — 백엔드가 쓰는 컬럼은 credential_ref 하나다 (데이터 요구사항 §6.10).
+main	snapshot/CollectionRunMapper.java	28	설계 §5.1	* 처리할 실행 (설계 §5.1). 끝났고 아직 처리하지 않은 것, 또는 재시도 사유로 남았고 그날이 확정되지 않은 것.
+main	snapshot/BalanceMapper.java	12	설계 §4.1 · §5.2	* 잔고 한 벌과 대조할 마스터 (설계 §4.1 · §5.2). data 스키마를 읽기만 한다.
+main	snapshot/BalanceMapper.java	57	스펙 §5.3	* 그날 이하 최신 USD/KRW BASE (스펙 §5.3 폴백).
+main	snapshot/PositionWriteMapper.java	16	설계 §7	* 보유 라인 쓰기와 잠금 (설계 §7). 잠금은 항상 날짜 → 계좌(account_id 순) 순서로 잡는다.
+main	snapshot/PositionWriteMapper.java	81	설계 §9	* 그 계좌에서 요청이 가장 늦은 실행일 때만 옮긴다 (설계 §9).
+main	snapshot/PositionWriteMapper.java	92	설계 §5.6	* 잠정 이월할 같은 사용자의 다른 계좌 (설계 §5.6). 기준은 사용자의 직전 기준일이다 — 조회 시 검증
+main	snapshot/BalanceSet.java	6	설계 §5.2	* 한 실행의 잔고 한 벌 — 같은 source_as_of의 잔고 · 예수금 전부 (설계 §5.2).
+main	snapshot/RunProcessor.java	22	설계 §5	* 끝난 수집 실행 한 행을 처리한다 (설계 §5). 실행 하나가 트랜잭션 하나다 — 한 실행이 실패해도 다음 실행은 진행한다.
+main	snapshot/RunProcessor.java	127	설계 §5.6	* 같은 사용자의 다른 계좌가 그날 라인이 없으면 사용자의 직전 기준일 라인을 잠정 이월한다 (설계 §5.6).
+main	snapshot/RunProcessor.java	128	스펙 §7.3	* 그날 한 벌에서 계좌가 빠지면 총자산이 그만큼 줄어 손실처럼 보인다(스펙 §7.3). 기준을 조회 시 검증과
+main	snapshot/RunProcessor.java	140	설계 §5.6	* 이 계좌의 라인이 없는, 그 사용자의 이후 미확정 날짜로 방금 쓴 라인을 잠정 이월한다 (설계 §5.6).
+main	snapshot/RunProcessor.java	144	설계 §7	* 다시 처리된다(설계 §7).
+main	snapshot/Finalizer.java	26	설계 §6	* 날짜 확정 (설계 §6). 확정하지 않은 가장 이른 KR 영업일부터 오늘까지 순서대로 보고, 한 날을 확정하지 못하면 멈춘다.
+main	snapshot/Finalizer.java	133	설계 §6.3.	* 설계 §6.3. 잠근 뒤 그날의 확정 여부 · 연동 상태 · 라인을 다시 읽어 판정한다.
+main	snapshot/SnapshotJobs.java	10	설계 §3	* 보유 스냅샷 생성기의 회차 (설계 §3). 모든 복제본에서 돈다 — 중복은 잠금과 처리 기록이 막는다.
+main	snapshot/FinalizeMapper.java	11	설계 §6.1 · §6.2	* 확정 대상 판정 (설계 §6.1 · §6.2). 조각을 &lt;script&gt; 안에서 이어 붙이므로 부등호를 쓰지 않는다 — XML로 읽힌다.
+main	snapshot/FinalizeMapper.java	37	설계 §5.1의	* 그날 실행 가운데 끝났는데(설계 §5.1의 대상 조건) 아직 한 번도 처리하지 않은 것이 있다.
+main	snapshot/LineCalculator.java	12	설계 §5.2 ~ §5.4 / 스펙 §5.2 · §5.3	* 잔고 한 벌을 position_line으로 바꾼다 (설계 §5.2 ~ §5.4, 스펙 §5.2 · §5.3).
+main	snapshot/SnapshotProperties.java	8	설계 §10	* 보유 스냅샷 생성기 설정 (설계 §10). 잡을 켜고 끄는 값은 SnapshotRuntimeConfig가 따로 본다.
+main	snapshot/BuildOutcome.java	3	설계 §4.3	* position_build.outcome (설계 §4.3).
+main	snapshot/BuildReason.java	6	설계 §4.3 · §5.4	* position_build.reason (설계 §4.3 · §5.4). 재시도할 수 있는 것은 데이터가 늦게 도착해 생기는 실패다.
+main	snapshot/PositionBuildMapper.java	12	설계 §4.3	* 처리 기록 (설계 §4.3).
+main	snapshot/Line.java	18	스펙 §7.3	* 이월(스펙 §7.3). 금액 · 환율 · 종가 날짜 · 원천 시각은 원본 그대로 두고 날짜와 표시만 바꾼다.
+main	snapshot/LineInvariants.java	11	설계 §5.5	* 쓰기 전 검사 (설계 §5.5). 조회 시 검사(PositionLineInvariants)와 같은 규칙을 라인 한 벌에 건다.
+main	alert/indicator/Holding.java	6	스펙 §5.1	* 확정 보유 스냅샷의 그 종목 한 행 (스펙 §5.1). 모든 계좌를 합산한 값이다.
+main	alert/indicator/Holding.java	7	§7.2	* carriedForward는 그 종목의 행 중 하나라도 이월값인가다 — 그러면 그날 값이 아니다(§7.2).
+main	alert/indicator/Series.java	8	스펙 §7.2	* <p>계열은 있는 봉으로 만든다(스펙 §7.2) — 거래정지일과 데이터 누락일은 들어 있지 않다.
+main	alert/indicator/IndicatorCalculator.java	20	스펙 §5.1 · §4.2	* 피연산자 값 (스펙 §5.1 · §4.2). 비교는 계산값 그대로 하고 반올림은 문장에서만 한다.
+main	alert/indicator/IndicatorCalculator.java	54	§3.1	* 장중 알림에서 스냅샷으로 계산하는 피연산자인가 — 장중 지표 그대로(§3.1).
+main	alert/indicator/IndicatorCalculator.java	143	계획 A.9	* Wilder RSI (계획 A.9). t에서 끝나는 최대 250봉 창 위에서 계산한다.
+main	alert/catalog/Cadence.java	3	스펙 §3.1	* 평가 시점 (스펙 §3.1).
+main	alert/catalog/PresetKey.java	3	스펙 §5.3	* 프리셋 키 (스펙 §5.3).
+main	alert/catalog/Unit.java	4	스펙 §14.2	* 지표의 단위. 두 피연산자를 비교하려면 단위가 같아야 한다(스펙 §14.2).
+main	alert/catalog/OperatorKey.java	3	스펙 §5.2 / §12.1	* 연산자 (스펙 §5.2). 문장의 두 문체가 쓰는 표기를 함께 갖는다(§12.1).
+main	alert/catalog/DataKind.java	3	스펙 §5.4	* 지표가 기다리는 데이터 종류 (스펙 §5.4). 앞의 셋은 데이터, 마지막은 백엔드 소유다.
+main	alert/catalog/Indicator.java	9	스펙 §5.1	* 지표 하나 (스펙 §5.1). 필요 봉 수 계산은 compile.RequiredBars가 한다.
+main	alert/catalog/Preset.java	8	스펙 §5.3	* 프리셋 하나 (스펙 §5.3). v1 프리셋은 전부 템플릿이라 전개 규칙은 compile.Compiler에 있다.
+main	alert/catalog/IndicatorKey.java	3	스펙 §5.1	* 지표 키 (스펙 §5.1). JSON 필드명과 같은 snake_case다.
+main	alert/catalog/WindowFn.java	3	§12.5.4	* 윈도우 집계 함수. 화면 이름은 최고·최저·평균·합계다(§12.5.4).
+main	alert/catalog/PresetParam.java	7	스펙 §12.5.3	* 프리셋 입력 칸 하나 (스펙 §12.5.3). 숫자 칸은 범위를, 선택 칸은 선택지를 갖는다.
+main	alert/catalog/TransformType.java	3	스펙 §4.2	* 변형 (스펙 §4.2).
+main	alert/catalog/AlertStatus.java	3	스펙 §6.5 / §12.2	* 알림 상태 (스펙 §6.5). 목록에서의 순서는 목록 조회 쿼리가 정한다(§12.2).
+main	alert/catalog/AlertCatalog.java	15	스펙 §5	* 알림 카탈로그 (스펙 §5). 코드 상수다 — 지표를 늘리는 일은 계산 코드를 함께 쓰는 일이라
+main	alert/catalog/NotifyMode.java	3	스펙 §6.2	* 발화 방식 (스펙 §6.2). 쿨다운은 장중 알림에만 있다.
+main	alert/runtime/Point.java	6	계획 ② A.4	* 평가할 데이터 시점 하나 (계획 ② A.4).
+main	alert/runtime/AlertRuntimeConfig.java	12	스펙 §8.4	* 런타임만 켠 워커로 따로 띄우고 API 파드에서는 끈다(스펙 §8.4). 테스트는 끄고 작업을 직접 부른다.
+main	alert/runtime/AlertRuntimeWriter.java	25	스펙 §8.2 · §14.4	* 평가기의 트랜잭션 (스펙 §8.2 · §14.4). 상태 갱신 · 발화 기록 · 기기별 발송 행 · 한 번만 알림의 종료가
+main	alert/runtime/AlertRuntimeWriter.java	58	§6.6	해시가 다르고 결과가 확인 불가면 기준을 잡지 못했다 — 옛 해시를 두어 다음 확정 결과에서 다시 잡게 한다(§6.6)
+main	alert/runtime/AlertRuntimeWriter.java	71	§8.2 ②	같은 데이터 시점이 이미 울렸다 (§8.2 ②)
+main	alert/runtime/AlertRuntimeWriter.java	81	계획 ② A.7	* 만료 전이 (계획 ② A.7). 사용자 변경과 같이 version을 올리고 대상 종목을 갱신한다.
+main	alert/runtime/EvaluationRunner.java	39	스펙 §8.1 / 계획 ② A.4	* 평가기 (스펙 §8.1, 계획 ② A.4). 주기마다 만료를 먼저 옮기고, ACTIVE이고 삭제되지 않은 알림마다 평가할 시점을
+main	alert/runtime/EvaluationRunner.java	167	계획 ② A.4	---- 시점 고르기 (계획 ② A.4) --------------------------------------------------
+main	alert/runtime/EvaluationRunner.java	178	§6.3	§6.3 — 최신 시점 하나
+main	alert/runtime/EvaluationRunner.java	192	§3.3	* 장중은 가장 최근 스냅샷 하나. 허용 지연을 넘었으면 평가하지 않는다 — 지난 시각의 발화가 지금 가격으로 오해된다(§3.3).
+main	alert/runtime/EvaluationRunner.java	235	스펙 §8.1	* 같은 주기 안에서 같은 입력은 한 번만 읽는다(스펙 §8.1). 사용자 상태 입력만 사용자에 따라 다르다.
+main	alert/runtime/AlertJobs.java	10	스펙 §8.1 / 계획 ② A.3	* 평가기 · 발송기 · 영수증 확인기 (스펙 §8.1, 계획 ② A.3). 모든 복제본에서 돈다 — 중복 방지는 잠금이 아니라
+main	alert/runtime/AlertJobs.java	11	§8.2	* 데이터에 있다(§8.2). 주기는 끝난 뒤부터 센다(fixedDelay). 한 번이 길어져도 겹쳐 돌지 않는다.
+main	alert/runtime/Target.java	16	§6.6	* @param storedHash 상태 행의 해시. specHash와 다르면 발화 없이 기준을 다시 잡는다(§6.6)
+main	alert/runtime/Target.java	31	계획 ② A.6	* 반영한 뒤의 알림. storedHash는 상태에 쓴 해시다 — 해시가 다르고 결과가 확인 불가면 옛 해시 그대로다(계획 ② A.6).
+main	alert/spec/Transform.java	7	스펙 §4.2	* 변형 (스펙 §4.2). Window.lag는 사용자가 만든 조건의 요청에서 null이고,
+main	alert/spec/Transform.java	8	§4.2	* 컴파일러가 맞은편을 보고 0 또는 1로 정한다(§4.2). 프리셋은 직접 정한다.
+main	alert/spec/Modifier.java	3	스펙 §4.2	* 유지 조건 (스펙 §4.2). 종가 알림은 연속 N일, 장중 알림은 N분 지속만 쓴다.
+main	alert/spec/Operand.java	7	스펙 §4.2	* 지표 + 지표 파라미터 + 변형 (스펙 §4.2). 파라미터가 비어 있으면 카탈로그 기본값을 쓴다.
+main	alert/spec/Condition.java	5	스펙 §6.1	* 조건 하나. 알림의 조건들은 AND로 묶인다(스펙 §6.1). modifier는 없을 수 있다.
+main	alert/spec/TriggerSpec.java	9	스펙 §4.2 · §4.3	* 트리거 (스펙 §4.2 · §4.3). 프리셋은 preset_key와 params 그대로 두고,
+main	alert/sentence/SentenceWriter.java	29	스펙 §12.1 · §12.5.4 · §12.8	* 조건 문장 · 관측값 줄 · 머리 (스펙 §12.1 · §12.5.4 · §12.8).
+main	alert/sentence/SentenceWriter.java	32	§12.1	* 컴파일한 조건을 풀어 쓰면 프리셋을 고른 의도가 사라진다(§12.1).</p>
+main	alert/sentence/SentenceWriter.java	68	§12.1	* 문장형의 절 하나. 마지막 절은 "…이면", 그 앞은 "…이고"로 끝난다(§12.1).
+main	alert/sentence/SentenceWriter.java	89	§12.1	---- 프리셋 문장 틀 (§12.1 표) ----------------------------------------------
+main	alert/sentence/SentenceWriter.java	133	§12.1 · §12.5.4	---- 관측값 줄 (§12.1 · §12.5.4) --------------------------------------------
+main	alert/sentence/SentenceWriter.java	200	§12.5.4	* 이력 부족이면 그 사유로 확인 불가인 첫 조건의 봉 수를 붙인다(§12.5.4).
+main	alert/sentence/SentenceWriter.java	228	§12.5.4 · §12.6 · §12.8	---- 머리 · 결과 줄 (§12.5.4 · §12.6 · §12.8) --------------------------------
+main	alert/sentence/SentenceWriter.java	230	§6.9	* 데이터 시점 표기. ②의 발화 본문 끝에도 쓴다(§6.9).
+main	alert/sentence/SentenceWriter.java	256	§7.1	* 사용자 상태 지표의 데이터 시점은 국내 영업일의 보유 스냅샷이라 미국 표기를 쓰지 않는다(§7.1).
+main	alert/sentence/OperandNames.java	13	스펙 §12.1	* 피연산자의 이름 조각 (스펙 §12.1 조각 표).
+main	alert/sentence/OperandNames.java	15	§4.2	* 거래일이라 lag 0이어도 직전을 쓴다(§4.2) — 윈도우는 직전 N일, 스냅샷으로 계산하지 않는 지표 그대로는
+main	alert/sentence/OperandNames.java	38	§12.6	* 표시 단위. 변화율은 퍼센트, 이격도는 RSI처럼 수치만 쓴다(§12.6).
+main	alert/sentence/OperandNames.java	45	§12.6	* 관측값에 부호를 붙이는가 — 등락률·수익률·순매수 금액·변화량·변화율(§12.6).
+main	alert/sentence/Numbers.java	19	스펙 §12.6	* 숫자·날짜 표기 (스펙 §12.6). 관측값은 정해진 자릿수로 반올림하고, 조건의 기준값은
+main	alert/sentence/Numbers.java	118	§12.6	* 한국 시간의 시:분. 미국 장중 시각도 한국 시간으로 쓴다(§12.6).
+main	alert/sentence/Summary.java	3	스펙 §12.1	* 조건 문장의 두 문체 (스펙 §12.1). 짧은 형은 카드·푸시, 문장형은 상세·폼.
+main	alert/sentence/EventText.java	16	스펙 §6.9 / 계획 ② A.8	* 발화 문구 (스펙 §6.9, 계획 ② A.8). 발화 시점에 완성해 저장한다 — 알림을 나중에 고치거나 지워도
+main	alert/sentence/EventText.java	42	스펙 §6.9 / 계획 ② A.8	* 파라미터로 갈래를 고른 프리셋은 고른 갈래의 이름을 쓴다 — 스펙 §6.9 예시의 `RSI 과매수` (계획 ② A.8).
+main	alert/compile/RequiredBars.java	13	스펙 §5.4	* 조건 하나가 필요로 하는 봉 수 (스펙 §5.4). 현재 봉을 포함해 센다.
+main	alert/compile/RequiredBars.java	21	§5.1	* 같은 데이터에서 같은 값이 나오도록 250봉 계산 창을 읽는다(§5.1).
+main	alert/compile/Compiler.java	26	스펙 §5.3	* <p>프리셋은 스펙 §5.3 표대로 조립형 조건으로 전개한다. 사용자가 만든 조립형 조건은
+main	alert/compile/Compiler.java	27	§4.2	* 윈도우의 오늘 포함 여부(lag)를 맞은편으로 정한다(§4.2):
+main	alert/compile/Compiler.java	58	§5.3	RSI 구간의 기준값 기본은 구간에 따라 다르다 — 과매수 70, 과매도 30 (§5.3)
+main	alert/compile/Compiler.java	62	§12.5.3	수익률 도달의 수익률은 손실이면 음수로 받는다 — 손실의 기본은 −10 (§12.5.3)
+main	alert/compile/Compiler.java	93	§5.3	---- 프리셋 전개 (§5.3) --------------------------------------------------
+main	alert/compile/DataNeeds.java	17	스펙 §5.4 · §7.1	* 알림이 기다리는 데이터 종류 (스펙 §5.4 · §7.1). 평가 시점에 따라 다르다 —
+main	alert/compile/DataNeeds.java	19	§3.1	* 이력 피연산자는 일봉만 기다린다(§3.1).
+main	alert/compile/SpecHash.java	20	스펙 §6.6 · §6.7	* 컴파일한 조건과 평가 시점의 해시 (스펙 §6.6 · §6.7).
+main	alert/delivery/DeliveryDispatcher.java	19	스펙 §9.3 / 계획 ② A.9	* 발송기 (스펙 §9.3, 계획 ② A.9). 집기 트랜잭션 → 트랜잭션 밖에서 Expo 전송 → 기록 트랜잭션 → 기기 정리.
+main	alert/delivery/DeliveryDispatcher.java	133	계획 ② A.9	* 30초 · 1분 · 2분 · 4분 (계획 ② A.9).
+main	alert/delivery/ExpoPushGateway.java	17	계획 ② A.9	* Expo Push API (docs.expo.dev "Sending notifications with Expo's Push API", 계획 ② A.9).
+main	alert/delivery/ExpoPushGateway.java	64	스펙 §9.3의	* 스펙 §9.3의 페이로드에 iOS 기본 알림음을 더한다. data에는 event_id만 싣는다.
+main	alert/delivery/PushProperties.java	6	계획 ② A.3 · A.9	* 푸시 발송 설정 (계획 ② A.3 · A.9). enabled가 false면 발송기와 영수증 확인기가 아무것도 보내지 않는다.
+main	alert/delivery/PushProperties.java	16	§9.7	* 접근 토큰은 로그나 예외 메시지에 새지 않도록 설정 여부만 보인다(§9.7).
+main	alert/delivery/PushMessage.java	5	§9.7	* 기기 하나로 보낼 푸시. to는 Expo 푸시 토큰이라 문자열로 바꿀 때 빼낸다 — 로그에 원문을 남기지 않는다(§9.7).
+main	alert/delivery/UnregisteredDevices.java	13	§9.7	* 기록과 한 트랜잭션에 두면 발송기와 영수증 확인기가 같은 기기를 지우다 교착할 수 있다. 로그에는 device_id만 쓴다(§9.7).
+main	alert/delivery/ReceiptChecker.java	19	스펙 §9.4 / 계획 ② A.9	* 영수증 확인기 (스펙 §9.4, 계획 ② A.9). 보낸 푸시의 실제 전달 결과를 트랜잭션 밖에서 묻고, 결과를 한 트랜잭션에
+main	alert/api/DeviceController.java	19	§9.2	* 푸시 수신 기기 등록·해제 (§9.2).
+main	alert/api/AlertEventController.java	21	스펙 §11.1	* 울린 알림 (스펙 §11.1). 쿼리 값은 문자열로 받아 서비스가 해석한다 — 형이 틀린 값도 같은
+main	alert/api/AlertController.java	27	스펙 §11.1	* 알림 규칙 (스펙 §11.1). 본문을 JsonNode로 받는 것은 형이 틀린 값도 경로가 붙은 오류로
+main	alert/api/InstrumentController.java	10	§11.1	* 앱 공통 종목 검색 (§11.1). 알림 전용이 아니다.
+main	alert/api/AlertCatalogController.java	8	§5	* 알림 카탈로그. 폼이 고를 수 있는 지표·변형·연산자·프리셋과 범위 (§5).
+main	alert/api/dto/EventAlertDto.java	5	§12.3	* 울린 알림 상세의 "이 알림" — 지금 상태다. 화면은 deleted면 알림 보기·끄기를 숨긴다(§12.3).
+main	alert/api/dto/SummaryDto.java	5	§12.1	* 조건 문장 (§12.1). short는 자바 예약어라 필드 이름만 바꾼다.
+main	alert/api/dto/ShortSummaryDto.java	5	§11.2	* 목록은 짧은 형만 싣는다(§11.2).
+main	alert/api/dto/AlertDetailDto.java	10	§11.3	* 알림 상세 (§11.3). trigger_spec을 싣는 것은 수정 화면이 프리셋 입력·조건 만들기를
+main	alert/api/dto/UnreadDto.java	6	§11.2	* 새로 울린 알림 블록의 한 줄 (§11.2).
+main	alert/api/dto/LineDto.java	6	§12.5.4	* 현재값 상자의 한 줄 (§12.5.4).
+main	alert/api/dto/DeviceRequest.java	3	§11.3	* POST /devices 본문 (§11.3).
+main	alert/api/dto/EventRowDto.java	6	§11.3 · §12.3	* 울린 알림 목록의 한 줄 (§11.3 · §12.3).
+main	alert/api/dto/CurrentDto.java	8	§11.3	* 현재값 상자 (§11.3). header와 result_text는 서버가 완성한다.
+main	alert/api/dto/AlertListData.java	5	§11.2	* GET /alerts 봉투의 data (§11.2).
+main	alert/api/dto/UnreadCountDto.java	3	§11.3	* 탭 배지 (§11.3).
+main	alert/api/dto/RecentEventDto.java	6	§11.3	* 알림 상세의 최근 울린 알림 (§11.3). cadence는 그 발화를 만든 평가 시점이라 기준 표기를 정한다.
+main	alert/api/dto/AlertCardDto.java	6	§11.2 · §12.2	* 알림 카드 (§11.2 · §12.2).
+main	alert/api/dto/InstrumentSearchResponse.java	8	§11.3	* GET /instruments (§11.3). last_close는 최신 일봉의 종가, 일봉이 없으면 null이다.
+main	alert/api/dto/AlertIdResponse.java	5	§12.5.5	* 만들기·수정의 응답. 저장 뒤 화면은 알림 상세를 다시 받는다(§12.5.5).
+main	alert/api/dto/EventListData.java	5	§11.3	* GET /alert-events 봉투의 data (§11.3). next_cursor가 null이면 마지막 쪽이다.
+main	alert/api/dto/EventDetailDto.java	9	§11.3 / §12.3	* GET /alert-events/{id} (§11.3). 울린 당시의 문구만 담는다 — 지금 값은 알림 상세가 답한다(§12.3).
+main	alert/api/dto/InvalidAlertError.java	8	§11.4	* 저장 검증 실패 응답 (§11.4). 기존 ApiError에 fields를 더하지 않는 것은
+main	alert/api/dto/InvalidAlertError.java	9	계획 A.8	* 다른 오류 응답에 "fields": null이 생기지 않게 하기 위해서다(계획 A.8).
+main	alert/evaluation/Truth.java	3	스펙 §6.1	* 조건 하나의 결과 (스펙 §6.1).
+main	alert/evaluation/EvaluationInput.java	19	§7.1	* @param notDone     이 시점에 DONE이 아닌 데이터 종류 (§7.1)
+main	alert/evaluation/EvaluationInput.java	20	계획 A.6	* @param missingDays 읽은 범위 안의 데이터 누락일 (계획 A.6)
+main	alert/evaluation/EvaluationInput.java	21	§16.2	* @param allowedGap  장중 스냅샷의 허용 지연 — 국내 10분, 미국 20분 (§16.2)
+main	alert/evaluation/FiringRule.java	8	스펙 §6.2 · §6.6 / 계획 ② A.6	* 발화 판정 (스펙 §6.2 · §6.6, 계획 ② A.6).
+main	alert/evaluation/Basis.java	5	계획 A.5	* INTRADAY, 미리보기에서 스냅샷이 없으면 가장 최근 종가를 스냅샷 하나로 삼은 DAILY다(계획 A.5).
+main	alert/evaluation/UnknownReason.java	3	스펙 §7.2	* 확인 불가 사유와 카드 문구 (스펙 §7.2).
+main	alert/evaluation/ConditionEvaluator.java	29	스펙 §6.1 · §7	* 한 데이터 시점의 3값 평가 (스펙 §6.1 · §7).
+main	alert/evaluation/ConditionEvaluator.java	94	§7.2	* 현재 값이 있어야 할 자리에 없는가 (§7.2).
+main	alert/evaluation/ConditionEvaluator.java	112	§7.2 / 계획 A.6	* 데이터 누락일이 있는가 (§7.2, 계획 A.6). 종가 알림에만 있다.
+main	alert/evaluation/ConditionEvaluator.java	132	§7.3 / 계획 A.7	* 국내 종목에서 그 조건이 읽는 봉 범위 안에 하루 ±30%를 넘는 변동이 있는가 (§7.3, 계획 A.7).
+main	alert/evaluation/ConditionEvaluator.java	164	§5.2	* 직전 시점과 이번 시점의 두 값을 견준다. 장중은 같은 날 직전 스냅샷이 직전 시점이다(§5.2).
+main	alert/evaluation/ConditionEvaluator.java	183	§5.2	* 장중 교차의 직전 시점은 같은 날 직전 스냅샷이다(§5.2). 없거나, 현재 스냅샷과의 간격이 허용 지연을
+main	alert/evaluation/ConditionEvaluator.java	184	§4.2	* 넘으면 그 사이 값을 모른다 — N분 지속의 공백과 같은 규칙이다(§4.2). 장중 기준일 때만 본다.
+main	alert/evaluation/ConditionEvaluator.java	221	§4.2	* 참인 당일 스냅샷이 끊김 없이 이어진 구간의 시작부터 현재 스냅샷까지가 N분 이상이면 참 (§4.2).
+main	alert/service/AlertQueryService.java	39	§11.2 · §11.3	* 알림 탭과 알림 상세의 읽기 (§11.2 · §11.3). 조건 문장은 읽을 때마다 지금 코드로 만든다.
+main	alert/service/AlertQueryService.java	145	§11.3	* jsonb에서 읽은 문자열이라 늘 JSON이다. 수정 화면이 받은 그대로 다시 보낸다(§11.3).
+main	alert/service/InstrumentSearchService.java	13	§12.5.1	* 종목 고르기 (§12.5.1). 검색어가 없으면 보유 종목 구역이거나 빈 목록이다.
+main	alert/service/AlertEventService.java	27	스펙 §11 / 계획 ② A.11	* 울린 알림의 읽기와 읽음 처리 (스펙 §11, 계획 ② A.11). 남의 발화와 없는 발화를 구분하지 않는다.
+main	alert/service/AlertEventService.java	51	§11.4 / §6.8	* alertId는 그 알림의 발화만. 남의 알림이거나 없는 알림이면 404다(§11.4). 삭제된 내 알림은 찾은 것으로 본다(§6.8).
+main	alert/service/MarketDelayNotices.java	33	스펙 §7.4 / 계획 ② A.12	* MARKET_DATA_DELAYED (스펙 §7.4, 계획 ② A.12). 사용자의 활성 알림이 기다리는 (시장, 종류)마다 최신 DONE이
+main	alert/service/MarketDelayNotices.java	133	스펙 §16.2의	* 스펙 §16.2의 도착 시점 — 국내 일봉은 당일 중, 미국 일봉은 다음 미국 장 개장 전, 수급은 다음 국내 영업일 개장 전.
+main	alert/service/AlertPreviewService.java	50	§11.3	* 저장 전 초안 하나로 검증 오류 · 지금 값 · 지금 충족 여부 · 중복을 한 번에 돌려준다 (§11.3).
+main	alert/service/AlertPreviewService.java	52	§12.4	* 요청의 실패가 아니다. 알림 상세의 현재값 상자도 alert_id를 실어 이 경로를 쓴다(§12.4).
+main	alert/service/SnapshotRunRecorder.java	11	스펙 §7.1 / 계획 ② A.10	* 보유 스냅샷 완료 신호를 남기는 창구 (스펙 §7.1, 계획 ② A.10). 포트폴리오 EOD 스냅샷 생성
+main	alert/service/SnapshotRunRecorder.java	12	스펙 §3.6	* (포트폴리오 스펙 §3.6 1단계)이 그 as_of의 전 계좌를 마친 뒤 부른다.
+main	alert/service/AlertCommandService.java	38	스펙 §6.3 · §6.5 · §6.8	* 알림을 바꾸는 요청 (스펙 §6.3 · §6.5 · §6.8). 사용자 변경은 같은 트랜잭션에서 version을 올린다 —
+main	alert/service/AlertCommandService.java	39	§14.4	* 평가기가 읽은 뒤 사용자가 바꾼 알림에 옛 결과가 반영되지 않게 하기 위해서다(§14.4).
+main	alert/service/AlertCommandService.java	97	§6.5	* 다시 켜기. 만료된 알림은 새 유효기간(null이면 무기한)을 함께 받는다(§6.5).
+main	alert/service/AlertCommandService.java	164	§6.6	* 저장된 알림의 지금 코드 기준 해시. 템플릿이 바뀌었으면 여기서 새 해시가 된다(§6.6).
+main	alert/data/SnapshotRunMapper.java	12	스펙 §7.1 · §10.1	* 보유 스냅샷 완료 신호 (스펙 §7.1 · §10.1). 사용자 상태 지표 알림의 평가 신호다.
+main	alert/data/MarketDataMapper.java	16	데이터 요구사항 N1	* 데이터팀 소유 시세 테이블 읽기. 물리 이름이 정해지면(데이터 요구사항 N1) 이 파일만 고친다.
+main	alert/data/HoldingReader.java	20	스펙 §5.1	* 사용자 상태 지표 (스펙 §5.1). 포트폴리오 종목 화면과 같은 값이어야 하므로 같은 집계를 쓴다 —
+main	alert/data/CalendarDay.java	6	데이터 요구사항 §4.2	* 시장 캘린더 하루 (데이터 요구사항 §4.2). 휴장일은 openAt · closeAt이 null일 수 있다.
+main	alert/data/MarketDataRepository.java	26	데이터 요구사항 §2.4	* <p>거래일은 그 시장의 현지 날짜다(데이터 요구사항 §2.4). 일별 완료 신호의 as_of는 그 거래일의
+main	alert/data/MarketDataRepository.java	28	계획 A.6	* 월~금을 거래일로 본다(계획 A.6).</p>
+main	alert/data/MarketDataRepository.java	100	§7.1	* 종가의 데이터 시점은 캘린더의 close_at에서만 읽는다(§7.1). 행이 없을 때만 정규 마감으로 근사한다.
+main	alert/data/InstrumentRow.java	14	§14.1	* 알림을 걸 수 있는가 — 예수금 의사종목과 상장폐지 종목은 아니다(§14.1).
+main	alert/data/EvaluationInputFactory.java	33	결정 기록 "알림 계산"	* 같은 입력이면 순수 계산이 같은 결과를 낸다(결정 기록 "알림 계산").
+main	alert/data/EvaluationInputFactory.java	36	계획 ① A.5 / 계획 ② A.4	* userAt(스냅샷 기준일). 미리보기는 그 시점을 계획 ① A.5대로 고르고, 평가기는 계획 ② A.4대로 고른다.</p>
+main	alert/data/EvaluationInputFactory.java	38	스펙 §7.2	* <p>계열은 있는 봉으로 만든다(스펙 §7.2). 데이터 누락일 — 거래일인데 그 시장·종류의 DONE이 없는 날 — 의
+main	alert/data/EvaluationInputFactory.java	44	§5.4	* 읽는 봉 수의 최대는 274다(§5.4). 데이터가 보장하는 300봉을 읽는다.
+main	alert/data/EvaluationInputFactory.java	46	§5.1	* 수급의 최대 필요 봉 수는 30이다(§5.1).
+main	alert/data/EvaluationInputFactory.java	62	계획 ① A.5	---- 미리보기 (계획 ① A.5) ---------------------------------------------------
+main	alert/data/EvaluationInputFactory.java	87	계획 ② A.4	* 시점과 같다(계획 ② A.4). 아니면 가장 최근 DAILY_BAR 거래일의 종가를 스냅샷 하나로 삼은 일봉 기준이다 —
+main	alert/data/EvaluationInputFactory.java	137	§7.1	* DONE이 됐다면 그날의 데이터는 오지 않는 것으로 본다(§7.1).
+main	alert/data/EvaluationInputFactory.java	184	§7.1	* 사용자 상태 지표의 스냅샷 기준일 date. 데이터 시점은 국내 영업일의 확정 스냅샷이라 시장은 KR이다(§7.1).
+main	alert/data/EvaluationInputFactory.java	197	계획 ② A.4	* 종목 마스터에 없는 종목. 모든 조건이 INSTRUMENT_UNKNOWN이다. 평가기는 시점을 함께 준다(계획 ② A.4).
+main	alert/data/EvaluationInputFactory.java	219	계획 ① A.6	* from ~ to의 거래일 중 그 종류의 DONE이 없는 날 — 데이터 누락일 (계획 ① A.6).
+main	alert/validation/FieldError.java	5	스펙 §11.4	* (스펙 §11.4).
+main	alert/validation/TriggerSpecWriter.java	17	§4.2	* 않고, 변형이 늘 명시된다. 조립형에는 lag이 없다(§4.2). 수정 화면이 받은 spec을 그대로 다시
+main	alert/validation/AlertValidator.java	36	스펙 §14	* 저장 전 관문 (스펙 §14). 미리보기와 저장이 같은 규칙을 쓴다.
+main	alert/validation/AlertValidator.java	125	§14.1	---- 봉투 (§14.1) ----------------------------------------------------------
+main	alert/validation/AlertValidator.java	166	§14.2	---- 조립형 (§14.2) ---------------------------------------------------------
+main	alert/validation/AlertValidator.java	290	§14.2	* 변형 뒤의 단위 (§14.2) — pct는 percent, 나머지는 지표 단위 그대로.
+main	alert/validation/AlertValidator.java	295	§12.5.3	* 수익률 도달의 수익률은 수익이면 양수, 손실이면 음수다(§12.5.3).
+main	alert/validation/AlertValidator.java	309	§14.3	---- 프리셋 (§14.3) ---------------------------------------------------------
+main	alert/validation/AlertValidator.java	355	§14.3	입력이 맞으면 컴파일 결과에 조립형 규칙을 적용한다(§14.3)
+main	alert/validation/InvalidAlertException.java	5	스펙 §11.4	* 저장 검증 실패. API가 400 INVALID_ALERT와 fields로 옮긴다(스펙 §11.4).
+main	alert/store/AlertEventMapper.java	14	스펙 §11.3 / 계획 ② A.11	* 울린 알림 (스펙 §11.3, 계획 ② A.11). 모든 조회·변경은 alert.user_id로 스코프된다 — 발화의 소유자는
+main	alert/store/AlertEventMapper.java	15	§6.8	* 그 알림의 소유자다. 삭제된 알림의 발화도 남아 보인다(§6.8).
+main	alert/store/AlertEventMapper.java	38	§6.8	* 내 알림인가. 삭제된 알림도 내 것이다 — 그 발화는 남아 보인다(§6.8).
+main	alert/store/AlertRow.java	6	계획 A.4	* 삭제되지 않은 알림 한 행과 그 평가 상태. trigger_spec은 JSON 문자열이다(계획 A.4).
+main	alert/store/WatchlistMapper.java	12	데이터 요구사항 §7.1	* 알림 대상 종목 (데이터 요구사항 §7.1). 삭제되지 않은 ACTIVE 알림이 하나 이상 걸린 종목이고,
+main	alert/store/PendingDelivery.java	7	§9.7	* token은 Expo 푸시 토큰이라 문자열로 바꿀 때 빼낸다(§9.7).
+main	alert/store/AlertStore.java	13	§11.4	* 알림 저장소. 남의 알림과 없는 알림을 구분하지 않는다 — 둘 다 빈 값이다(§11.4).
+main	alert/store/AlertStore.java	17	§5.5	* trigger_spec의 포맷 버전 (§5.5). 서버가 정하고 요청에서 받지 않는다.
+main	alert/store/AlertStore.java	32	§6.7	* 같은 종목 · 같은 평가 시점 · 같은 조건 해시의 활성 알림 (§6.7).
+main	alert/store/UnreadEventRow.java	6	§11.2	* 새로 울린 알림 블록의 한 줄 (§11.2). 기준 표기는 cadence와 market으로 화면이 정한다.
+main	alert/store/DeliveryMapper.java	14	스펙 §9 / 계획 ② A.9	* 기기별 발송 행 (스펙 §9, 계획 ② A.9). 집을 때 FOR UPDATE SKIP LOCKED로 잠그고 SENDING으로 바꿔 커밋한다 —
+main	alert/store/DeliveryMapper.java	15	§8.2 ④	* 한 발송 행은 한 복제본만 처리한다(§8.2 ④). 결과는 "아직 SENDING이고 집을 때의 attempts 그대로"일 때만 쓴다.
+main	alert/store/DeliveryMapper.java	35	§9.2 · §14.5	* 기기가 다른 사용자에게 옮겨졌으면 이전 사용자의 대기 행을 보내지 않는다(§9.2 · §14.5). 임대 중인 행은 건드리지 않는다.
+main	alert/store/AlertMapper.java	13	§14.5	* 알림과 평가 상태. 모든 조회는 인증 주체의 user_id로 스코프된다(§14.5).
+main	alert/store/AlertMapper.java	73	§6.3 · §6.6	* 엣지 기준을 거짓으로, 평가 시점을 비우고, 새 해시와 버전으로 (§6.3 · §6.6). 평가 시점이 비면 최신 시점에서
+main	alert/store/AlertQueryMapper.java	12	§12.2 / 계획 A.10	* 알림 탭의 읽기. 정렬은 서버가 정한다(§12.2, 계획 A.10).
+main	alert/store/AlertRuntimeStore.java	57	계획 ② A.6	* 한 번만 알림을 끝낸다. 버전을 올려 다른 복제본이 뒤 시점을 반영하지 못하게 한다(계획 ② A.6).
+main	alert/store/InstrumentSearchMapper.java	13	§11.1	* 앱 공통 종목 검색 (§11.1). 가나다순은 COLLATE "C"로 한다 — DB 기본 정렬 설정과 무관하게
+main	alert/store/InstrumentSearchMapper.java	14	계획 A.10	* Latin이 한글보다 앞서고 한글은 가나다 순이다(계획 A.10). pattern은 %·_·\를 이스케이프한 검색어다.
+main	alert/store/InstrumentSearchMapper.java	15	§12.5.3	* 직전 종가는 그 종목의 가장 최근 일봉이다 — 가격 도달의 가격 칸을 채운다(§12.5.3).
+main	alert/store/RuntimeAlertRow.java	8	스펙 §8.2 · §14.4	* 수정의 새 version을 들고 옛 규칙의 결과를 반영할 수 있다(스펙 §8.2 · §14.4).
+main	alert/store/RuntimeMapper.java	14	스펙 §8.2 / 계획 ② A.5 ~ A.7	* 평가기의 읽기·쓰기 (스펙 §8.2, 계획 ② A.5 ~ A.7). 사용자 요청 경로가 아니라 스코프가 없다.
+main	alert/store/RuntimeMapper.java	39	계획 ② A.5	* 유효기간이 지나지 않았을 때만 반영한다(계획 ② A.5). 바뀐 행 수를 돌려준다 — 0이면 진 것이다.
+main	alert/store/RuntimeMapper.java	63	계획 ② A.6	* 알림의 종료)도 같은 순서를 따른다(계획 ② A.6).
+main	alert/store/RuntimeMapper.java	74	§8.2 ②	* 한 알림은 한 데이터 시점에 최대 한 번 발화한다. 이미 있으면 넣지 않고 0을 돌려준다(§8.2 ②).
+main	alert/store/EventDetailRow.java	6	계획 ① A.4	* 울린 알림 상세 — 발화 그대로와 그 알림의 지금 상태. lines · observed는 JSON 문자열이다(계획 ① A.4).
+main	cashflow/ManualCashflowService.java	23	스펙 §9.1	* 사용자가 넣는 입출금. 자산 변화의 "넣은 돈"이 여기서만 온다(스펙 §9.1).
+main	cashflow/CashflowValidator.java	14	설계 §2.2	* 입출금 한 건의 범위를 본다(설계 §2.2).
+main	sync/OpenSync.java	7	설계 §4.4	* 뷰 notice에 싣는 열린 동기화 실행 (설계 §4.4). 시각은 KST 오프셋이고, finalizedAt은 alreadyFinal이어도 null일 수 있다.
+main	sync/Finality.java	10	설계 §5.3	* 요청일 값이 이미 확정인지와 확정 시각 (설계 §5.3). 요청 시점의 예측이다.
+main	sync/SyncRejected.java	5	설계 §4.3	* 동기화 요청을 받아들일 수 없다 (설계 §4.3). 메시지는 고정 문구이며 입력값을 담지 않는다.
+main	sync/AccountAsOf.java	14	설계 §4.2	* 동기화 응답과 닫기가 싣는 계좌 기준일 (설계 §4.2).
+main	sync/PickupSchedule.java	9	설계 §4.1	* Airflow의 다음 픽업 예정 시각. 실제로 도는지는 알 수 없으므로 예정이다 (설계 §4.1).
+main	sync/SyncMapper.java	15	설계 §2.2 · §3 · §4.1 · §4.2 · §4.4 · §5.2	* 수동 동기화 실행과 그 요청이 넣는 data.collection_run USER 행 (설계 §2.2 · §3 · §4.1 · §4.2 · §4.4 · §5.2).
+main	sync/SyncMapper.java	28	설계 §4.1	* 같은 계좌 · 요청일의 열린 USER 행 가운데 요청이 가장 늦은 것 (설계 §4.1 2단계). account_ref는 재연동해도 같으므로
+main	sync/SyncExceptionHandler.java	19	설계 §4.3	* 동기화 컨트롤러 전용 오류 변환 (설계 §4.3). 다른 컨트롤러의 오류는 ApiExceptionHandler가 맡는다.
+main	sync/SyncMessages.java	8	설계 §4.1 · §4.4	* 사용자에게 보이는 동기화 안내 문장 (설계 §4.1 · §4.4). 날짜는 MM-dd, 픽업은 MM-dd(요일) HH:mm이다.
+main	sync/SyncController.java	20	설계 §4	* 수동 동기화 (설계 §4).
+main	sync/SyncService.java	28	설계 §4.1 · §4.2 · §4.4	* 수동 동기화 요청과 진행 조회, 뷰 notice에 싣는 열린 실행 (설계 §4.1 · §4.2 · §4.4).
+main	sync/SyncService.java	97	설계 §4.2	* 실행 하나의 진행 (설계 §4.2). 닫힌 실행은 닫을 때 굳힌 값을, 열린 실행은 수집 · 생성 사실에서 도출한 값을 싣는다.
+main	sync/SyncService.java	130	설계 §4.4	* 그 사용자의 열린 실행 가운데 시한이 지나지 않은 가장 늦은 것 (설계 §4.4). 시한이 지난 실행은 닫힌 것으로 본다.
+main	sync/SyncCloser.java	20	설계 §5.2	* 동기화 닫기 (설계 §5.2). 생성기 회차의 마지막 단계로, 끝났거나 시한이 지난 열린 실행을 닫고 계좌 결과를 굳힌다.
+main	sync/SyncProperties.java	8	설계 §6	* 수동 동기화 설정 (설계 §6). pickupCron은 Spring CronExpression 형식이고 Asia/Seoul로 읽는다.
+main	sync/dto/SyncAcceptedResponse.java	5	설계 §4.1	* POST /sync 202 응답 (설계 §4.1).
+main	sync/dto/SyncRunResponse.java	7	설계 §4.2	* GET /sync/{run_id} 200 응답 (설계 §4.2). failureReason은 실행 단위 사유다.
+main	account/SsmCredentialStore.java	21	설계 §6.1	* 계좌 자격증명을 SSM SecureString에 쓴다 (설계 §6.1).
+main	account/AccountLinkService.java	20	설계 §4	* KIS 계좌 등록 · 재연동 · 해제 (설계 §4).
+main	account/KisEnv.java	6	설계 §6.1	* KIS 실전 · 모의투자 구분. 수집기는 자격증명의 {@code env}로 부를 서버를 고른다(설계 §6.1).
+main	account/AccountRefProperties.java	10	docs/ops/account-credentials.md	* 운영 값은 Secret에서 오고 백업은 SSM에 있다(docs/ops/account-credentials.md).</p>
+main	account/AccountExceptionHandler.java	20	설계 §3.5 · §6.3	* 계좌 컨트롤러 전용 오류 변환 (설계 §3.5 · §6.3). 다른 컨트롤러의 오류는 ApiExceptionHandler가 맡는다.
+main	account/AccountRefIssuer.java	10	설계 §5	* 계좌를 데이터팀에 넘기는 불투명 식별자(account_ref)와 자격증명 파라미터 이름을 만든다 (설계 §5).
+main	account/AccountController.java	21	스펙 §8.1 / 설계 §3	* KIS 계좌 등록 · 해제 · 목록 (스펙 §8.1, 설계 §3).
+main	account/AccountController.java	39	설계 §2.1	* 첫 수집은 다음 EOD 실행이 한다 — 등록은 수집을 요청하지 않는다(설계 §2.1).
+main	account/LinkCommand.java	4	설계 §3.1	* 검증 · 정규화를 마친 등록 요청 (설계 §3.1).
+main	account/dto/LinkAccountResponse.java	7	설계 §3.1	* 202 응답. KIS 등록은 추가인증이 없어 challenge가 늘 null이다 (설계 §3.1).
+main	query/CollectionRunStatusPort.java	10	스펙 §7.2	* 계좌별 뷰의 last_collection (스펙 §7.2). 그 계좌의 최신 실행에서 파생하고 저장하지 않는다.
+main	query/FactCheckMapper.java	70	설계 §6.1	* 그 사용자의 직전 as_of에 라인이 있던 계좌는 해당 as_of에도 라인이 있다 (설계 §6.1).
+main	query/AccountFreshness.java	7	스펙 §7.4의	* 계좌 행에 붙일 데이터 신선도 — 설계 스펙 §7.4의 두 번째 층.
+main	query/SnapshotFactsMapper.java	105	스펙 §7.4.	* 계좌 행에 붙일 데이터 신선도 — 설계 스펙 §7.4. 어느 계좌가 낡았는지를 행이 가리킨다.
+main	basis/SellResult.java	9	설계 §5.5	* 매도 한 건의 realized_pnl_line 값 (설계 §5.5). 원가 · 손익이 없으면 해당 필드가 null이다.
+main	basis/BasisBuilder.java	32	설계 §4	* 평단 · 실현손익 생성 (설계 §4). 계좌마다 마지막 기록 뒤의 확정일을 이른 순서로 처리하고 뒤로 가지 않는다.
+main	basis/BasisBuilder.java	94	설계 §4.2.	* 설계 §4.2. 잠근 뒤 기록을 다시 보고, 건너뛰기를 판정하고, 종목마다 계산해 쓴다.
+main	basis/BasisBuilder.java	159	설계 §5.6	이번 계산에 없는 열린 매도 행은 그대로 둔다(설계 §5.6). 원천에서 체결이 지워졌을 수 있어 건수만 알린다
+main	basis/BasisInput.java	9	설계 §5.1	* 계좌 × 종목 하나의 판정일 D 입력 (설계 §5.1). marketCovered는 체결 이력이 그 종목의 시장을 덮는지이며
+main	basis/BasisWriteMapper.java	12	설계 §4.2 6번 · §5.6	* position_basis · realized_pnl_line · basis_build 쓰기 (설계 §4.2 6번 · §5.6).
+main	basis/BasisResult.java	10	§5.4	* state는 L = 0이면 비어 있다. grade · openingQty는 L = 0이어도 판정값이다(§5.4 표의 등급 · opening_qty).
+main	basis/BasisResult.java	11	§5.4의	* wholeInstrument는 §5.4의 1~3번 판정, demoted는 강등.
+main	basis/BasisTarget.java	5	설계 §4.1 · §4.2	* 그날 확정 라인이 있는 계좌. carriedForward는 그날 라인이 이월본이라는 뜻이다 (설계 §4.1 · §4.2).
+main	basis/SellWritePolicy.java	6	설계 §5.6	* 계산 결과의 매도 중 realized_pnl_line에 upsert할 것을 고른다(설계 §5.6). DB를 보지 않는다.
+main	basis/SeedReason.java	3	설계 §5.6	* SEEDED 매도의 사유. seed_permanent면 NOT_TRADED, 아니면 LATE_COVERAGE (설계 §5.6).
+main	basis/BasisState.java	8	설계 §5.5	* position_basis 한 행. grade는 지금 열린 구간의 등급이다 (설계 §5.5). 원가가 없으면 해당 필드가 null이다.
+main	basis/BasisCalculator.java	15	설계 §5.1 ~ §5.4	* 계좌 × 종목 하나의 체결 · 기업행위를 앞으로 접어 시작 수량과 등급을 정하고 (설계 §5.1 ~ §5.4),
+main	basis/BasisCalculator.java	16	설계 §5.5	* 포지션 구간마다 매도 원가 · 실현손익과 평단을 낸다 (설계 §5.5). 포지션은 수량이 0이 되는 매도마다 끊고,
+main	basis/BasisCalculator.java	17	§5.4의 / §5.7	* 첫 구간만 §5.4의 등급을 받는다. 기업행위 경고는 §5.7을 따른다.
+main	basis/BasisCalculator.java	45	설계 §5.2	---- 접기 (설계 §5.2) ----
+main	basis/BasisCalculator.java	61	설계 §5.1 · §5.2	* 기업행위는 ex_date 그날의 체결보다 먼저 둔다(설계 §5.1 · §5.2). from이 null이면 D 이하 전부다.
+main	basis/BasisCalculator.java	107	설계 §5.2	단주는 대금으로 받아 내림한다 (설계 §5.2)
+main	basis/BasisCalculator.java	120	설계 §5.3	---- 시작 수량 (설계 §5.3) ----
+main	basis/BasisCalculator.java	140	§5.4 3번	* §5.4 3번의 opening_qty: L − f(0), 0에서 접을 때의 최저 수량, L에 닿지 못했으면 L − f(S⁺) 중 가장 작은 값.
+main	basis/BasisCalculator.java	152	설계 §5.4	---- 등급 (설계 §5.4) ----
+main	basis/BasisCalculator.java	166	§5.4의	* §5.4의 1~3번: 구간을 나눌 수 없어 모든 매도에 같은 등급을 붙이고 원가 · 손익 · 평단은 비운다.
+main	basis/BasisCalculator.java	182	설계 §5.2 · §5.5	---- 구간과 금액 (설계 §5.2 · §5.5) ----
+main	basis/BasisCalculator.java	185	§5.7	* 포지션 구간 하나. start는 §5.7 판정 구간의 시작일(시드 구간이면 covered_from, 아니면 첫 매수일)이다.
+main	basis/BasisCalculator.java	207	§5.4의 4 · 5번	* §5.4의 4 · 5번. S = 0이면 VERIFIED, S > 0이면 첫 구간은 출발 라인이 있으면 SEEDED, 없으면 UNAVAILABLE이다.
+main	basis/BasisCalculator.java	208	설계 §5.5	* 첫 구간이 청산된 뒤의 구간은 VERIFIED이고 총액 0에서 시작한다 (설계 §5.5).
+main	basis/BasisCalculator.java	310	설계 §5.5	---- 시드 평단 (설계 §5.5) ----
+main	basis/BasisCalculator.java	313	설계 §5.5 1번	* 출발 라인 (설계 §5.5 1번): covered_from 이상, 첫 구간이 청산되기 전(열려 있으면 D까지),
+main	basis/BasisCalculator.java	333	설계 §5.5 2 · 3번	* 되돌리기 (설계 §5.5 2 · 3번): 라인의 매입금액에서 covered_from ~ 라인 날짜의 사건을 늦은 것부터 거꾸로 되돌려
+main	basis/BasisCalculator.java	360	설계 §5.7	---- ca_unknown (설계 §5.7) ----
+main	basis/BasisCalculator.java	375	설계 §5.5	* 매도 한 건 (설계 §5.5). 매도 금액 · 비용은 늘 채우고, 원가가 없으면(costLocal null) 원가 · 손익을 비운다.
+main	basis/CaType.java	3	설계 §5.2	* 기업행위 종류. SPLIT만 수량을 바꾸고 나머지는 ca_unknown만 세운다 (설계 §5.2).
+main	basis/PreviousBasis.java	7	설계 §5.4	* 그 계좌 × 종목의 직전 BUILT 판정. 강등 판단에만 쓴다 (설계 §5.4).
+main	basis/FxTable.java	6	설계 §5.5	* 그 날짜 이하 가장 최근 환율. KRW는 1이다 (설계 §5.5).
+main	basis/BasisMapper.java	16	설계 §3.1 · §4.1 · §5.1	* 평단 계산의 날짜 · 계좌 고르기와 입력 읽기 (설계 §3.1 · §4.1 · §5.1). data 스키마는 읽기만 한다.
+main	basis/BasisMapper.java	102	설계 §4.1 · §4.4	* 그 계좌에 asOf 또는 그 뒤의 기록이 있다. 다른 복제본이 앞서 처리했어도 뒤로 가지 않는다 (설계 §4.1 · §4.4).
+main	basis/BasisMapper.java	172	설계 §5.4	* 지우기 전의 position_basis. 강등 판단의 직전 판정이다 (설계 §5.4).
+main	basis/LineSnapshot.java	6	설계 §5.5	* 계좌 × 종목의 확정 라인 한 날. 시드 평단의 출발 라인 후보다 (설계 §5.5).
+test	snapshot/FinalizerTest.java	17	설계 §6	* 날짜 확정 (설계 §6). 마감 = 다음 KR 영업일 08:00 KST. 10-13(화)의 마감은 10-14 08:00이다.
+test	snapshot/RunProcessorProvisionalTest.java	21	설계 §5.1 · §5.6	* 한 계좌만 그날 라인을 얻을 때 다른 계좌의 잠정 이월과, 순서가 뒤집힌 처리 (설계 §5.1 · §5.6).
+test	snapshot/SnapshotRuntimeConfigTest.java	15	설계 §3 · §10	* 스냅샷 잡은 켤 때만 등록되고, 알림 런타임과 무관하게 스케줄링을 켠다 (설계 §3 · §10).
+test	snapshot/LineCalculatorTest.java	15	설계 §5.2 ~ §5.4	* 잔고 한 벌 → position_line (설계 §5.2 ~ §5.4).
+test	snapshot/CredentialFillerTest.java	15	설계 §8	* EOD 행에 credential_ref를 채운다 (설계 §8).
+test	snapshot/SnapshotConcurrencyTest.java	19	설계 §7	* 복제본 두 개가 같은 회차를 동시에 돈다 (설계 §7).
+test	snapshot/LineInvariantsTest.java	15	스펙 §9.1 / 설계 §5.5	* 스펙 §9.1 팩트 정합성 가운데 라인 한 벌로 판정하는 것 (설계 §5.5).
+test	snapshot/FinalizerDeadlineTest.java	12	설계 §6.2	* 마감 = 다음 KR 영업일의 finalize-at (설계 §6.2).
+test	snapshot/RunProcessorTest.java	16	설계 §5	* 수집 실행 한 행의 처리 (설계 §5).
+test	alert/AlertSchemaTest.java	14	스펙 §10.1 / 데이터 요구사항 §4 · §5.	* 알림 테이블과 데이터 미러의 컬럼 계약. 스펙 §10.1 · 데이터 요구사항 §4 · §5.
+test	alert/indicator/IndicatorCalculatorTest.java	58	계획 A.9	* Wilder 평활 (계획 A.9). 기대값은 같은 정의로 따로 계산했다.
+test	alert/indicator/IndicatorCalculatorTest.java	117	§3.1	* 장중 알림: 장중 지표 그대로는 스냅샷에서, 나머지는 직전 거래일까지의 봉에서 온다(§3.1).
+test	alert/catalog/AlertCatalogTest.java	11	스펙 §5.1 · §5.3	* 스펙 §5.1 · §5.3의 표가 코드 상수와 같은지.
+test	alert/catalog/AlertCatalogTest.java	63	§5.1	* 수급과 RSI의 변형 상한은 필요 이력이 데이터 요구를 넘지 않게 하기 위해서다(§5.1).
+test	alert/runtime/PreviewEvaluatorParityTest.java	30	결정 기록 "알림 계산" / 계획 ② A.12	* 미리보기에서 ✓인데 울리지 않는 일이 없어야 한다 (결정 기록 "알림 계산", 계획 ② A.12).
+test	alert/runtime/AlertRuntimeWriterTest.java	49	스펙 §8.2 · §14.4 / 계획 ② A.5 ~ A.8	* 평가 한 번의 반영 (스펙 §8.2 · §14.4, 계획 ② A.5 ~ A.8).
+test	alert/runtime/AlertRuntimeWriterTest.java	195	§6.6	* 배포 뒤 첫 평가가 확인 불가면 기준을 잡지 못했다 — 옛 해시를 두어 다음 확정 결과에서 울리지 않고 잡는다 (§6.6).
+test	alert/runtime/AlertRuntimeWriterTest.java	218	§3.3 / 계획 ② A.5	* 만료는 실제 시각으로 판정한다 — 주기 도중에 유효기간이 지난 알림은 반영하지 않는다 (§3.3, 계획 ② A.5).
+test	alert/runtime/AlertRuntimeWriterTest.java	231	계획 ② A.6	* 교착하지 않는다 (계획 ② A.6). 사용자 쪽 트랜잭션이 알림 행을 잡은 채 알림 상태 행을 바꾸는 실제 변경과
+test	alert/runtime/AlertRuntimeConfigTest.java	14	스펙 §8.1 · §8.4 / 계획 ② A.3	* 평가기·발송기·영수증 확인기는 앱 안의 스케줄 작업이고 설정으로 끈다 (스펙 §8.1 · §8.4, 계획 ② A.3).
+test	alert/runtime/EvaluationRunnerTest.java	31	스펙 §3.3 · §6.3 · §8.1 / 계획 ② A.4 · A.7	* 평가기 (스펙 §3.3 · §6.3 · §8.1, 계획 ② A.4 · A.7). 시세는 RuntimeFixtures의 설명을 본다.
+test	alert/runtime/EvaluationRunnerTest.java	50	§6.3	* 새로 만든 알림은 기다리는 데이터의 최신 DONE 시점 하나만 평가한다 (§6.3).
+test	alert/runtime/EvaluationRunnerTest.java	96	§3.3	* 감시 중이던 종가 알림은 밀린 거래일을 날짜 순서대로 모두 평가하고, 발화 문구에 기준일을 넣는다 (§3.3).
+test	alert/runtime/EvaluationRunnerTest.java	123	§3.3	* 장중은 가장 최근 스냅샷 하나만 평가한다 (§3.3).
+test	alert/runtime/EvaluationRunnerTest.java	165	§6.6	* 템플릿·업캐스팅이 바뀐 배포 뒤의 첫 평가 (§6.6).
+test	alert/runtime/EvaluationRunnerTest.java	181	§3.3	* 만료는 실제 시각으로 판정하고, 만료된 알림은 밀린 거래일도 평가하지 않는다 (§3.3).
+test	alert/runtime/EvaluationRunnerTest.java	270	계획 ② A.12 #4	* 저장된 조건 하나가 지금 코드로 읽히지 않아도 다른 알림은 평가한다 (계획 ② A.12 #4).
+test	alert/runtime/EvaluationRunnerTest.java	284	§7.1	* 어떤 날의 데이터가 끝내 DONE이 되지 않으면 그날은 데이터 없음으로 넘기고 이어간다 (§7.1).
+test	alert/runtime/EvaluationRunnerTest.java	301	§3.1	* 장중 알림의 이력 피연산자는 직전 거래일 일봉이 DONE이어야 계산한다 (§3.1).
+test	alert/runtime/EvaluationRunnerTest.java	332	§16.2	* 미국 장중 시세의 허용 지연은 20분이다 (§16.2).
+test	alert/runtime/EvaluationRunnerTest.java	352	§4.2	* N분 지속은 평가기에서도 그날 스냅샷이 참으로 이어진 구간으로 판정한다 (§4.2). 10:00 ~ 10:15가 모두 참이다.
+test	alert/sentence/NumbersTest.java	13	스펙 §12.6	* 표시 규칙 (스펙 §12.6).
+test	alert/sentence/SentenceWriterTest.java	41	§12.1 · §13	---- 조립형 요약 (§12.1 · §13) ----------------------------------------------
+test	alert/sentence/SentenceWriterTest.java	64	§4.2	* 장중 알림의 이력 피연산자는 직전 거래일 값이라 직전을 붙인다(§4.2).
+test	alert/sentence/SentenceWriterTest.java	110	§12.1	---- 프리셋 요약 (§12.1 표) --------------------------------------------------
+test	alert/sentence/SentenceWriterTest.java	218	§12.5.4	* 프리셋의 이력 부족도 필요 봉 수와 가진 봉 수를 보인다(§12.5.4).
+test	alert/sentence/EventTextTest.java	34	스펙 §6.9 · §12.1 / 계획 ② A.8 / 스펙의 예시	* 발화 문구 (스펙 §6.9 · §12.1, 계획 ② A.8). 기대 문구는 스펙의 예시 그대로다.
+test	alert/sentence/EventTextTest.java	98	스펙 §6.9의 / 계획 ② A.8	* 파라미터로 갈래를 고른 프리셋은 고른 갈래의 이름이 제목이다 — 스펙 §6.9의 예시 `카카오 · RSI 과매수` (계획 ② A.8).
+test	alert/compile/DataNeedsTest.java	15	§3.1 · §5.4	* 평가 시점마다 기다리는 데이터가 다르다 (§3.1 · §5.4).
+test	alert/compile/CompilerTest.java	26	§4.2	* 맞은편이 오늘 값이면 오늘을 뺀다(§4.2). 순서와 무관하다.
+test	alert/compile/CompilerTest.java	58	§4.2	* 장중 알림의 이력 피연산자는 현재 봉이 이미 직전 거래일이라 lag 0이다(§4.2).
+test	alert/compile/CompilerTest.java	82	§5.3	* 순매수 전환은 "오늘 순매수이고 어제는 아니었다"로 컴파일한다(§5.3).
+test	alert/compile/CompilerTest.java	127	§12.5.3 · §5.3	* 손실의 수익률은 음수로 받고 그대로 기준값이 된다(§12.5.3 · §5.3).
+test	alert/compile/RequiredBarsTest.java	18	§5.4	* 필요 봉 수는 현재 봉을 포함해 센다(§5.4).
+test	alert/compile/RequiredBarsTest.java	47	§5.4	* 읽는 봉 수의 최대는 274다 — RSI 계산 창 250 + 변화량 5 + 연속 19(§5.4).
+test	alert/delivery/HttpClientTimeoutTest.java	14	계획 ② A.9	* Expo 호출의 시간 제한 (계획 ② A.9). Boot 3.4의 spring.http.client.* 가 이 설정 빈을 거쳐
+test	alert/delivery/ExpoPushGatewayTest.java	31	스펙 §9.3 · §9.4 / 계획 ② A.9	* Expo Push API 호출 (스펙 §9.3 · §9.4, 계획 ② A.9).
+test	alert/delivery/FakePushGateway.java	16	계획 ② A.9	* 호출이 DB 트랜잭션 안에서 왔는지도 적는다 — Expo 호출은 트랜잭션 밖이어야 한다(계획 ② A.9).
+test	alert/delivery/DeliveryDispatcherTest.java	35	스펙 §8.2 ④ · §9.2 · §9.3 / 계획 ② A.9	* 발송기 (스펙 §8.2 ④ · §9.2 · §9.3, 계획 ② A.9). 지금은 2026-09-28 10:20이다.
+test	alert/delivery/DeliveryDispatcherTest.java	146	계획 ② A.9	* 지난 시각의 장중 값이 지금 가격으로 오해되지 않게 한다 — 장중 30분, 종가 12시간 (계획 ② A.9).
+test	alert/delivery/DeliveryDispatcherTest.java	167	§9.2 · §14.5	* 공용 기기에서 로그아웃하지 못한 사람의 푸시가 다음 사람에게 가면 안 된다 (§9.2 · §14.5).
+test	alert/delivery/ReceiptCheckerTest.java	33	스펙 §9.4 / 계획 ② A.9	* 영수증 확인기 (스펙 §9.4, 계획 ② A.9). 지금은 2026-09-28 10:20이다.
+test	alert/api/InstrumentSearchApiTest.java	19	스펙 §11.1 · §12.5.1	* 종목 검색 (스펙 §11.1 · §12.5.1).
+test	alert/api/InstrumentSearchApiTest.java	63	Review Focus 4	* Review Focus 4 — 와일드카드 문자는 글자 그대로다.
+test	alert/api/InstrumentSearchApiTest.java	143	§12.5.3	* 가격 도달의 가격 칸을 채우는 값 (§12.5.3). 최신 일봉의 종가와 그 거래일이다.
+test	alert/api/DeviceApiTest.java	29	스펙 §9.2 · §14.5	* 푸시 수신 기기 (스펙 §9.2 · §14.5). 토큰 값은 문서·로그에 남기지 않는다 — 여기서는 가짜다.
+test	alert/api/DeviceApiTest.java	58	Review Focus 5	* Review Focus 5 — 같은 기기에서 계정을 바꾸면 그 기기가 새 사용자로 옮겨진다.
+test	alert/api/AlertQueryApiTest.java	30	스펙 §11.2 · §11.3 · §12.2 · §12.4	* 알림 목록과 상세 (스펙 §11.2 · §11.3 · §12.2 · §12.4).
+test	alert/api/AlertQueryApiTest.java	170	Review Focus 3	* Review Focus 3 — 남의 알림은 목록에 없고 상세는 404다.
+test	alert/api/AlertQueryApiTest.java	218	계획 ② A.12 #4	* 저장된 조건 하나가 지금 코드로 읽히지 않아도 목록과 상세는 200이다 (계획 ② A.12 #4).
+test	alert/api/AlertCatalogApiTest.java	22	스펙 §5 · §11.3	* 카탈로그 (스펙 §5 · §11.3). 폼이 고를 수 있는 것과 범위를 서버가 알려 준다.
+test	alert/api/AlertEventApiTest.java	32	스펙 §11.1 ~ §11.3 · §12.3 / 계획 ② A.11	* 울린 알림 (스펙 §11.1 ~ §11.3 · §12.3, 계획 ② A.11). 지금은 2026-09-28 10:20이다.
+test	alert/api/AlertEventApiTest.java	237	§6.8	* 이미 받은 푸시를 눌렀을 때 내용이 사라져 있으면 무엇이 울렸는지 알 방법이 없다 (§6.8).
+test	alert/api/AlertPreviewApiTest.java	33	스펙 §11.3 · §12.5.4 · §12.8	* 미리보기 (스펙 §11.3 · §12.5.4 · §12.8).
+test	alert/api/AlertPreviewApiTest.java	72	Review Focus 1	* Review Focus 1 — 데이터가 모자란 종목도 500이 아니라 확인 불가와 사유다.
+test	alert/api/AlertPreviewApiTest.java	98	Review Focus 1	* Review Focus 1 — 완료 신호가 하나도 없는 시장.
+test	alert/api/AlertPreviewApiTest.java	110	Review Focus 2	* Review Focus 2 — 형이 틀린 본문은 200에 valid: false와 경로.
+test	alert/api/AlertPreviewApiTest.java	261	Review Focus 3	* Review Focus 3 — 남의 알림 ID를 실은 미리보기는 없는 ID와 같다.
+test	alert/api/AlertRuntimeFlowTest.java	30	스펙 §9.1	* 알림을 걸고 → 평가되고 → 푸시가 나가고 → 앱이 읽는다 (스펙 §9.1). 지금은 2026-09-28 10:20이다.
+test	alert/api/MarketDelayApiTest.java	36	스펙 §7.4 · §11.2 / 계획 ② A.12	* 데이터 지연 안내 (스펙 §7.4 · §11.2, 계획 ② A.12). 시세는 sample_alert_market.sql — 일봉·수급 DONE은
+test	alert/api/MarketDelayApiTest.java	59	스펙 §11.2의	* 지금 10:20, 마지막 장중 신호 10:05 — 기대 시각 10:15를 넘었다. 스펙 §11.2의 예시 그대로다.
+test	alert/api/AlertFlowApiTest.java	18	§12.5	* 새 알림 흐름 (§12.5) 전체 — 종목 고르기 → 미리보기 → 저장 → 목록 → 상세 → 수정 → 끄기 → 삭제.
+test	alert/api/AlertCommandApiTest.java	31	스펙 §6.3 · §6.5 · §6.8 · §14	* 알림 명령 (스펙 §6.3 · §6.5 · §6.8 · §14).
+test	alert/api/AlertCommandApiTest.java	62	Review Focus 2	* Review Focus 2 — 저장은 같은 오류를 400으로 돌려준다.
+test	alert/api/AlertCommandApiTest.java	175	Review Focus 3	* Review Focus 3 — 남의 알림은 없는 알림과 같은 404다.
+test	alert/evaluation/FiringRuleTest.java	12	스펙 §6.2 · §6.6 / 계획 ② A.6	* 발화 판정 (스펙 §6.2 · §6.6, 계획 ② A.6).
+test	alert/evaluation/FiringRuleTest.java	41	§6.2	* 참 → 확인 불가 → 참은 울리지 않고, 거짓 → 확인 불가 → 참은 울린다 (§6.2).
+test	alert/evaluation/FiringRuleTest.java	70	§6.6	* 템플릿·업캐스팅이 바뀐 배포 뒤에는 울리지 않고 이번 결과로 기준을 잡는다 (§6.6).
+test	alert/evaluation/ConditionEvaluatorTest.java	48	§6.1	* AND는 FALSE 우선, 그다음 UNKNOWN (§6.1).
+test	alert/evaluation/ConditionEvaluatorTest.java	77	§7.2	* 거래정지일은 계열에서 빠지고 연속을 끊지도 잇지도 않는다 (§7.2).
+test	alert/evaluation/ConditionEvaluatorTest.java	208	계획 A.5	* 일봉 기준으로 장중 알림을 미리볼 때 지속은 비교만 평가한다 (계획 A.5).
+test	alert/evaluation/ConditionEvaluatorTest.java	261	§3.1	* 장중 평가에 필요한 직전 거래일 일봉이 DONE이 아니면 등락률은 확인 불가, 가격은 평가한다 (§3.1).
+test	alert/evaluation/ConditionEvaluatorTest.java	327	계획 ② A.12	* 분모가 0이면 거래 없음이다 — 실제로 생기는 경우는 거래량 0인 봉이다 (계획 ② A.12).
+test	alert/evaluation/ConditionEvaluatorTest.java	341	§5.2 / 계획 ② A.12	* 장중 교차는 같은 날 직전 스냅샷과 견준다. 없거나 허용 지연보다 멀면 데이터 없음이다 (§5.2, 계획 ② A.12).
+test	alert/data/EvaluationInputFactoryTest.java	88	계획 A.5	* 스냅샷이 낡았으면 가장 최근 종가를 스냅샷 하나로 삼는다 (계획 A.5).
+test	alert/data/EvaluationInputFactoryTest.java	241	계획 ② A.12 #3	* 장중 이력도 종가와 같이 데이터 누락일의 봉을 뺀다 (계획 ② A.12 #3).
+test	alert/data/SnapshotRunRecorderTest.java	19	스펙 §7.1 · §10.1 / 계획 ② A.10	* 보유 스냅샷 완료 신호 (스펙 §7.1 · §10.1, 계획 ② A.10).
+test	alert/data/HoldingReaderFinalTest.java	17	설계 §6.4	* 알림이 읽는 최신 확정 스냅샷은 snapshot_run이 있는 날이다 (보유 스냅샷 생성기 설계 §6.4).
+test	alert/validation/AlertValidatorTest.java	144	§14.2	* 단위는 변형 뒤의 단위다 — pct는 percent(§14.2).
+test	alert/validation/AlertValidatorTest.java	210	§14.1	* 보유는 만들 때만 묻는다 — 수정·다시 켜기는 묻지 않는다(§14.1).
+test	alert/validation/AlertValidatorTest.java	221	§12.5.3	* 수익은 양수, 손실은 음수로 받는다(§12.5.3).
+test	alert/validation/StoredTriggersTest.java	9	계획 ② A.12 #4	* 저장된 조건 하나가 지금 코드로 읽히지 않아도 목록·평가 전체가 멈추지 않는다 (계획 ② A.12 #4).
+test	cashflow/CashflowValidatorTest.java	16	설계 §2.2	* 금액 · 통화 · 메모 · 날짜 범위. 날짜 범위는 그 계좌의 잔고가 정한다(설계 §2.2).
+test	api/SnapshotBuilderAccountsViewTest.java	25	설계 §2	* 생성기가 만든 라인으로 계좌별 화면이 뜬다 — 한 계좌만 새로고침한 날에도 (설계 §2).
+test	api/CashflowApiTest.java	28	스펙 §9.1	* 입출금 입력 API. 넣은 돈은 사용자 입력에서만 온다(스펙 §9.1).
+test	sync/SyncCloserTest.java	38	설계 §5.2	* 동기화 닫기 (설계 §5.2). 수집 진행은 collection_run을 직접 고쳐 흉내 낸다.
+test	sync/SyncRequestApiTest.java	32	설계 §4.1 · §4.3 · §5.3	* POST /sync (설계 §4.1 · §4.3 · §5.3).
+test	sync/SyncConcurrencyTest.java	23	설계 §4.1	* 같은 사용자의 동시 요청은 계좌 잠금에서 줄을 서고 수집 행을 공유한다 (설계 §4.1).
+test	sync/SyncCloserRollbackTest.java	29	설계 §5.2	* 잠근 실행의 행을 바꾸지 못하면 그 실행의 트랜잭션을 되돌린다 (설계 §5.2).
+test	sync/FinalityTest.java	13	설계 §5.3	* already_final 판정 (설계 §5.3). 캘린더는 주말 · 10-09 휴장이다.
+test	sync/SyncNoticeApiTest.java	31	설계 §4.4	* 뷰 응답의 SYNC_IN_PROGRESS · ALREADY_FINAL notice (설계 §4.4).
+test	sync/PickupScheduleTest.java	10	설계 §6	* 기본 cron(일 · 월 · 화 · 수 · 목 23:00 KST)으로 다음 픽업을 구한다 (설계 §6).
+test	sync/SyncMessagesTest.java	10	설계 §4.1 · §4.4	* 사용자에게 보이는 안내 문장 (설계 §4.1 · §4.4).
+test	sync/SyncRunApiTest.java	33	설계 §4.2 · §4.3	* GET /sync/{run_id} (설계 §4.2 · §4.3). 수집 진행은 collection_run을 직접 고쳐 흉내 낸다.
+test	sync/SyncExceptionHandlerTest.java	28	설계 §4.3	* 동기화 컨트롤러의 오류 변환 (설계 §4.3). DB 없이 컨트롤러와 변환기만 띄운다.
+test	account/AccountApiTest.java	31	설계 §3 · §6.3 · §8	* /accounts 엔드포인트 (설계 §3 · §6.3 · §8).
+test	account/LinkCommandTest.java	8	설계 §3.1	* 등록 요청 검증 (설계 §3.1).
+test	account/AccountRefIssuerTest.java	7	설계 §5	* account_ref 발급 (설계 §5). 소금의 기동 검사는 AccountLinkConfigTest가 본다.
+test	account/AccountExceptionHandlerTest.java	24	설계 §3.5	* 계좌 컨트롤러의 오류 변환 (설계 §3.5). DB 없이 컨트롤러와 변환기만 띄운다.
+test	account/SsmCredentialStoreTest.java	24	설계 §6.1	* SSM 요청 모양과 실패 변환 (설계 §6.1).
+test	account/AccountUnlinkServiceTest.java	25	설계 §3.3 · §4.2	* 해제와 목록 (설계 §3.3 · §4.2).
+test	account/AccountLinkServiceTest.java	24	설계 §4.1	* 등록과 재연동 (설계 §4.1).
+test	account/KisAccountNumberTest.java	11	설계 §3.1 · §3.4	* 계좌번호 정규화와 상품코드 판정 (설계 §3.1 · §3.4).
+test	account/AccountLinkConfigTest.java	9	설계 §6.1 · §6.2	* 저장소 선택과 기동 검사 (설계 §6.1 · §6.2).
+test	query/FailureReasonsTest.java	7	설계 §9	* failure_reason은 코드 모양일 때만 응답에 싣는다 (설계 §9).
+test	query/SchemaContractTest.java	87	데이터 요구사항 §6.4 · §6.5 · §6.6 · §6.10	* 수집 결과 미러가 데이터 요구사항 §6.4 · §6.5 · §6.6 · §6.10의 컬럼을 그대로 갖는다.
+test	query/CollectionRunStatusPortTest.java	16	스펙 §7.2	* 계좌별 최신 수집 실행 (스펙 §7.2). 수집 결과를 저장하지 않고 collection_run에서 파생한다.
+test	basis/BasisConcurrencyTest.java	29	설계 §4.4	* 복제본 두 개가 같은 날의 평단 · 손익 계산을 동시에 돈다 (설계 §4.4).
+test	basis/BasisCalculatorAmountTest.java	16	설계 §5.2, §5.5, §5.7, §7.1	* 포지션 구간 · 시드 평단 · 매도 금액 · ca_unknown (설계 §5.2, §5.5, §5.7, §7.1).
+test	basis/BasisCalculatorAmountTest.java	26	#1	#1
+test	basis/BasisCalculatorAmountTest.java	48	#2	#2
+test	basis/BasisCalculatorAmountTest.java	61	#3	#3
+test	basis/BasisCalculatorAmountTest.java	70	#4	#4
+test	basis/BasisCalculatorAmountTest.java	96	#5	#5
+test	basis/BasisCalculatorAmountTest.java	109	#8	#8
+test	basis/BasisCalculatorAmountTest.java	143	#9	#9
+test	basis/BasisCalculatorAmountTest.java	169	#11	#11
+test	basis/BasisCalculatorAmountTest.java	201	#13	#13
+test	basis/BasisCalculatorAmountTest.java	220	#14	#14
+test	basis/BasisCalculatorAmountTest.java	236	#15	#15
+test	basis/BasisCalculatorAmountTest.java	252	#17	#17
+test	basis/BasisCalculatorAmountTest.java	264	#18	#18
+test	basis/BasisBuilderTest.java	25	설계 §4	* 평단 · 실현손익 생성기의 날짜 · 계좌 고르기와 쓰기 (설계 §4). 종목은 삼성전자(KRW)를 쓴다.
+test	basis/BasisCalculatorGradeTest.java	15	설계 §5.2 ~ §5.4, §7.1	* 접기 · 시작 수량 · 등급 판정 (설계 §5.2 ~ §5.4, §7.1).
+test	basis/BasisCalculatorGradeTest.java	25	#3	#3
+test	basis/BasisCalculatorGradeTest.java	35	#6	#6
+test	basis/BasisCalculatorGradeTest.java	44	#7	#7
+test	basis/BasisCalculatorGradeTest.java	55	#10	#10
+test	basis/BasisCalculatorGradeTest.java	63	#12	#12
+test	basis/BasisCalculatorGradeTest.java	95	#16	#16
+test	basis/BasisCalculatorGradeTest.java	102	Review Focus 1	Review Focus 1
+test	basis/BasisCalculatorGradeTest.java	111	Review Focus 2	Review Focus 2
+test	basis/BasisCalculatorGradeTest.java	122	Review Focus 3	Review Focus 3
+test	basis/BasisCalculatorGradeTest.java	130	§5.4 1번	§5.4 1번
+test	basis/BasisCalculatorGradeTest.java	138	§5.4 2번	§5.4 2번
+test	basis/BasisCalculatorGradeTest.java	146	§5.4 5번	§5.4 5번
+test	basis/BasisCalculatorGradeTest.java	158	§5.4 5번, §5.5	§5.4 5번, §5.5 1번
+test	basis/BasisCalculatorGradeTest.java	167	§5.5	§5.5
+test	validation/PositionLineInvariantsTest.java	56	설계 §6.1	* 직전 as_of에 라인이 없던 계좌는 그날 아직 편입 전이다 (설계 §6.1).
+app	design/theme.ts	42	스펙 §12.6	* 그래서 증감색·상태 배지색과 겹치지 않는 배지 전용 색을 둔다(알림 스펙 §12.6).
+app	app/navigation/Tabs.tsx	20	IA §3	* 배지 글자. 0이면 배지를 달지 않는다 — 갈 곳 없는 점은 불안만 준다(IA §3).
+app	app/navigation/Tabs.tsx	50	IA §2.1	* 아이콘 아래 두 글자 이름을 둔다. 여섯 개가 한 줄에 들어간다(IA §2.1).
+app	app/navigation/types.ts	39	IA §2.2	* 새 알림 흐름을 어디서 시작하나 (IA §2.2).
+app	app/navigation/RootStack.tsx	32	IA §4.1	* 푸시로 열 때는 탭을 알림으로 바꾼 뒤 그 위에 쌓는다 — 뒤로 가면 알림 탭이다(IA §4.1).
+app	screens/alertEditor/draft.ts	28	§14	* 검증 규칙은 서버 한 곳에 있다(§14). 프론트는 서버 규칙을 다시 쓰지 않는다.
+app	screens/alertEditor/draft.ts	157	§12.5.3	* 프리셋 입력 칸의 처음 값. 카탈로그 기본값을 쓰고, 가격 도달의 가격만 직전 종가로 채운다(§12.5.3).
+app	screens/alertEditor/draft.ts	213	§14.1	* 종목은 바꿀 수 없으므로 보유 여부를 묻지 않는다(수정은 보유를 검사하지 않는다, §14.1).
+app	screens/alertEditor/draft.ts	257	§12.5.4	* 평가 시점을 바꿀 때 맞지 않게 되는 칸을 비운다(§12.5.4).
+app	screens/alertEditor/draft.ts	286	§6.2	* 종가 알림에는 `N분마다 다시`가 없다(§6.2).
+app	screens/alertEditor/draft.ts	311	§12.5.3	장중·종가 겸용 프리셋은 장중이 기본이다 — "바로 알고 싶은" 조건이다(§12.5.3).
+app	screens/alertEditor/draft.ts	379	§12.5.5	* 기본 이름 — 프리셋은 `종목명 + 프리셋 라벨`, 조립형은 `종목명 + 첫 조건의 지표`(§12.5.5).
+app	screens/alertEditor/draft.ts	409	§4.2	* `lag`는 싣지 않는다. 서버가 컴파일할 때 맞은편을 보고 정한다(§4.2).
+app	screens/alertEditor/draft.ts	484	§6.7	* 미리보기 요청. 수정 중이면 `alert_id`를 실어 자기 자신을 중복 검사에서 뺀다(§6.7).
+app	screens/alertEditor/TriggerStep.tsx	13	§12.5.2	* 조건 선택 (§12.5.2). 맨 위에 직접 만들기, 그 아래 프리셋 카드.
+app	screens/alertEditor/useDebounced.ts	3	§12.5.1	* 값이 `ms` 동안 바뀌지 않으면 그 값을 내놓는다. 종목 검색이 0.3초를 쓴다(§12.5.1).
+app	screens/alertEditor/ConditionBox.tsx	32	§12.5.4 · §12.9.1	* 조건 상자 하나 — 지표 · 변형 · 연산자 · 기준값 · 유지 방식 (§12.5.4 · §12.9.1).
+app	screens/alertEditor/ConditionBox.tsx	109	§5.2	교차는 지표끼리만 견준다. 상수 칸을 내놓지 않는다(§5.2).
+app	screens/alertEditor/composable.ts	15	§12.5.4	* 조건 만들기의 칸 규칙 (§12.5.4). 말이 안 되는 조합을 고르기 전에 막는다 —
+app	screens/alertEditor/composable.ts	16	§14.2	* 서버 검증(§14.2)이 마지막 관문이고, 여기서는 고를 수 없는 것을 비활성으로 보이는 일만 한다.
+app	screens/alertEditor/composable.ts	60	§5.1	* 이 칸을 뺀 나머지 지표의 범위. 시장 지표와 보유 지표는 한 알림에 섞지 않는다(§5.1).
+app	screens/alertEditor/composable.ts	74	§3.1	장중 알림의 왼쪽은 장중 지표뿐이다. 오른쪽에는 어제까지 확정된 값이 올 수 있다(§3.1).
+app	screens/alertEditor/composable.ts	115	§12.5.4	* 변형 선택지(§12.5.4) — `그대로` · `최근 N일 최고/최저/평균/합계` · `N일 전 대비 변화` · `N일 전 대비 변화율`.
+app	screens/alertEditor/composable.ts	117	§4.2	* 오늘을 넣을지는 고르지 않는다. 서버가 맞은편을 보고 정한다(§4.2).
+app	screens/alertEditor/composable.ts	162	§14.2	* 상수 기준값 칸의 단위. 변화율은 퍼센트이고 나머지 변형은 지표 단위 그대로다(§14.2).
+app	screens/alertEditor/composable.ts	178	§5.2	* 교차는 지표끼리만 견준다(§5.2). 상수였으면 지표 칸으로 바꾸고 유지 칸을 비운다.
+app	screens/alertEditor/fieldErrors.ts	4	§11.4	* 서버 오류의 `path`로 칸을 찾는다(§11.4). 폼은 그 칸 아래에 `message`를 그대로 띄운다.
+app	screens/alertEditor/ComposableStep.tsx	46	§12.5.4	* 직접 조건 만들기 (§12.5.4). 조건 상자는 AND로 묶이고 최대 5개다.
+app	screens/alertEditor/OperandEditor.tsx	13	§4.2	* 피연산자 하나 — 지표 · 지표 파라미터 · 변형 (§4.2 Operand).
+app	screens/alertEditor/types.ts	1	IA §6.1	* 새 알림 흐름 안의 단계 (IA §6.1).
+app	screens/alertEditor/PresetStep.tsx	36	§12.5.3	* 프리셋 입력 (§12.5.3). 칸은 카탈로그의 `param_schema` 순서대로 그린다.
+app	screens/alertEditor/PresetStep.tsx	37	§12.8	* 폼 아래에 문장 상자와 현재값 상자를 두고, 입력이 0.5초 멈추면 다시 받는다(§12.8).
+app	screens/alertEditor/SettingsStep.tsx	32	§12.5.5	* 공통 설정 (§12.5.5) — 알림 방식 · 유효기간 · 이름, 그리고 저장.
+app	screens/alertEditor/SettingsStep.tsx	35	§9.5	* 어느 답을 골라도 저장은 한다 — 권한이 없어도 발화는 앱 안 목록과 배지로 남는다(§9.5).
+app	screens/alertEditor/SettingsStep.tsx	74	§6.2	종가 알림은 하루 한 번 평가되므로 분 단위 억제가 뜻이 없다(§6.2).
+app	screens/alertEditor/EditorContext.tsx	12	IA §2.2	* 앱 전역 상태에 두지 않는다. 흐름 전체가 한 번의 저장으로 끝나는 작업이고(IA §2.2),
+app	screens/alertEditor/InstrumentStep.tsx	20	§12.5.1 / IA §2.4	* 대상 종목 — 전 종목 검색 (§12.5.1 · IA §2.4).
+app	screens/alertEditor/presetFields.ts	5	§12.5.3	* 프리셋 입력 칸의 라벨 · 선택지 이름 · 단위 (§12.5.3).
+app	screens/alertEditor/presetFields.ts	82	§12.5.2	* 쓸 수 없는 프리셋은 숨기지 않고 비활성 + 사유 한 줄로 둔다(§12.5.2).
+app	screens/alertEditor/IndicatorSheet.tsx	11	§12.5.4	* 지표 고르기 (§12.5.4). 묶음은 `시세 · 기술지표 · 수급 · 내 보유`.
+app	screens/alertEditor/IndicatorSheet.tsx	13	§3.1	* `어제까지 확정된 값`을 둔다 — 오른쪽 지표는 직전 거래일까지의 일봉으로 계산된다(§3.1).
+app	screens/alertEditor/AlertEditorNavigator.tsx	29	IA §2.2	* 새 알림 흐름 — 루트 스택 위의 모달 (IA §2.2).
+app	screens/alertEditor/AlertEditorNavigator.tsx	87	§12.5	작성 중에 닫으면 먼저 묻는다(§12.5). 저장을 마친 뒤의 이동은 막지 않는다.
+app	screens/alerts/ExpirySheet.tsx	16	§12.2 · §6.5	* 만료된 알림을 다시 켤 때 새 유효기간을 고르는 시트 (§12.2 · §6.5).
+app	screens/alerts/status.ts	3	§6.5 · §7.2	* 카드·상세·울린 알림 상세의 상태 배지 문구 (§6.5 · §7.2).
+app	screens/alerts/AlertEventsScreen.tsx	24	§6.8	* 무엇이 울렸는지 알 방법이 없다(§6.8).
+app	screens/alerts/UnreadBlock.tsx	10	IA §2.3	* 알림 탭 위쪽 — `울린 알림 전체 →`와 새로 울린 알림 (IA §2.3).
+app	screens/alerts/UnreadBlock.tsx	12	IA §2.3	* `울린 알림 전체`는 항상 보인다(IA §2.3). 지난 이력으로 가는 길이 이 줄 하나뿐이고,
+app	screens/alerts/UnreadBlock.tsx	13	§6.8	* 알림을 모두 지운 사용자에게도 울린 기록은 남는다(§6.8).
+app	screens/alerts/expiry.ts	2	§12.5.5	* 유효기간 선택지 (§12.5.5). 공통 설정과 만료된 알림의 `다시 켜기` 시트가 함께 쓴다.
+app	screens/alerts/AlertCard.tsx	18	§12.2	* 내 알림 카드 한 장 (§12.2).
+app	screens/alerts/StatusBadge.tsx	9	§12.6	* 알림 상태 배지. 증감색을 쓰지 않는다(§12.6).
+app	screens/alerts/AlertEventScreen.tsx	27	§12.3	* 무엇이, 왜 울렸나 (§12.3).
+app	screens/alerts/AlertEventScreen.tsx	31	IA §3	* 열면 읽음 처리한다. 알림 탭을 여는 것만으로는 읽음이 아니다(IA §3).
+app	screens/alerts/AlertEventScreen.tsx	65	§11.4	다른 계정으로 로그인했거나 없는 발화. 남의 것과 없는 것을 서버가 가르지 않는다(§11.4).
+app	screens/alerts/AlertEventScreen.tsx	76	계획 A.3	상세 응답에 cadence·market이 없으면 알림의 평가 시점과 국내 표기로 그린다(계획 A.3).
+app	screens/alerts/AlertsScreen.tsx	18	§12.2 / IA §2.3	* 알림 탭 루트 — 무엇을 걸어 뒀고 지금 어떤 상태인가 (§12.2 · IA §2.3).
+app	screens/alerts/AlertsScreen.tsx	23	IA §3	* 탭을 여는 것만으로 읽음 처리하지 않는다. 제목만 본 것이지 내용을 본 것이 아니다(IA §3).
+app	screens/alerts/AlertDetailScreen.tsx	30	§12.4	* 이 알림은 무엇을 보고 있고, 지금 어디쯤인가 (§12.4).
+app	screens/alerts/AlertDetailScreen.tsx	33	§12.8	* 장중 데이터는 5분 단위라 자주 바뀌지 않고, 충족되면 푸시가 알린다(§12.8).
+app	screens/alerts/PreviewBoxes.tsx	13	§12.1 · §12.5.4	* 문장도, 머리도, 줄도, 결과 줄도 서버가 완성한 것을 그대로 낸다(§12.1 · §12.5.4).
+app	screens/alerts/detailPreview.ts	4	§12.4	* 알림 상세의 현재값 상자를 채우는 미리보기 요청 (§12.4).
+app	screens/alerts/labels.ts	4	§12.4 / IA §6.2	* 알림 상세의 속성 줄 문구 (§12.4 · IA §6.2).
+app	screens/accounts/useSyncCard.ts	15	설계 §2.2 · §3.5 · §6.2	* 계좌 탭 동기화 카드의 상태와 `지금 동기화` 요청(설계 §2.2 · §3.5 · §6.2).
+app	screens/accounts/useSyncCard.ts	22	설계 §6.2 / 설계 §2.2	* 앱이 앞에 있는 동안만 돌린다(설계 §6.2). 탭을 떠나면 요청 실패 문구를 지운다(설계 §2.2).
+app	screens/accounts/useSyncCard.ts	125	설계 §2.2	useMutation 없이 제출 핸들러가 직접 보낸다(설계 §2.2).
+app	screens/accounts/AccountsScreen.tsx	24	설계 §2.2 / 스펙 §2.3	* (설계 §2.2, 계좌 화면에서 시작한다는 근거는 스펙 §2.3). 계좌가 없으면(`NO_ACCOUNTS`)
+app	screens/accounts/syncCopy.ts	6	설계 §3.5의	* 동기화 카드의 문구와 색. 설계 §3.5의 두 표를 그대로 옮긴 것이다.
+app	screens/accounts/SyncCard.tsx	15	설계 §3.5	* 계좌 탭의 동기화 카드(설계 §3.5). 보일 실행이 없으면 그리지 않는다.
+app	testing/serveRoutes.ts	3	계획 ②	* 맞는 경로가 없으면 404 — 아직 없는 서버 경로(계획 ②)를 흉내 내는 데도 쓴다.
+app	push/notifications.ts	9	§9.3	* 푸시 페이로드의 `data`에는 `event_id`만 있다(§9.3).
+app	push/notifications.ts	14	IA §4.2	앞에 떠 있을 때는 시스템 배너를 띄우지 않는다. 앱 안 배너가 대신한다(IA §4.2).
+app	push/gate.ts	7	§9.2 · §12.7	* 알림을 저장하기 전의 권한 안내 (§9.2 · §12.7).
+app	push/usePushBanners.ts	16	§12.7	* 알림 탭 위의 두 안내 — 권한 거부와 Android (§12.7).
+app	push/PushBanners.tsx	10	§12.7	* 권한 거부 → Android 순으로 쌓는다. 데이터 지연 안내는 그 위에 봉투가 그린다(§12.7).
+app	push/InAppBanner.tsx	14	IA §4.2	* 앱이 앞에 떠 있을 때 온 푸시. 화면을 옮기지 않고 위에 잠깐 띄운다. 누르면 울린 알림 상세(IA §4.2).
+app	push/PushRouter.tsx	25	IA §4.1	*   뒤로 갈 때 직전 탭으로 돌아간다(IA §4.1). 로그인 전에 맡아 둔 것도 여기서 한 번 연다.
+app	push/PushRouter.tsx	27	IA §3	* - 앱이 앞으로 올 때 배지 수를 다시 받는다(IA §3).
+app	push/config.ts	5	§9.6	* 원격 푸시를 받을 수 있는 플랫폼인가. v1은 iOS뿐이다(§9.6) —
+app	envelope/notices.ts	82	§7.4	* 사용자 알림이 기다리는 시세가 늦을 때. 알림 두 목록만 그린다(§7.4).
+app	__tests__/fixtureKeys.test.ts	12	Task 14	* 픽스처의 키 모양을 scripts/alert-fixture-keys.json으로 적는다. 실제 서버 대조(Task 14)가 읽는다.
+app	__tests__/alertsTab.test.tsx	175	Review Focus 5	* Review Focus 5 — 울린 알림 API가 아직 없는 서버.
+app	__tests__/alertFormat.test.tsx	25	Review Focus 4	* Review Focus 4 — 미국 종가의 as_of는 한국 시각으로 다음 날 새벽이다.
+app	__tests__/client.test.ts	237	Review Focus 2	* Review Focus 2 — 끄기·다시 켜기·삭제는 본문 없이 204로 답한다.
+app	__tests__/alertApi.test.tsx	92	Review Focus 1	* Review Focus 1 — 앞 요청이 늦게 와도 지금 입력의 결과를 덮지 못한다.
+app	format/alertTime.ts	5	§12.6	* 알림의 시각 표기 (§12.6). 서버 시각은 `+09:00` 오프셋 문자열이고, 글자 그대로 잘라
+app	format/number.ts	161	§12.5.4	* 수급 금액 입력칸 아래에 둔다(§12.5.4). 입력칸 자체는 원 단위 그대로다.
+app	api/alertTypes.ts	4	스펙 §11	* 알림 API의 요청·응답 모양 (알림 스펙 §11). 필드 이름은 서버 그대로 snake_case다.
+app	api/alertTypes.ts	29	§4.2	* 사용자가 만드는 조건에는 `lag`를 싣지 않는다. 서버가 정한다(§4.2).
+app	api/alertTypes.ts	66	§6.7 · §12.4	* 수정 중이거나 상세의 현재값 상자를 부를 때는 `alert_id`를 싣는다(§6.7 · §12.4).
+app	api/alertTypes.ts	243	계획 ② / §11.3	── 울린 알림 (계획 ②의 계약, §11.3) ───────────────────────────────
+app	api/alertEndpoints.ts	19	§11.1	* 사용자 ID는 어디에도 싣지 않는다 — 누구의 알림인지는 토큰이 정한다(§11.1).
+app	api/alertEndpoints.ts	34	§12.5.1	* 검색어가 없으면 `held=true`로 보유 종목 구역을 받는다(§12.5.1).
+app	api/queries/useAlerts.ts	6	§11.2	* 알림 탭. 규칙 목록과 새로 울린 알림 블록이 한 응답에 온다(§11.2).
+app	api/queries/useAlertEvents.ts	7	§11.3	* 울린 알림 목록. 커서로 이어 받는다(§11.3). 알림 상세의 `전체 →`로 오면 그 알림만 거른다.
+app	api/queries/useInstruments.ts	7	§12.5.1	* 종목 검색. 검색어는 화면이 0.3초 가라앉힌 뒤 넘긴다(§12.5.1).
+app	api/queries/usePreview.ts	9	§11.3	* 저장 전 초안 하나로 문장 · 지금 값 · 검증 오류 · 이미 충족 · 중복을 받는다(§11.3).
+app	api/queries/usePreview.ts	11	§12.8	* 입력이 0.5초 멈춘 뒤에 부른다(§12.8). 요청 JSON을 키로 쓰므로, 앞 입력의 응답이
+app	fixtures/alerts.ts	13	계획 ① / 계획 ② / 스펙 §11	* 알림 화면 테스트의 입력. 계획 ①의 실제 응답 모양(DTO)과 계획 ②의 계약(스펙 §11)을 옮겼다.
+app	fixtures/alerts.ts	144	§12.7	* 알림을 다 지웠지만 지운 알림의 미확인 발화가 남은 경우(§12.7).
+app	fixtures/alerts.ts	172	스펙 §13.5	* 스펙 §13.5 — 장중, 직전 20일 최고 고가 돌파 10분 유지, 60분마다 다시, 연말까지.
