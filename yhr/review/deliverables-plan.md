@@ -50,7 +50,7 @@ yhr/deliverables/
 ├─ erd/                   ERD 이미지(생성물)
 ├─ api.md                 생성한 Markdown 명세
 ├─ api/                   openapi.json(원본) · index.html(Redoc)
-└─ src/                   생성 스크립트: journeys.py · erd.py · 각 실행법
+└─ src/                   생성 스크립트: journeys.py · erd.py · api.sh(OpenAPI → HTML · Markdown). 실행법은 각 파일 머리말
 ```
 
 ## 2. 진입점 — `README.md`
@@ -147,7 +147,7 @@ yhr/deliverables/
 - **생성**: 손으로 쓰지 않는다. 모두 서버 코드에서 나온다
   1. 백엔드에 springdoc(Spring용 OpenAPI 생성 라이브러리)을 넣는다. 컨트롤러와 DTO에서 OpenAPI 명세가 만들어진다
   2. 백엔드 테스트 하나가 명세를 받아 `openapi.json` 파일로 쓴다. 이 파일을 docs 레포 `api/openapi.json`으로 복사한다
-  3. 변환 도구로 `api/index.html`(Redoc, 레포를 공개한 뒤 GitHub Pages로 연다)과 `api.md`(GitHub에서 바로 읽는 Markdown)를 만든다
+  3. 변환 도구로 `api/index.html`(Redoc, 레포를 공개한 뒤 GitHub Pages로 연다)과 `api.md`(GitHub에서 바로 읽는 Markdown)를 만든다. `src/api.sh`가 이 단계를 한 번에 한다
 - **생성기만으로는 빠지는 것과 대응**(백엔드 코드에 작게 더한다)
   - 개요 · 인증 · 봉투 · 오류 규칙 설명: OpenAPI 정보 설정(`info.description`, 보안 스킴)에 적는다. 그러면 이 설명도 생성물에 들어간다
   - 보유 화면 행의 지표 칸: `@JsonAnyGetter`로 펼쳐지는 칸이라 생성기는 "아무 속성"으로만 적는다. 지표 키 목록을 카탈로그 코드에서 읽어 명세에 넣는 설정을 더한다

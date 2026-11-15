@@ -1,0 +1,4710 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "포트폴리오 · 알림 API",
+    "description" : "앱(React Native)과 서버(Spring Boot) 사이의 계약이다. 서버 코드에서 생성했다.\n\n- **인증**: `POST /auth/login`으로 받은 접근 토큰을 `Authorization: Bearer <토큰>`으로 보낸다. 토큰이 없거나 만료되면 401이고, 앱은 갱신 토큰으로 `POST /auth/refresh`를 부른다.\n- **사용자**: 사용자 id는 경로 · 쿼리 · 본문 어디에서도 받지 않는다. 토큰이 정한다.\n- **필드 이름**: 요청 · 응답 모두 snake_case다.\n- **조회 봉투**: 목록 조회는 `as_of`(기준 시각) · `data` · `empty_reason`(빈 목록일 때 화면이 고를 상태) · `notices`(화면 위 안내)로 감싼다. 빈 목록은 오류가 아니라 200이다.\n- **문장은 서버가 만든다**: 안내 · 오류의 `message`는 화면에 그대로 보이는 완성된 문장이다. 앱은 `code`로 색 · 아이콘 · 다음 동작만 고른다.\n- **오류**: 모든 오류는 `ApiError` 모양이다. 엔드포인트별 오류 코드는 각 설계서의 오류 절에 있다.\n\n설계서: [공통](https://github.com/stock-project-crew/docs/blob/main/yhr/specs/common.md) · [포트폴리오](https://github.com/stock-project-crew/docs/blob/main/yhr/specs/portfolio.md) · [알림](https://github.com/stock-project-crew/docs/blob/main/yhr/specs/alert.md)",
+    "version" : "main"
+  },
+  "servers" : [ ],
+  "tags" : [ {
+    "name" : "로그인",
+    "description" : "로그인 · 토큰 갱신 · 로그아웃. 설계서: common.md «로그인·세션»"
+  }, {
+    "name" : "보유 화면",
+    "description" : "요약 · 종목 · 비중 · 계좌별. 설계서: portfolio.md «화면» · «집계 모델»"
+  }, {
+    "name" : "실현손익",
+    "description" : "설계서: portfolio.md «실현손익» · «평단과 실현손익»"
+  }, {
+    "name" : "자산 변화",
+    "description" : "설계서: portfolio.md «자산 변화» · «자산 변화 항등식과 분해»"
+  }, {
+    "name" : "종목 상세",
+    "description" : "설계서: portfolio.md «종목 상세»"
+  }, {
+    "name" : "포트폴리오 카탈로그",
+    "description" : "화면 · 축 · 지표 정의. 설계서: portfolio.md «화면 사양»"
+  }, {
+    "name" : "입출금",
+    "description" : "설계서: portfolio.md «입출금» · «입출금 입력과 미입력 판정»"
+  }, {
+    "name" : "계좌",
+    "description" : "연동 · 해제 · 인증 정보 갱신. 설계서: portfolio.md «계좌 연동·동기화»"
+  }, {
+    "name" : "동기화",
+    "description" : "설계서: portfolio.md «동기화»"
+  }, {
+    "name" : "알림",
+    "description" : "설계서: alert.md «조건 모델» · «API»"
+  }, {
+    "name" : "알림 카탈로그",
+    "description" : "지표 · 연산자 · 프리셋. 설계서: alert.md «지표 카탈로그»"
+  }, {
+    "name" : "종목 검색",
+    "description" : "설계서: alert.md «종목 검색»"
+  }, {
+    "name" : "울린 알림",
+    "description" : "설계서: alert.md «울린 알림 · 울린 알림 상세»"
+  }, {
+    "name" : "기기",
+    "description" : "푸시 수신 기기 등록. 설계서: alert.md «수신 기기 등록»"
+  } ],
+  "paths" : {
+    "/portfolio/cashflows/{id}" : {
+      "put" : {
+        "tags" : [ "입출금" ],
+        "summary" : "PUT /portfolio/cashflows/{id}",
+        "operationId" : "save",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 portfolio.md «종목 상세·계좌·동기화·입출금 응답»에 있다."
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CashflowIdResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      },
+      "delete" : {
+        "tags" : [ "입출금" ],
+        "summary" : "DELETE /portfolio/cashflows/{id}",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alerts/{alertId}" : {
+      "get" : {
+        "tags" : [ "알림" ],
+        "summary" : "GET /alerts/{alertId}",
+        "operationId" : "detail",
+        "parameters" : [ {
+          "name" : "alertId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AlertDetailDto"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      },
+      "put" : {
+        "tags" : [ "알림" ],
+        "summary" : "PUT /alerts/{alertId}",
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "alertId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 alert.md «요청·응답»에 있다."
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AlertIdResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      },
+      "delete" : {
+        "tags" : [ "알림" ],
+        "summary" : "DELETE /alerts/{alertId}",
+        "operationId" : "delete_1",
+        "parameters" : [ {
+          "name" : "alertId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/accounts/{accountId}/credentials" : {
+      "put" : {
+        "tags" : [ "계좌" ],
+        "summary" : "PUT /accounts/{accountId}/credentials",
+        "operationId" : "refresh",
+        "parameters" : [ {
+          "name" : "accountId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshCredentialsRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/sync" : {
+      "post" : {
+        "tags" : [ "동기화" ],
+        "summary" : "POST /sync",
+        "operationId" : "request",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 portfolio.md «종목 상세·계좌·동기화·입출금 응답»에 있다."
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SyncAcceptedResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/devices" : {
+      "post" : {
+        "tags" : [ "기기" ],
+        "summary" : "POST /devices",
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeviceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/auth/refresh" : {
+      "post" : {
+        "tags" : [ "로그인" ],
+        "summary" : "POST /auth/refresh",
+        "operationId" : "refresh_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/auth/logout" : {
+      "post" : {
+        "tags" : [ "로그인" ],
+        "summary" : "POST /auth/logout",
+        "operationId" : "logout",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/auth/login" : {
+      "post" : {
+        "tags" : [ "로그인" ],
+        "summary" : "POST /auth/login",
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/alerts" : {
+      "get" : {
+        "tags" : [ "알림" ],
+        "summary" : "GET /alerts",
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeAlertListData"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "알림" ],
+        "summary" : "POST /alerts",
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 alert.md «요청·응답»에 있다."
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AlertIdResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alerts/{alertId}/resume" : {
+      "post" : {
+        "tags" : [ "알림" ],
+        "summary" : "POST /alerts/{alertId}/resume",
+        "operationId" : "resume",
+        "parameters" : [ {
+          "name" : "alertId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 alert.md «요청·응답»에 있다."
+              }
+            }
+          }
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alerts/{alertId}/pause" : {
+      "post" : {
+        "tags" : [ "알림" ],
+        "summary" : "POST /alerts/{alertId}/pause",
+        "operationId" : "pause",
+        "parameters" : [ {
+          "name" : "alertId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alerts/preview" : {
+      "post" : {
+        "tags" : [ "알림" ],
+        "summary" : "POST /alerts/preview",
+        "operationId" : "preview",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "object",
+                "description" : "서버가 JSON을 직접 해석한다(형이 틀린 값도 칸 이름이 붙은 오류로 돌려주려고). 모양은 설계서 alert.md «요청·응답»에 있다."
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PreviewResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alert-events/{eventId}/read" : {
+      "post" : {
+        "tags" : [ "울린 알림" ],
+        "summary" : "POST /alert-events/{eventId}/read",
+        "operationId" : "read",
+        "parameters" : [ {
+          "name" : "eventId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alert-events/read-all" : {
+      "post" : {
+        "tags" : [ "울린 알림" ],
+        "summary" : "POST /alert-events/read-all",
+        "operationId" : "readAll",
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/accounts" : {
+      "get" : {
+        "tags" : [ "계좌" ],
+        "summary" : "GET /accounts",
+        "operationId" : "list_1",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountListResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      },
+      "post" : {
+        "tags" : [ "계좌" ],
+        "summary" : "POST /accounts",
+        "operationId" : "link",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LinkAccountRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkAccountResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/sync/{runId}" : {
+      "get" : {
+        "tags" : [ "동기화" ],
+        "summary" : "GET /sync/{runId}",
+        "operationId" : "find",
+        "parameters" : [ {
+          "name" : "runId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SyncRunResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/summary" : {
+      "get" : {
+        "tags" : [ "보유 화면" ],
+        "summary" : "GET /portfolio/views/summary",
+        "operationId" : "summary",
+        "parameters" : [ {
+          "name" : "mini_chart_lens",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "DIRECT"
+          }
+        }, {
+          "name" : "mini_chart_axis",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "market"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeSnapshotViewData"
+                },
+                "examples" : {
+                  "샘플 계좌 요약" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ ],
+                        "lens" : "DIRECT",
+                        "total" : {
+                          "total_assets_krw" : 58000000,
+                          "securities_value_krw" : 53300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 48800000,
+                          "unrealized_pnl_krw" : 4500000,
+                          "unrealized_pnl_pct" : 9.2,
+                          "cash_ratio_pct" : 8.1,
+                          "instrument_count" : 6,
+                          "account_count" : 4,
+                          "daily_change_krw" : 1200000,
+                          "daily_change_pct" : 2.1
+                        },
+                        "rows" : [ ],
+                        "mini_chart" : {
+                          "group_by" : [ "market" ],
+                          "lens" : "DIRECT",
+                          "rows" : [ {
+                            "key" : "KR",
+                            "label" : "국내",
+                            "market_value_krw" : 46800000,
+                            "weight_pct" : 80.7
+                          }, {
+                            "key" : "US",
+                            "label" : "미국",
+                            "currency" : "USD",
+                            "market_value_krw" : 11200000,
+                            "market_value_local" : 8000.0,
+                            "weight_pct" : 19.3
+                          } ]
+                        }
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/realized-pnl" : {
+      "get" : {
+        "tags" : [ "실현손익" ],
+        "summary" : "GET /portfolio/views/realized-pnl",
+        "operationId" : "realizedPnl",
+        "parameters" : [ {
+          "name" : "period",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "THIS_MONTH"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeRealizedPnlData"
+                },
+                "examples" : {
+                  "올해" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "period" : {
+                          "from" : "2026-01-01",
+                          "to" : "2026-12-31"
+                        },
+                        "total" : {
+                          "realized_pnl_krw" : -28000,
+                          "cost_basis_krw" : 3120000,
+                          "realized_pnl_pct" : -0.9
+                        },
+                        "rows" : [ {
+                          "key" : "005930",
+                          "label" : "삼성전자",
+                          "sell_amount_krw" : 1100000,
+                          "cost_basis_krw" : 820000,
+                          "realized_pnl_krw" : 277000,
+                          "realized_pnl_pct" : 33.8,
+                          "first_sold_at" : "2026-03-02",
+                          "last_sold_at" : "2026-05-12",
+                          "trade_count" : 2,
+                          "grade" : "MIXED",
+                          "rows" : [ {
+                            "trade_id" : "T-0002",
+                            "sold_at" : "2026-05-12",
+                            "quantity" : 5.0,
+                            "sell_amount_krw" : 700000,
+                            "cost_basis_krw" : 500000,
+                            "realized_pnl_krw" : 198000,
+                            "grade" : "VERIFIED"
+                          }, {
+                            "trade_id" : "T-0001",
+                            "sold_at" : "2026-03-02",
+                            "quantity" : 3.0,
+                            "sell_amount_krw" : 400000,
+                            "cost_basis_krw" : 320000,
+                            "realized_pnl_krw" : 79000,
+                            "grade" : "SEEDED",
+                            "seed_reason" : "LATE_COVERAGE",
+                            "coverage_start_at" : "2026-01-01"
+                          } ]
+                        }, {
+                          "key" : "035420",
+                          "label" : "NAVER",
+                          "sell_amount_krw" : 2250000,
+                          "cost_basis_krw" : 2300000,
+                          "realized_pnl_krw" : -305000,
+                          "realized_pnl_pct" : -13.3,
+                          "first_sold_at" : "2026-02-18",
+                          "last_sold_at" : "2026-04-01",
+                          "trade_count" : 2,
+                          "grade" : "MIXED",
+                          "rows" : [ {
+                            "trade_id" : "T-0004",
+                            "sold_at" : "2026-04-01",
+                            "quantity" : 1.0,
+                            "sell_amount_krw" : 250000,
+                            "cost_basis_krw" : null,
+                            "realized_pnl_krw" : null,
+                            "grade" : "CONFLICT"
+                          }, {
+                            "trade_id" : "T-0003",
+                            "sold_at" : "2026-02-18",
+                            "quantity" : 10.0,
+                            "sell_amount_krw" : 2000000,
+                            "cost_basis_krw" : 2300000,
+                            "realized_pnl_krw" : -305000,
+                            "grade" : "VERIFIED"
+                          } ]
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "EXCLUDED_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌의 체결이 합계에서 빠졌습니다",
+                        "params" : {
+                          "count" : 1
+                        }
+                      }, {
+                        "code" : "SEEDED_ROWS",
+                        "severity" : "warn",
+                        "message" : "1개 종목은 취득원가를 추정해 계산했습니다",
+                        "params" : {
+                          "count" : 1
+                        }
+                      }, {
+                        "code" : "CA_UNKNOWN",
+                        "severity" : "warn",
+                        "message" : "1개 종목은 기업행위 이력을 확인하지 못해 손익이 다를 수 있습니다",
+                        "params" : {
+                          "instrument_ids" : [ "10000000-0000-0000-0000-000000000003" ]
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/positions" : {
+      "get" : {
+        "tags" : [ "보유 화면" ],
+        "summary" : "GET /portfolio/views/positions",
+        "operationId" : "positions",
+        "parameters" : [ {
+          "name" : "lens",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "DIRECT"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }, {
+          "name" : "market",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }, {
+          "name" : "asset_class",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeSnapshotViewData"
+                },
+                "examples" : {
+                  "보유 그대로" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ "instrument" ],
+                        "lens" : "DIRECT",
+                        "total" : {
+                          "total_assets_krw" : 58000000,
+                          "securities_value_krw" : 53300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 48800000,
+                          "unrealized_pnl_krw" : 4500000,
+                          "unrealized_pnl_pct" : 9.2,
+                          "cash_ratio_pct" : 8.1,
+                          "instrument_count" : 6,
+                          "account_count" : 4
+                        },
+                        "rows" : [ {
+                          "key" : "005930",
+                          "label" : "삼성전자",
+                          "quantity" : 200.0,
+                          "avg_cost" : 60000,
+                          "market_value_krw" : 14240000,
+                          "cost_amount_krw" : 12000000,
+                          "unrealized_pnl_krw" : 2240000,
+                          "unrealized_pnl_pct" : 18.7,
+                          "weight_pct" : 24.6,
+                          "market" : "KR",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000001"
+                        }, {
+                          "key" : "133690",
+                          "label" : "TIGER 미국나스닥100",
+                          "quantity" : 100.0,
+                          "avg_cost" : 100000,
+                          "market_value_krw" : 11000000,
+                          "cost_amount_krw" : 10000000,
+                          "unrealized_pnl_krw" : 1000000,
+                          "unrealized_pnl_pct" : 10.0,
+                          "weight_pct" : 19.0,
+                          "market" : "KR",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000006"
+                        }, {
+                          "key" : "000660",
+                          "label" : "SK하이닉스",
+                          "quantity" : 50.0,
+                          "avg_cost" : 160000,
+                          "market_value_krw" : 9000000,
+                          "cost_amount_krw" : 8000000,
+                          "unrealized_pnl_krw" : 1000000,
+                          "unrealized_pnl_pct" : 12.5,
+                          "weight_pct" : 15.5,
+                          "market" : "KR",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000002"
+                        }, {
+                          "key" : "035420",
+                          "label" : "NAVER",
+                          "quantity" : 40.0,
+                          "avg_cost" : 225000,
+                          "market_value_krw" : 8000000,
+                          "cost_amount_krw" : 9000000,
+                          "unrealized_pnl_krw" : -1000000,
+                          "unrealized_pnl_pct" : -11.1,
+                          "weight_pct" : 13.8,
+                          "market" : "KR",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000003"
+                        }, {
+                          "key" : "AAPL",
+                          "label" : "애플",
+                          "currency" : "USD",
+                          "quantity" : 20.0,
+                          "avg_cost" : 200.0,
+                          "market_value_krw" : 6160000,
+                          "market_value_local" : 4400.0,
+                          "cost_amount_krw" : 5600000,
+                          "cost_amount_local" : 4000.0,
+                          "unrealized_pnl_krw" : 560000,
+                          "unrealized_pnl_pct" : 10.0,
+                          "weight_pct" : 10.6,
+                          "market" : "US",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000004"
+                        }, {
+                          "key" : "MSFT",
+                          "label" : "마이크로소프트",
+                          "currency" : "USD",
+                          "quantity" : 10.0,
+                          "avg_cost" : 300.0,
+                          "market_value_krw" : 4900000,
+                          "market_value_local" : 3500.0,
+                          "cost_amount_krw" : 4200000,
+                          "cost_amount_local" : 3000.0,
+                          "unrealized_pnl_krw" : 700000,
+                          "unrealized_pnl_pct" : 16.7,
+                          "weight_pct" : 8.4,
+                          "market" : "US",
+                          "instrument_id" : "10000000-0000-0000-0000-000000000005"
+                        }, {
+                          "key" : "CASH-KRW",
+                          "label" : "KRW 예수금",
+                          "quantity" : 4560000.0,
+                          "avg_cost" : null,
+                          "market_value_krw" : 4560000,
+                          "cost_amount_krw" : null,
+                          "unrealized_pnl_krw" : null,
+                          "unrealized_pnl_pct" : null,
+                          "weight_pct" : 7.9,
+                          "market" : "KR"
+                        }, {
+                          "key" : "CASH-USD",
+                          "label" : "USD 예수금",
+                          "currency" : "USD",
+                          "quantity" : 100.0,
+                          "avg_cost" : null,
+                          "market_value_krw" : 140000,
+                          "market_value_local" : 100.0,
+                          "cost_amount_krw" : null,
+                          "unrealized_pnl_krw" : null,
+                          "unrealized_pnl_pct" : null,
+                          "weight_pct" : 0.2,
+                          "market" : "US"
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  },
+                  "ETF 분해" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ "instrument" ],
+                        "lens" : "LOOK_THROUGH",
+                        "total" : {
+                          "total_assets_krw" : 60000000,
+                          "securities_value_krw" : 55300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 50600000,
+                          "unrealized_pnl_krw" : 4700000,
+                          "unrealized_pnl_pct" : 9.3,
+                          "cash_ratio_pct" : 7.8,
+                          "instrument_count" : 6,
+                          "account_count" : 4
+                        },
+                        "rows" : [ {
+                          "key" : "005930",
+                          "label" : "삼성전자",
+                          "quantity" : 222.0,
+                          "market_value_krw" : 15806400,
+                          "weight_pct" : 26.3,
+                          "market" : "KR"
+                        }, {
+                          "key" : "AAPL",
+                          "label" : "애플",
+                          "currency" : "USD",
+                          "quantity" : 36.0,
+                          "market_value_krw" : 11088000,
+                          "market_value_local" : 7920.0,
+                          "weight_pct" : 18.5,
+                          "market" : "US"
+                        }, {
+                          "key" : "000660",
+                          "label" : "SK하이닉스",
+                          "quantity" : 50.0,
+                          "market_value_krw" : 9000000,
+                          "weight_pct" : 15.0,
+                          "market" : "KR"
+                        }, {
+                          "key" : "MSFT",
+                          "label" : "마이크로소프트",
+                          "currency" : "USD",
+                          "quantity" : 16.6,
+                          "market_value_krw" : 8134000,
+                          "market_value_local" : 5810.0,
+                          "weight_pct" : 13.6,
+                          "market" : "US"
+                        }, {
+                          "key" : "035420",
+                          "label" : "NAVER",
+                          "quantity" : 40.0,
+                          "market_value_krw" : 8000000,
+                          "weight_pct" : 13.3,
+                          "market" : "KR"
+                        }, {
+                          "key" : "CASH-KRW",
+                          "label" : "KRW 예수금",
+                          "quantity" : null,
+                          "market_value_krw" : 4560000,
+                          "weight_pct" : 7.6,
+                          "market" : "KR"
+                        }, {
+                          "key" : "069500",
+                          "label" : "KODEX 200",
+                          "quantity" : 50.0,
+                          "market_value_krw" : 2000000,
+                          "weight_pct" : 3.3,
+                          "market" : "KR"
+                        }, {
+                          "key" : "CASH-USD",
+                          "label" : "USD 예수금",
+                          "currency" : "USD",
+                          "quantity" : null,
+                          "market_value_krw" : 140000,
+                          "market_value_local" : 100.0,
+                          "weight_pct" : 0.2,
+                          "market" : "US"
+                        }, {
+                          "key" : "OTHER",
+                          "label" : "기타(ETF 내 비주식·미매칭)",
+                          "quantity" : null,
+                          "market_value_krw" : 1271600,
+                          "weight_pct" : 2.1
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "CONSTITUENT_AS_OF",
+                        "severity" : "info",
+                        "message" : "구성비중 기준 07-24",
+                        "params" : {
+                          "oldest" : "2026-07-24",
+                          "count" : 1
+                        }
+                      }, {
+                        "code" : "CONSTITUENT_UNAVAILABLE",
+                        "severity" : "warn",
+                        "message" : "1개 ETF는 구성종목으로 나누지 못해 그대로 표시했습니다",
+                        "params" : {
+                          "count" : 1,
+                          "undecomposed_krw" : 2000000,
+                          "keys" : [ "069500" ]
+                        }
+                      }, {
+                        "code" : "LENS_METRICS_OMITTED",
+                        "severity" : "info",
+                        "message" : "ETF 분해에서는 매입금액·평가손익을 행에 표시할 수 없습니다",
+                        "params" : {
+                          "metrics" : [ "avg_cost", "cost_amount_krw", "unrealized_pnl_krw", "unrealized_pnl_pct" ]
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/asset-change" : {
+      "get" : {
+        "tags" : [ "자산 변화" ],
+        "summary" : "GET /portfolio/views/asset-change",
+        "operationId" : "assetChange",
+        "parameters" : [ {
+          "name" : "period",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "THIS_MONTH"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeAssetChangeData"
+                },
+                "examples" : {
+                  "지정 기간" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "period" : {
+                          "from" : "2026-07-01",
+                          "to" : "2026-07-31"
+                        },
+                        "opening" : 56800000,
+                        "closing" : 58000000,
+                        "deposited" : 2000000,
+                        "earned" : -800000,
+                        "account_included" : 0,
+                        "account_excluded" : 0,
+                        "breakdown" : [ {
+                          "type" : "DEPOSIT",
+                          "amount" : 2000000
+                        }, {
+                          "type" : "INVESTMENT_PNL",
+                          "amount" : -800000
+                        } ],
+                        "investment_pnl" : {
+                          "total" : -800000,
+                          "realized" : null,
+                          "unrealized_change" : null,
+                          "split_available" : false,
+                          "realized_period" : null,
+                          "realized_link_available" : false
+                        }
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "CASHFLOW_UNCOVERED",
+                        "severity" : "warn",
+                        "message" : "3개 계좌에 입출금이 입력되지 않았고 배당·수수료·세금 내역도 없어 투자손익이 정확하지 않을 수 있어요",
+                        "params" : {
+                          "types" : [ "DIVIDEND", "FEE", "TAX", "DEPOSIT", "WITHDRAW" ],
+                          "account_count" : 4,
+                          "manual_uncovered_account_count" : 3
+                        }
+                      }, {
+                        "code" : "PERIOD_TRUNCATED",
+                        "severity" : "info",
+                        "message" : "2026-07-24부터 계산했습니다",
+                        "params" : {
+                          "actual_from" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "BOUNDARY_CARRIED_FORWARD",
+                        "severity" : "warn",
+                        "message" : "1개 계좌는 기간 경계에서 지난 값을 썼어요",
+                        "params" : {
+                          "count" : 1,
+                          "boundary" : "2026-07-27"
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/allocation" : {
+      "get" : {
+        "tags" : [ "보유 화면" ],
+        "summary" : "GET /portfolio/views/allocation",
+        "operationId" : "allocation",
+        "parameters" : [ {
+          "name" : "axis",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "lens",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "DIRECT"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }, {
+          "name" : "account_type",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeSnapshotViewData"
+                },
+                "examples" : {
+                  "섹터 축" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ "sector" ],
+                        "lens" : "DIRECT",
+                        "total" : {
+                          "total_assets_krw" : 58000000,
+                          "securities_value_krw" : 53300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 48800000,
+                          "unrealized_pnl_krw" : 4500000,
+                          "unrealized_pnl_pct" : 9.2,
+                          "cash_ratio_pct" : 8.1,
+                          "instrument_count" : 6,
+                          "account_count" : 4
+                        },
+                        "rows" : [ {
+                          "key" : "반도체",
+                          "label" : "반도체",
+                          "market_value_krw" : 23240000,
+                          "cost_amount_krw" : 20000000,
+                          "unrealized_pnl_krw" : 3240000,
+                          "unrealized_pnl_pct" : 16.2,
+                          "weight_pct" : 40.1,
+                          "instrument_count" : 2
+                        }, {
+                          "key" : "소프트웨어",
+                          "label" : "소프트웨어",
+                          "market_value_krw" : 12900000,
+                          "cost_amount_krw" : 13200000,
+                          "unrealized_pnl_krw" : -300000,
+                          "unrealized_pnl_pct" : -2.3,
+                          "weight_pct" : 22.2,
+                          "instrument_count" : 2
+                        }, {
+                          "key" : "UNCLASSIFIED",
+                          "label" : "미분류",
+                          "market_value_krw" : 11000000,
+                          "cost_amount_krw" : 10000000,
+                          "unrealized_pnl_krw" : 1000000,
+                          "unrealized_pnl_pct" : 10.0,
+                          "weight_pct" : 19.0,
+                          "instrument_count" : 1
+                        }, {
+                          "key" : "IT서비스",
+                          "label" : "IT서비스",
+                          "currency" : "USD",
+                          "market_value_krw" : 6160000,
+                          "market_value_local" : 4400.0,
+                          "cost_amount_krw" : 5600000,
+                          "cost_amount_local" : 4000.0,
+                          "unrealized_pnl_krw" : 560000,
+                          "unrealized_pnl_pct" : 10.0,
+                          "weight_pct" : 10.6,
+                          "instrument_count" : 1
+                        }, {
+                          "key" : "CASH",
+                          "label" : "현금",
+                          "market_value_krw" : 4700000,
+                          "cost_amount_krw" : null,
+                          "unrealized_pnl_krw" : null,
+                          "unrealized_pnl_pct" : null,
+                          "weight_pct" : 8.1,
+                          "instrument_count" : 0
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  },
+                  "섹터 축 · ETF 분해" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ "sector" ],
+                        "lens" : "LOOK_THROUGH",
+                        "total" : {
+                          "total_assets_krw" : 60000000,
+                          "securities_value_krw" : 55300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 50600000,
+                          "unrealized_pnl_krw" : 4700000,
+                          "unrealized_pnl_pct" : 9.3,
+                          "cash_ratio_pct" : 7.8,
+                          "instrument_count" : 6,
+                          "account_count" : 4
+                        },
+                        "rows" : [ {
+                          "key" : "반도체",
+                          "label" : "반도체",
+                          "market_value_krw" : 24806400,
+                          "weight_pct" : 41.3,
+                          "instrument_count" : 2
+                        }, {
+                          "key" : "소프트웨어",
+                          "label" : "소프트웨어",
+                          "market_value_krw" : 16134000,
+                          "weight_pct" : 26.9,
+                          "instrument_count" : 2
+                        }, {
+                          "key" : "IT서비스",
+                          "label" : "IT서비스",
+                          "currency" : "USD",
+                          "market_value_krw" : 11088000,
+                          "market_value_local" : 7920.0,
+                          "weight_pct" : 18.5,
+                          "instrument_count" : 1
+                        }, {
+                          "key" : "CASH",
+                          "label" : "현금",
+                          "market_value_krw" : 4700000,
+                          "weight_pct" : 7.8,
+                          "instrument_count" : 0
+                        }, {
+                          "key" : "UNCLASSIFIED",
+                          "label" : "미분류",
+                          "market_value_krw" : 2000000,
+                          "weight_pct" : 3.3,
+                          "instrument_count" : 1
+                        }, {
+                          "key" : "OTHER",
+                          "label" : "기타(ETF 내 비주식·미매칭)",
+                          "market_value_krw" : 1271600,
+                          "weight_pct" : 2.1,
+                          "instrument_count" : null
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "CONSTITUENT_AS_OF",
+                        "severity" : "info",
+                        "message" : "구성비중 기준 07-24",
+                        "params" : {
+                          "oldest" : "2026-07-24",
+                          "count" : 1
+                        }
+                      }, {
+                        "code" : "CONSTITUENT_UNAVAILABLE",
+                        "severity" : "warn",
+                        "message" : "1개 ETF는 구성종목으로 나누지 못해 그대로 표시했습니다",
+                        "params" : {
+                          "count" : 1,
+                          "undecomposed_krw" : 2000000,
+                          "keys" : [ "069500" ]
+                        }
+                      }, {
+                        "code" : "LENS_METRICS_OMITTED",
+                        "severity" : "info",
+                        "message" : "ETF 분해에서는 매입금액·평가손익을 행에 표시할 수 없습니다",
+                        "params" : {
+                          "metrics" : [ "cost_amount_krw", "unrealized_pnl_krw", "unrealized_pnl_pct" ]
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/views/accounts" : {
+      "get" : {
+        "tags" : [ "보유 화면" ],
+        "summary" : "GET /portfolio/views/accounts",
+        "operationId" : "accounts",
+        "parameters" : [ {
+          "name" : "lens",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "DIRECT"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeSnapshotViewData"
+                },
+                "examples" : {
+                  "계좌별" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "group_by" : [ "account_type", "account" ],
+                        "lens" : "DIRECT",
+                        "total" : {
+                          "total_assets_krw" : 58000000,
+                          "securities_value_krw" : 53300000,
+                          "deposit_krw" : 4700000,
+                          "cost_amount_krw" : 48800000,
+                          "unrealized_pnl_krw" : 4500000,
+                          "unrealized_pnl_pct" : 9.2,
+                          "cash_ratio_pct" : 8.1,
+                          "instrument_count" : 6,
+                          "account_count" : 4
+                        },
+                        "rows" : [ {
+                          "key" : "GENERAL",
+                          "label" : "일반",
+                          "rows" : [ {
+                            "key" : "20000000-0000-0000-0000-000000000001",
+                            "label" : "한국투자 위탁",
+                            "market_value_krw" : 31960000,
+                            "deposit_krw" : 2560000,
+                            "cost_amount_krw" : 25600000,
+                            "unrealized_pnl_krw" : 3800000,
+                            "unrealized_pnl_pct" : 14.8,
+                            "weight_pct" : 55.1,
+                            "link_state" : "CONNECTED",
+                            "last_collection" : null,
+                            "collection_alert" : null,
+                            "last_synced_at" : null,
+                            "source_as_of" : "2026-07-27",
+                            "is_carried_forward" : false
+                          }, {
+                            "key" : "20000000-0000-0000-0000-000000000002",
+                            "label" : "국내주식",
+                            "market_value_krw" : 9000000,
+                            "deposit_krw" : 1000000,
+                            "cost_amount_krw" : 9000000,
+                            "unrealized_pnl_krw" : -1000000,
+                            "unrealized_pnl_pct" : -11.1,
+                            "weight_pct" : 15.5,
+                            "link_state" : "CONNECTED",
+                            "last_collection" : null,
+                            "collection_alert" : null,
+                            "last_synced_at" : null,
+                            "source_as_of" : "2026-07-27",
+                            "is_carried_forward" : false
+                          } ],
+                          "market_value_krw" : 40960000,
+                          "deposit_krw" : 3560000,
+                          "cost_amount_krw" : 34600000,
+                          "unrealized_pnl_krw" : 2800000,
+                          "unrealized_pnl_pct" : 8.1,
+                          "weight_pct" : 70.6
+                        }, {
+                          "key" : "PENSION",
+                          "label" : "연금",
+                          "rows" : [ {
+                            "key" : "20000000-0000-0000-0000-000000000003",
+                            "label" : "한국투자 IRP",
+                            "market_value_krw" : 12000000,
+                            "deposit_krw" : 1000000,
+                            "cost_amount_krw" : 10000000,
+                            "unrealized_pnl_krw" : 1000000,
+                            "unrealized_pnl_pct" : 10.0,
+                            "weight_pct" : 20.7,
+                            "link_state" : "CONNECTED",
+                            "last_collection" : null,
+                            "collection_alert" : null,
+                            "last_synced_at" : null,
+                            "source_as_of" : "2026-07-27",
+                            "is_carried_forward" : false
+                          }, {
+                            "key" : "20000000-0000-0000-0000-000000000004",
+                            "label" : "연금저축",
+                            "currency" : "USD",
+                            "market_value_krw" : 5040000,
+                            "market_value_local" : 3600.0,
+                            "deposit_krw" : 140000,
+                            "cost_amount_krw" : 4200000,
+                            "cost_amount_local" : 3000.0,
+                            "unrealized_pnl_krw" : 700000,
+                            "unrealized_pnl_pct" : 16.7,
+                            "weight_pct" : 8.7,
+                            "link_state" : "CONNECTED",
+                            "last_collection" : null,
+                            "collection_alert" : null,
+                            "last_synced_at" : null,
+                            "source_as_of" : "2026-07-24",
+                            "is_carried_forward" : true
+                          } ],
+                          "market_value_krw" : 17040000,
+                          "deposit_krw" : 1140000,
+                          "cost_amount_krw" : 14200000,
+                          "unrealized_pnl_krw" : 1700000,
+                          "unrealized_pnl_pct" : 12.0,
+                          "weight_pct" : 29.4
+                        } ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ {
+                        "code" : "FX_APPLIED",
+                        "severity" : "info",
+                        "message" : "USD/KRW 1,400.00 적용 · 기준 2026-07-24",
+                        "params" : {
+                          "rates" : [ {
+                            "pair" : "USD/KRW",
+                            "rate" : 1400.0,
+                            "fx_as_of" : "2026-07-24"
+                          } ],
+                          "oldest_fx_as_of" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "STALE_ACCOUNTS",
+                        "severity" : "warn",
+                        "message" : "1개 계좌가 07-24 기준입니다",
+                        "params" : {
+                          "count" : 1,
+                          "oldest" : "2026-07-24"
+                        }
+                      }, {
+                        "code" : "PRICE_LAG_MARKET",
+                        "severity" : "info",
+                        "message" : "미국 종목은 07-24 종가 기준이에요",
+                        "params" : {
+                          "markets" : [ {
+                            "market" : "US",
+                            "price_as_of" : "2026-07-24",
+                            "quote_count" : 0
+                          } ]
+                        }
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/instruments/{id}" : {
+      "get" : {
+        "tags" : [ "종목 상세" ],
+        "summary" : "GET /portfolio/instruments/{id}",
+        "operationId" : "detail_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeInstrumentDetailData"
+                },
+                "examples" : {
+                  "종목 하나" : {
+                    "value" : {
+                      "as_of" : "2026-07-27T15:30:00+09:00",
+                      "data" : {
+                        "instrument" : {
+                          "id" : "10000000-0000-0000-0000-000000000001",
+                          "symbol" : "005930",
+                          "label" : "삼성전자",
+                          "market" : "KR",
+                          "currency" : "KRW",
+                          "delisted_on" : null,
+                          "last_close" : 63010,
+                          "last_close_on" : "2026-09-25"
+                        },
+                        "position" : {
+                          "quantity" : 200,
+                          "avg_cost" : 60000,
+                          "cost_amount_krw" : 12000000,
+                          "market_value_krw" : 14240000,
+                          "unrealized_pnl_krw" : 2240000,
+                          "unrealized_pnl_pct" : 18.7
+                        },
+                        "by_account" : [ {
+                          "account_id" : "20000000-0000-0000-0000-000000000001",
+                          "label" : "한국투자 위탁",
+                          "account_type" : "GENERAL",
+                          "quantity" : 200,
+                          "avg_cost" : 60000,
+                          "market_value_krw" : 14240000,
+                          "is_carried_forward" : false,
+                          "source_as_of" : "2026-07-27T15:30:00+09:00",
+                          "basis" : null
+                        } ],
+                        "realized" : {
+                          "total" : {
+                            "realized_pnl_krw" : 277000,
+                            "excluded_account_count" : 0
+                          },
+                          "rows" : [ {
+                            "trade_id" : "T-0002",
+                            "account_id" : "20000000-0000-0000-0000-000000000001",
+                            "account_label" : "한국투자 위탁",
+                            "sold_at" : "2026-05-12",
+                            "quantity" : 5,
+                            "sell_amount_krw" : 700000,
+                            "cost_basis_krw" : 500000,
+                            "realized_pnl_krw" : 198000,
+                            "grade" : "VERIFIED",
+                            "ca_unknown" : false
+                          }, {
+                            "trade_id" : "T-0001",
+                            "account_id" : "20000000-0000-0000-0000-000000000001",
+                            "account_label" : "한국투자 위탁",
+                            "sold_at" : "2026-03-02",
+                            "quantity" : 3,
+                            "sell_amount_krw" : 400000,
+                            "cost_basis_krw" : 320000,
+                            "realized_pnl_krw" : 79000,
+                            "grade" : "SEEDED",
+                            "seed_reason" : "LATE_COVERAGE",
+                            "coverage_start_at" : "2026-01-01",
+                            "ca_unknown" : false
+                          } ]
+                        },
+                        "trades" : [ ],
+                        "corporate_actions" : [ ]
+                      },
+                      "empty_reason" : null,
+                      "notices" : [ ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/catalog" : {
+      "get" : {
+        "tags" : [ "포트폴리오 카탈로그" ],
+        "summary" : "GET /portfolio/catalog",
+        "operationId" : "catalog",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CatalogDto"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/cashflows" : {
+      "get" : {
+        "tags" : [ "입출금" ],
+        "summary" : "GET /portfolio/cashflows",
+        "operationId" : "list_2",
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "account",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CashflowListResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/portfolio/cashflows/accounts" : {
+      "get" : {
+        "tags" : [ "입출금" ],
+        "summary" : "GET /portfolio/cashflows/accounts",
+        "operationId" : "accounts_1",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CashflowAccountsResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/instruments" : {
+      "get" : {
+        "tags" : [ "종목 검색" ],
+        "summary" : "GET /instruments",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "q",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "held",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InstrumentSearchResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/auth/me" : {
+      "get" : {
+        "tags" : [ "로그인" ],
+        "summary" : "GET /auth/me",
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alerts/catalog" : {
+      "get" : {
+        "tags" : [ "알림 카탈로그" ],
+        "summary" : "GET /alerts/catalog",
+        "operationId" : "catalog_1",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alert-events" : {
+      "get" : {
+        "tags" : [ "울린 알림" ],
+        "summary" : "GET /alert-events",
+        "operationId" : "list_3",
+        "parameters" : [ {
+          "name" : "alert_id",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnvelopeEventListData"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alert-events/{eventId}" : {
+      "get" : {
+        "tags" : [ "울린 알림" ],
+        "summary" : "GET /alert-events/{eventId}",
+        "operationId" : "detail_2",
+        "parameters" : [ {
+          "name" : "eventId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventDetailDto"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/alert-events/unread-count" : {
+      "get" : {
+        "tags" : [ "울린 알림" ],
+        "summary" : "GET /alert-events/unread-count",
+        "operationId" : "unreadCount",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UnreadCountDto"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/devices/{deviceId}" : {
+      "delete" : {
+        "tags" : [ "기기" ],
+        "summary" : "DELETE /devices/{deviceId}",
+        "operationId" : "unregister",
+        "parameters" : [ {
+          "name" : "deviceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    },
+    "/accounts/{accountId}" : {
+      "delete" : {
+        "tags" : [ "계좌" ],
+        "summary" : "DELETE /accounts/{accountId}",
+        "operationId" : "unlink",
+        "parameters" : [ {
+          "name" : "accountId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "401" : {
+            "description" : "로그인이 필요하다(토큰 없음 · 만료 · 세션 끝남)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearer" : [ ]
+        } ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "JsonNode" : {
+        "type" : "object",
+        "description" : "JSON 값. 모양은 설계서가 정한다"
+      },
+      "CashflowIdResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "AlertIdResponse" : {
+        "type" : "object",
+        "properties" : {
+          "alert_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "RefreshCredentialsRequest" : {
+        "type" : "object",
+        "properties" : {
+          "app_key" : {
+            "type" : "string"
+          },
+          "app_secret" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          }
+        }
+      },
+      "SyncAcceptedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "run_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        }
+      },
+      "DeviceRequest" : {
+        "type" : "object",
+        "properties" : {
+          "expo_push_token" : {
+            "type" : "string"
+          },
+          "platform" : {
+            "type" : "string"
+          }
+        }
+      },
+      "DeviceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "device_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "RefreshRequest" : {
+        "type" : "object",
+        "properties" : {
+          "refresh_token" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }
+      },
+      "TokenResponse" : {
+        "type" : "object",
+        "properties" : {
+          "access_token" : {
+            "type" : "string"
+          },
+          "expires_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "refresh_token" : {
+            "type" : "string"
+          }
+        }
+      },
+      "LoginRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "password" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }
+      },
+      "CurrentDto" : {
+        "type" : "object",
+        "properties" : {
+          "result" : {
+            "type" : "string",
+            "enum" : [ "TRUE", "FALSE", "UNKNOWN" ]
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "header" : {
+            "type" : "string"
+          },
+          "result_text" : {
+            "type" : "string"
+          },
+          "conditions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/LineDto"
+            }
+          }
+        }
+      },
+      "FieldError" : {
+        "type" : "object",
+        "properties" : {
+          "path" : {
+            "type" : "string"
+          },
+          "code" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        }
+      },
+      "LineDto" : {
+        "type" : "object",
+        "properties" : {
+          "result" : {
+            "type" : "string",
+            "enum" : [ "TRUE", "FALSE", "UNKNOWN" ]
+          },
+          "unknown_reason" : {
+            "type" : "string",
+            "enum" : [ "DATA_MISSING", "INSUFFICIENT_HISTORY", "NO_TRADE", "PRICE_ADJUSTMENT_SUSPECTED", "NOT_HELD", "AWAITING_FINAL", "INSTRUMENT_UNKNOWN" ]
+          },
+          "text" : {
+            "type" : "string"
+          }
+        }
+      },
+      "PreviewResponse" : {
+        "type" : "object",
+        "properties" : {
+          "valid" : {
+            "type" : "boolean"
+          },
+          "errors" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FieldError"
+            }
+          },
+          "summary" : {
+            "$ref" : "#/components/schemas/SummaryDto"
+          },
+          "current" : {
+            "$ref" : "#/components/schemas/CurrentDto"
+          },
+          "already_satisfied" : {
+            "type" : "boolean"
+          },
+          "already_fired" : {
+            "type" : "boolean"
+          },
+          "duplicate_of" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "SummaryDto" : {
+        "type" : "object",
+        "properties" : {
+          "short" : {
+            "type" : "string"
+          },
+          "sentence" : {
+            "type" : "string"
+          }
+        }
+      },
+      "LinkAccountRequest" : {
+        "type" : "object",
+        "properties" : {
+          "app_key" : {
+            "type" : "string"
+          },
+          "app_secret" : {
+            "type" : "string"
+          },
+          "account_number" : {
+            "type" : "string"
+          },
+          "env" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          }
+        }
+      },
+      "LinkAccountResponse" : {
+        "type" : "object",
+        "properties" : {
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "link_state" : {
+            "type" : "string",
+            "enum" : [ "CONNECTING", "CONNECTED", "DISCONNECTED" ]
+          },
+          "challenge" : {
+            "type" : "object"
+          }
+        }
+      },
+      "SyncAccountDto" : {
+        "type" : "object",
+        "properties" : {
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "failure_reason" : {
+            "type" : "string"
+          }
+        }
+      },
+      "SyncRunResponse" : {
+        "type" : "object",
+        "properties" : {
+          "run_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "state" : {
+            "type" : "string"
+          },
+          "started_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "finished_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "failure_reason" : {
+            "type" : "string"
+          },
+          "accounts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SyncAccountDto"
+            }
+          }
+        }
+      },
+      "EnvelopeSnapshotViewData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/SnapshotViewData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "NoticeDto" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "안내 종류. 앱은 이 값으로 색 · 아이콘 · 다음 동작을 고른다",
+            "enum" : [ "FX_APPLIED", "STALE_ACCOUNTS", "CREDENTIAL_INVALID", "REPEATED_FAILURE", "CREDENTIAL_UPDATED", "ACCOUNT_NOT_AGGREGATED", "CONSTITUENT_AS_OF", "CONSTITUENT_UNAVAILABLE", "LENS_METRICS_OMITTED", "EXCLUDED_ACCOUNTS", "SEEDED_ROWS", "CA_UNKNOWN", "CASHFLOW_UNCOVERED", "PERIOD_TRUNCATED", "BOUNDARY_CARRIED_FORWARD", "SYNC_IN_PROGRESS", "PRICE_LAG_MARKET", "ALREADY_FINAL", "FX_STALE" ]
+          },
+          "severity" : {
+            "type" : "string",
+            "enum" : [ "info", "warn", "error" ]
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "params" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "object"
+            }
+          }
+        },
+        "description" : "화면 위 안내 한 건. `message`는 서버가 완성한 문장이고, `params`는 같은 내용을 기계가 읽는 모양이다."
+      },
+      "RowDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RowDto"
+            }
+          },
+          "quantity" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "total_assets_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "securities_value_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "market_value_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "deposit_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "daily_change_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "daily_change_pct" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "cost_amount_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "unrealized_pnl_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "unrealized_pnl_pct" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "avg_cost" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "weight_pct" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "cash_ratio_pct" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "instrument_count" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "account_count" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "realized_pnl_krw" : {
+            "type" : "number",
+            "nullable" : true
+          },
+          "realized_pnl_pct" : {
+            "type" : "number",
+            "nullable" : true
+          }
+        },
+        "description" : "목록의 한 행. 지표는 행에 평탄하게 놓인다. 키가 아예 없으면 그 보기에서 말할 수 없는 값(예: ETF 분해 뒤의 매입금액)이고, 키가 있고 값이 null이면 값이 없는 것이 정상인 경우(예: 예수금 행의 손익)다. 어느 화면에 어떤 지표가 나오는지는 `GET /portfolio/catalog`가 정한다."
+      },
+      "SnapshotViewData" : {
+        "type" : "object",
+        "properties" : {
+          "group_by" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "lens" : {
+            "type" : "string",
+            "enum" : [ "DIRECT", "LOOK_THROUGH" ]
+          },
+          "total" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "object"
+            }
+          },
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RowDto"
+            }
+          },
+          "mini_chart" : {
+            "$ref" : "#/components/schemas/SnapshotViewData"
+          }
+        }
+      },
+      "EnvelopeRealizedPnlData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/RealizedPnlData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "InstrumentNode" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "sell_amount_krw" : {
+            "type" : "number"
+          },
+          "cost_basis_krw" : {
+            "type" : "number"
+          },
+          "realized_pnl_krw" : {
+            "type" : "number"
+          },
+          "realized_pnl_pct" : {
+            "type" : "number"
+          },
+          "first_sold_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "last_sold_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "trade_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "grade" : {
+            "type" : "string"
+          },
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TradeNode"
+            }
+          }
+        }
+      },
+      "PeriodDto" : {
+        "type" : "object",
+        "properties" : {
+          "from" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "to" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "RealizedPnlData" : {
+        "type" : "object",
+        "properties" : {
+          "period" : {
+            "$ref" : "#/components/schemas/PeriodDto"
+          },
+          "total" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "object"
+            }
+          },
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/InstrumentNode"
+            }
+          }
+        }
+      },
+      "TradeNode" : {
+        "type" : "object",
+        "properties" : {
+          "trade_id" : {
+            "type" : "string"
+          },
+          "sold_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "sell_amount_krw" : {
+            "type" : "number"
+          },
+          "cost_basis_krw" : {
+            "type" : "number"
+          },
+          "realized_pnl_krw" : {
+            "type" : "number"
+          },
+          "grade" : {
+            "type" : "string"
+          },
+          "seed_reason" : {
+            "type" : "string"
+          },
+          "coverage_start_at" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "AssetChangeData" : {
+        "type" : "object",
+        "properties" : {
+          "period" : {
+            "$ref" : "#/components/schemas/PeriodDto"
+          },
+          "opening" : {
+            "type" : "number"
+          },
+          "closing" : {
+            "type" : "number"
+          },
+          "deposited" : {
+            "type" : "number"
+          },
+          "earned" : {
+            "type" : "number"
+          },
+          "account_included" : {
+            "type" : "number"
+          },
+          "account_excluded" : {
+            "type" : "number"
+          },
+          "breakdown" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/BreakdownItem"
+            }
+          },
+          "investment_pnl" : {
+            "$ref" : "#/components/schemas/InvestmentPnl"
+          }
+        }
+      },
+      "BreakdownItem" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string"
+          },
+          "amount" : {
+            "type" : "number"
+          }
+        }
+      },
+      "EnvelopeAssetChangeData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/AssetChangeData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "InvestmentPnl" : {
+        "type" : "object",
+        "properties" : {
+          "total" : {
+            "type" : "number"
+          },
+          "realized" : {
+            "type" : "number"
+          },
+          "unrealized_change" : {
+            "type" : "number"
+          },
+          "split_available" : {
+            "type" : "boolean"
+          },
+          "realized_period" : {
+            "$ref" : "#/components/schemas/PeriodDto"
+          },
+          "realized_link_available" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "AccountLine" : {
+        "type" : "object",
+        "properties" : {
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "account_type" : {
+            "type" : "string"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "avg_cost" : {
+            "type" : "number"
+          },
+          "market_value_krw" : {
+            "type" : "number"
+          },
+          "market_value_local" : {
+            "type" : "number"
+          },
+          "is_carried_forward" : {
+            "type" : "boolean"
+          },
+          "source_as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "basis" : {
+            "$ref" : "#/components/schemas/Basis"
+          }
+        }
+      },
+      "Basis" : {
+        "type" : "object",
+        "properties" : {
+          "grade" : {
+            "type" : "string"
+          },
+          "seed_reason" : {
+            "type" : "string"
+          },
+          "coverage_start_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "ca_unknown" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "CorporateAction" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string"
+          },
+          "ratio" : {
+            "type" : "number"
+          },
+          "ex_date" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "EnvelopeInstrumentDetailData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/InstrumentDetailData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "Instrument" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "symbol" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "delisted_on" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "last_close" : {
+            "type" : "number"
+          },
+          "last_close_on" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "InstrumentDetailData" : {
+        "type" : "object",
+        "properties" : {
+          "instrument" : {
+            "$ref" : "#/components/schemas/Instrument"
+          },
+          "position" : {
+            "$ref" : "#/components/schemas/Position"
+          },
+          "by_account" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AccountLine"
+            }
+          },
+          "realized" : {
+            "$ref" : "#/components/schemas/Realized"
+          },
+          "trades" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Trade"
+            }
+          },
+          "corporate_actions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CorporateAction"
+            }
+          }
+        }
+      },
+      "Position" : {
+        "type" : "object",
+        "properties" : {
+          "quantity" : {
+            "type" : "number"
+          },
+          "avg_cost" : {
+            "type" : "number"
+          },
+          "cost_amount_krw" : {
+            "type" : "number"
+          },
+          "market_value_krw" : {
+            "type" : "number"
+          },
+          "unrealized_pnl_krw" : {
+            "type" : "number"
+          },
+          "unrealized_pnl_pct" : {
+            "type" : "number"
+          },
+          "market_value_local" : {
+            "type" : "number"
+          },
+          "cost_amount_local" : {
+            "type" : "number"
+          }
+        }
+      },
+      "Realized" : {
+        "type" : "object",
+        "properties" : {
+          "total" : {
+            "$ref" : "#/components/schemas/Total"
+          },
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RealizedRow"
+            }
+          }
+        }
+      },
+      "RealizedRow" : {
+        "type" : "object",
+        "properties" : {
+          "trade_id" : {
+            "type" : "string"
+          },
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "account_label" : {
+            "type" : "string"
+          },
+          "sold_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "sell_amount_krw" : {
+            "type" : "number"
+          },
+          "cost_basis_krw" : {
+            "type" : "number"
+          },
+          "realized_pnl_krw" : {
+            "type" : "number"
+          },
+          "grade" : {
+            "type" : "string"
+          },
+          "seed_reason" : {
+            "type" : "string"
+          },
+          "coverage_start_at" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "ca_unknown" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "Total" : {
+        "type" : "object",
+        "properties" : {
+          "realized_pnl_krw" : {
+            "type" : "number"
+          },
+          "excluded_account_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "Trade" : {
+        "type" : "object",
+        "properties" : {
+          "trade_id" : {
+            "type" : "string"
+          },
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "account_label" : {
+            "type" : "string"
+          },
+          "side" : {
+            "type" : "string"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "price" : {
+            "type" : "number"
+          },
+          "fee" : {
+            "type" : "number"
+          },
+          "tax" : {
+            "type" : "number"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "executed_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "executed_on" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "Account" : {
+        "type" : "object",
+        "properties" : {
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "broker" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "account_type" : {
+            "type" : "string"
+          },
+          "link_state" : {
+            "type" : "string"
+          }
+        }
+      },
+      "Axis" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "lens_sensitive" : {
+            "type" : "boolean"
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "applicable_views" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "CatalogDto" : {
+        "type" : "object",
+        "properties" : {
+          "axes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Axis"
+            }
+          },
+          "metrics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Metric"
+            }
+          },
+          "views" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/View"
+            }
+          },
+          "accounts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Account"
+            }
+          }
+        }
+      },
+      "Metric" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "additive" : {
+            "type" : "boolean"
+          },
+          "cash_scope" : {
+            "type" : "string"
+          },
+          "lens_safe" : {
+            "type" : "string"
+          },
+          "scope" : {
+            "type" : "string"
+          },
+          "formula" : {
+            "type" : "string"
+          }
+        }
+      },
+      "SubBlock" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "group_by" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "lens_policy" : {
+            "type" : "string"
+          },
+          "metrics" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "View" : {
+        "type" : "object",
+        "properties" : {
+          "view_key" : {
+            "type" : "string"
+          },
+          "question" : {
+            "type" : "string"
+          },
+          "grain" : {
+            "type" : "string"
+          },
+          "group_by" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "axis_options" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "metrics" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "row_fields" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "filters" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string"
+              }
+            }
+          },
+          "lens_policy" : {
+            "type" : "string"
+          },
+          "sub_blocks" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SubBlock"
+            }
+          },
+          "ledgers" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "CashflowListResponse" : {
+        "type" : "object",
+        "properties" : {
+          "window" : {
+            "$ref" : "#/components/schemas/Window"
+          },
+          "cashflows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Item"
+            }
+          }
+        }
+      },
+      "Item" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "account_label" : {
+            "type" : "string"
+          },
+          "type" : {
+            "type" : "string",
+            "enum" : [ "DEPOSIT", "WITHDRAW" ]
+          },
+          "amount" : {
+            "type" : "number"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "occurred_on" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "memo" : {
+            "type" : "string"
+          }
+        }
+      },
+      "Window" : {
+        "type" : "object",
+        "properties" : {
+          "after" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "through" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "CashflowAccountsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "accounts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Item"
+            }
+          }
+        }
+      },
+      "InstrumentSearchResponse" : {
+        "type" : "object",
+        "properties" : {
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Row"
+            }
+          }
+        }
+      },
+      "Row" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "symbol" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          },
+          "held" : {
+            "type" : "boolean"
+          },
+          "last_close" : {
+            "type" : "number"
+          },
+          "last_close_on" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }
+      },
+      "MeResponse" : {
+        "type" : "object",
+        "properties" : {
+          "user_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          }
+        }
+      },
+      "AlertCardDto" : {
+        "type" : "object",
+        "properties" : {
+          "alert_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "instrument" : {
+            "$ref" : "#/components/schemas/InstrumentDto"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "notify_mode" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "expires_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "summary" : {
+            "$ref" : "#/components/schemas/ShortSummaryDto"
+          },
+          "last_result" : {
+            "type" : "string"
+          },
+          "unknown_reason" : {
+            "type" : "string"
+          },
+          "evaluated_as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "last_fired_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data_closure" : {
+            "$ref" : "#/components/schemas/DataClosureDto"
+          }
+        }
+      },
+      "AlertListData" : {
+        "type" : "object",
+        "properties" : {
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AlertCardDto"
+            }
+          },
+          "unread" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/UnreadDto"
+            }
+          },
+          "unread_more" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "DataClosureDto" : {
+        "type" : "object",
+        "properties" : {
+          "kind" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        }
+      },
+      "EnvelopeAlertListData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/AlertListData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "InstrumentDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ShortSummaryDto" : {
+        "type" : "object",
+        "properties" : {
+          "short" : {
+            "type" : "string"
+          }
+        }
+      },
+      "UnreadDto" : {
+        "type" : "object",
+        "properties" : {
+          "event_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "fired_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "alert_deleted" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "AlertDetailDto" : {
+        "type" : "object",
+        "properties" : {
+          "alert_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "instrument" : {
+            "$ref" : "#/components/schemas/InstrumentDto"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "notify_mode" : {
+            "type" : "string"
+          },
+          "cooldown_min" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "expires_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "trigger_type" : {
+            "type" : "string"
+          },
+          "trigger_spec" : {
+            "$ref" : "#/components/schemas/JsonNode"
+          },
+          "summary" : {
+            "$ref" : "#/components/schemas/SummaryDto"
+          },
+          "last_result" : {
+            "type" : "string"
+          },
+          "unknown_reason" : {
+            "type" : "string"
+          },
+          "evaluated_as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data_closure" : {
+            "$ref" : "#/components/schemas/DataClosureDto"
+          },
+          "recent_events" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RecentEventDto"
+            }
+          }
+        }
+      },
+      "RecentEventDto" : {
+        "type" : "object",
+        "properties" : {
+          "event_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "read" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "CadenceOptionDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "available" : {
+            "type" : "boolean"
+          },
+          "unavailable_reason" : {
+            "type" : "string"
+          }
+        }
+      },
+      "CatalogResponse" : {
+        "type" : "object",
+        "properties" : {
+          "indicators" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/IndicatorDto"
+            }
+          },
+          "presets" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PresetDto"
+            }
+          },
+          "cadence_options" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CadenceOptionDto"
+            }
+          },
+          "transforms" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TransformDto"
+            }
+          },
+          "operators" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/OperatorDto"
+            }
+          }
+        }
+      },
+      "FnDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          }
+        }
+      },
+      "IndicatorDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "unit" : {
+            "type" : "string"
+          },
+          "params" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ParamDto"
+            }
+          },
+          "intraday_left" : {
+            "type" : "boolean"
+          },
+          "markets" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "allowed_transforms" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "transform_ranges" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/RangeDto"
+            }
+          },
+          "allowed_operators" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "scope" : {
+            "type" : "string"
+          },
+          "deprecated" : {
+            "type" : "boolean"
+          },
+          "available" : {
+            "type" : "boolean"
+          },
+          "unavailable_reason" : {
+            "type" : "string"
+          }
+        }
+      },
+      "OperatorDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "symbol" : {
+            "type" : "string"
+          },
+          "word" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ParamDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "default" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "min" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "max" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "PresetDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "cadences" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "markets" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "scope" : {
+            "type" : "string"
+          },
+          "param_schema" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PresetParamDto"
+            }
+          },
+          "available" : {
+            "type" : "boolean"
+          },
+          "unavailable_reason" : {
+            "type" : "string"
+          }
+        }
+      },
+      "PresetParamDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "kind" : {
+            "type" : "string"
+          },
+          "min" : {
+            "type" : "object"
+          },
+          "max" : {
+            "type" : "object"
+          },
+          "default" : {
+            "type" : "object"
+          },
+          "choices" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "required" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "RangeDto" : {
+        "type" : "object",
+        "properties" : {
+          "min" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "max" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "TransformDto" : {
+        "type" : "object",
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "fns" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FnDto"
+            }
+          }
+        }
+      },
+      "EnvelopeEventListData" : {
+        "type" : "object",
+        "properties" : {
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/EventListData"
+          },
+          "empty_reason" : {
+            "type" : "string"
+          },
+          "notices" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NoticeDto"
+            }
+          }
+        }
+      },
+      "EventListData" : {
+        "type" : "object",
+        "properties" : {
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EventRowDto"
+            }
+          },
+          "next_cursor" : {
+            "type" : "string"
+          }
+        }
+      },
+      "EventRowDto" : {
+        "type" : "object",
+        "properties" : {
+          "event_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "alert_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "body" : {
+            "type" : "string"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "fired_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "read" : {
+            "type" : "boolean"
+          },
+          "alert_deleted" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "EventAlertDto" : {
+        "type" : "object",
+        "properties" : {
+          "alert_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "notify_mode" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "last_result" : {
+            "type" : "string"
+          },
+          "unknown_reason" : {
+            "type" : "string"
+          },
+          "deleted" : {
+            "type" : "boolean"
+          },
+          "data_closure" : {
+            "$ref" : "#/components/schemas/DataClosureDto"
+          },
+          "instrument" : {
+            "$ref" : "#/components/schemas/EventInstrumentDto"
+          }
+        }
+      },
+      "EventDetailDto" : {
+        "type" : "object",
+        "properties" : {
+          "event_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "body" : {
+            "type" : "string"
+          },
+          "lines" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "cadence" : {
+            "type" : "string"
+          },
+          "market" : {
+            "type" : "string"
+          },
+          "fired_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "observed" : {
+            "$ref" : "#/components/schemas/JsonNode"
+          },
+          "read_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "alert" : {
+            "$ref" : "#/components/schemas/EventAlertDto"
+          }
+        }
+      },
+      "EventInstrumentDto" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "label" : {
+            "type" : "string"
+          }
+        }
+      },
+      "UnreadCountDto" : {
+        "type" : "object",
+        "properties" : {
+          "count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "AccountDto" : {
+        "type" : "object",
+        "properties" : {
+          "account_id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "broker" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "account_type" : {
+            "type" : "string",
+            "enum" : [ "GENERAL", "PENSION" ]
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "env" : {
+            "type" : "string",
+            "enum" : [ "REAL", "DEMO" ]
+          },
+          "account_number_masked" : {
+            "type" : "string"
+          },
+          "link_state" : {
+            "type" : "string",
+            "enum" : [ "CONNECTING", "CONNECTED", "DISCONNECTED" ]
+          },
+          "last_synced_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "last_collection" : {
+            "$ref" : "#/components/schemas/CollectionStatus"
+          },
+          "collection_alert" : {
+            "$ref" : "#/components/schemas/CollectionAlert"
+          }
+        }
+      },
+      "AccountListResponse" : {
+        "type" : "object",
+        "properties" : {
+          "accounts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AccountDto"
+            }
+          }
+        }
+      },
+      "CollectionAlert" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "failed_days" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "next_pickup_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "CollectionStatus" : {
+        "type" : "object",
+        "properties" : {
+          "state" : {
+            "type" : "string"
+          },
+          "as_of" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "failure_reason" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ApiError" : {
+        "type" : "object",
+        "properties" : {
+          "error" : {
+            "$ref" : "#/components/schemas/Detail"
+          }
+        },
+        "description" : "오류 응답. 화면은 `error.code`로 분기하고 `error.message`를 그대로 보인다."
+      },
+      "Detail" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "bearer" : {
+        "type" : "http",
+        "description" : "로그인으로 받은 접근 토큰",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      }
+    }
+  }
+}
