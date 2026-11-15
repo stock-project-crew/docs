@@ -37,7 +37,7 @@
 ### G5. 인증
 - 쓸 말: 앱 계정은 **로그인**, 증권사 키 거절은 **인증 실패**
 - 쓰지 않을 말: 로그인을 뜻하는 "인증"
-- 코드 이름: `auth` 패키지(로그인 · JWT) / `failure_reason = AUTH_FAILED`, `NoticeCode.CREDENTIAL_INVALID`(증권사 키)
+- 코드 이름: `auth` 패키지(로그인 · JWT) / `failure_reason = SOURCE_CREDENTIAL_INVALID`, `NoticeCode.CREDENTIAL_INVALID`(증권사 키)
 - 정의: 인증 실패는 데이터 쪽 수집이 앱키 · 앱 시크릿 거절로 끝난 상태다. 로그인과는 무관하다.
 
 ### G6. 평가
@@ -164,7 +164,7 @@
 - 쓸 말: **미포함**
 - 쓰지 않을 말: 제외(이 뜻으로), 합계에서 뺀 계좌
 - 코드 이름: `NoticeCode.EXCLUDED_ACCOUNTS`, `excludedAccountCount`, `EmptyReason.ALL_UNAVAILABLE`, 원가 null 행(`Grade` UNAVAILABLE · CONFLICT)
-- 정의: 취득원가를 정하지 못한 매도 체결(등급 UNAVAILABLE · CONFLICT)은 합계와 목록에서 빠지고, 그런 체결이 있는 계좌 수만 따로 센다.
+- 정의: 취득원가를 정하지 못한 매도 체결(등급 UNAVAILABLE · CONFLICT)이다. 목록에는 매도금액만 보이는 행으로 남고 취득원가 · 손익은 비우며, 합계에서만 빠진다. 그런 체결이 있는 계좌 수를 따로 센다.
 
 ### P18. 추정 · 실현손익 등급
 - 쓸 말: **추정**
