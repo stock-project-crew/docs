@@ -807,7 +807,16 @@ SELECT i.symbol, i.name, coalesce(c.state, '없음') AS coverage_state, c.as_of 
  ORDER BY i.symbol;
 ```
 
-**`Q-PF7-PAIR` 자산 변화의 기초 · 기말과 넣은 돈** — `from` · `to`는 `YYYY-MM-DD`, `account`는 비우거나 쉼표로 이은 계좌 id. 기초는 기간 시작 전 마지막 라인(없으면 기간 안 첫 라인), 기말은 기간 끝 이하 마지막 라인, 넣은 돈은 (기초, 기말] 구간(포트폴리오 §2.9 · 동작은 `SnapshotPairResolver` · `ManualCashflowMapper`). 배당 · 수수료는 0이라 `investment_pnl`이 응답의 `earned`와 같다
+**`Q-PF7-PAIR` 자산 변화의 기초 · 기말과 넣은 돈** — `from` · `to`는 `YYYY-MM-DD`, `account`는 비우거나 쉼표로 이은 계좌 id. 규칙은 포트폴리오 §2.9를 그대로 옮긴다. 서버 구현의 질의를 옮겨 쓰지 않는다 — 같은 식을 쓰면 서버가 틀려도 같은 값이 나와 판정이 되지 않는다.
+
+- 기초는 기간 시작 전 마지막 라인 날짜(없으면 기간 안 첫 라인 날짜), 기말은 기간 끝 이하 마지막 라인 날짜다. 날짜는 사용자의 모든 계좌로 정하고 계좌 필터와 상관없다.
+- 계좌 편입: 기초 날짜에 라인이 없던 계좌는 기초 ~ 기말 사이 그 계좌의 첫 라인 날짜 총자산.
+- 계좌 제외: 기말 날짜에 라인이 없는 계좌는 기초 ~ 기말 사이 그 계좌의 마지막 라인 날짜 총자산.
+- 기간 중에 들어왔다 나간 계좌는 편입과 제외 둘 다에 든다.
+- 넣은 돈은 (기초, 기말] 구간의 입출금이다.
+- 배당 · 수수료는 0이라 `investment_pnl`이 응답의 `earned`와 같다.
+
+계좌마다 어디에 들었는지 보려면 마지막 `SELECT`를 `SELECT * FROM role;`로 바꿔 돌린다.
 
 ```sql
 WITH me AS (SELECT id FROM app_user WHERE email = :'email'),
@@ -820,18 +829,35 @@ WITH me AS (SELECT id FROM app_user WHERE email = :'email'),
                               (SELECT min(as_of) FROM days WHERE as_of >= :'from'::date)) AS opening,
                      (SELECT max(as_of) FROM days WHERE as_of <= :'to'::date) AS closing,
                      NOT EXISTS (SELECT 1 FROM days WHERE as_of < :'from'::date) AS opening_substituted),
+     -- 계좌 하나에 한 줄: 기초 · 기말에 라인이 있는지, 두 날 사이에서 처음 · 마지막으로 잡힌 날
+     seen AS (
+       SELECT m.account_id,
+              EXISTS (SELECT 1 FROM position_line x WHERE x.account_id = m.account_id AND x.as_of = p.opening) AS at_opening,
+              EXISTS (SELECT 1 FROM position_line x WHERE x.account_id = m.account_id AND x.as_of = p.closing) AS at_closing,
+              (SELECT min(x.as_of) FROM position_line x
+                WHERE x.account_id = m.account_id AND x.as_of BETWEEN p.opening AND p.closing) AS first_seen,
+              (SELECT max(x.as_of) FROM position_line x
+                WHERE x.account_id = m.account_id AND x.as_of BETWEEN p.opening AND p.closing) AS last_seen
+         FROM mine m CROSS JOIN pair p),
+     role AS (
+       SELECT s.*,
+              CASE WHEN NOT s.at_opening AND s.first_seen IS NOT NULL
+                   THEN (SELECT sum(x.market_value_krw) FROM position_line x
+                          WHERE x.account_id = s.account_id AND x.as_of = s.first_seen)
+                   ELSE 0 END AS included_krw,
+              CASE WHEN NOT s.at_closing AND s.last_seen IS NOT NULL
+                   THEN (SELECT sum(x.market_value_krw) FROM position_line x
+                          WHERE x.account_id = s.account_id AND x.as_of = s.last_seen)
+                   ELSE 0 END AS excluded_krw
+         FROM seen s),
      ends AS (
        SELECT p.*,
               (SELECT coalesce(sum(pl.market_value_krw), 0) FROM position_line pl JOIN mine USING (account_id)
                 WHERE pl.as_of = p.opening) AS opening_krw,
               (SELECT coalesce(sum(pl.market_value_krw), 0) FROM position_line pl JOIN mine USING (account_id)
                 WHERE pl.as_of = p.closing) AS closing_krw,
-              (SELECT coalesce(sum(pl.market_value_krw), 0) FROM position_line pl JOIN mine USING (account_id)
-                WHERE pl.as_of = p.closing
-                  AND pl.account_id NOT IN (SELECT x.account_id FROM position_line x WHERE x.as_of = p.opening)) AS included_krw,
-              (SELECT coalesce(sum(pl.market_value_krw), 0) FROM position_line pl JOIN mine USING (account_id)
-                WHERE pl.as_of = p.opening
-                  AND pl.account_id NOT IN (SELECT x.account_id FROM position_line x WHERE x.as_of = p.closing)) AS excluded_krw,
+              (SELECT coalesce(sum(included_krw), 0) FROM role) AS included_krw,
+              (SELECT coalesce(sum(excluded_krw), 0) FROM role) AS excluded_krw,
               (SELECT coalesce(sum(CASE m.type WHEN 'DEPOSIT' THEN m.amount ELSE -m.amount END), 0)
                  FROM manual_cashflow m JOIN mine USING (account_id)
                 WHERE m.occurred_on > p.opening AND m.occurred_on <= p.closing) AS deposited
