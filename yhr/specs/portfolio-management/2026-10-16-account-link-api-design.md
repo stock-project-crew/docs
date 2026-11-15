@@ -204,7 +204,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 **연속 실패 일수(`failed_days`).**
 
 1. 끝난 실행을 `as_of`로 묶는다. 열린 실행(`REQUESTED` · `RUNNING`)은 보지 않는다.
-2. `as_of`가 KR 영업일(`dim_market_calendar`)인 날만 센다. 비영업일에 누른 동기화의 `as_of`(토 · 일 · 공휴일)는 그 영업일의 정기 수집과 같은 밤에 처리되므로, 따로 세면 한 밤의 장애가 여러 날로 세진다.
+2. `as_of`가 KR 영업일인 날만 센다. 영업일은 `dim_market_calendar`에 그날 행이 있으면 그 `is_trading_day`로, 없으면 월~금으로 본다(알림의 거래일 판정과 같다). 캘린더가 끝난 뒤에도 연속 실패를 세기 위해서이고, 캘린더에 없는 공휴일은 하루 더 세질 수 있다. 비영업일에 누른 동기화의 `as_of`(토 · 일 · 공휴일)는 그 영업일의 정기 수집과 같은 밤에 처리되므로, 따로 세면 한 밤의 장애가 여러 날로 세진다.
 3. 그날 `DONE`이 하나라도 있으면 성공한 날, 끝난 실행이 모두 실패면 실패한 날이다.
 4. `as_of`가 늦은 날부터 거꾸로 실패한 날을 세다가 성공한 날에서 멈춘다.
 
@@ -216,7 +216,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 |---|---|---|---|
 | `CREDENTIAL_INVALID` | 마지막 `DONE` 뒤에 끝난 실패 가운데 `failure_reason`이 인증 실패 코드인 것이 있다(`DONE`이 없으면 끝난 실패 전부에서 본다). 순서는 `finished_at`, 같으면 `run_id` | 위 일수(0 이상) | `null` |
 | `REPEATED_FAILURE` | `link_state = CONNECTED`이고 연속 실패 일수가 2 이상이다 | 위 일수 | `null` |
-| `CREDENTIAL_UPDATED` | `link_state = CONNECTED`이고 끝난 실행이 없다 | `0` | 아래 |
+| `CREDENTIAL_UPDATED` | `link_state = CONNECTED`이고 `linked_at`이 있으며 끝난 실행이 없다 | `0` | 아래 |
 | 없음 | 그 밖 | — | — |
 
 - **인증 실패 코드**는 한곳(`CredentialFailureReasons.INVALID`)에 둔 목록이다. 지금은 `SOURCE_CREDENTIAL_INVALID` 하나다. 데이터가 앱키 · 시크릿 무효를 가리는 코드를 더 주면 이 목록에만 더한다. 값은 `FailureReasons.sanitize`를 거친 뒤 비교한다.
@@ -224,7 +224,7 @@ KIS 등록은 추가인증이 없으므로 응답의 `challenge`는 항상 `null
 - 인증 실패를 "마지막 실행"이 아니라 "마지막 성공 뒤의 실패 가운데"에서 찾는 이유: 같은 밤 같은 계좌의 정기 · 수동 행이 차례로 돌 때, 뒤의 행이 토큰 발급 횟수 제한(앱키당 1분 1회)으로 다른 실패 코드로 끝나면 앞의 인증 실패가 가려진다. 실패한 발급 시도가 이 제한에 세지는지는 확인하지 않았다.
 - `failed_days`는 `CREDENTIAL_INVALID`에서 0일 수 있다. 같은 날 정기 수집이 성공한 뒤 그날 `as_of`의 동기화가 인증 실패로 끝난 경우 · 인증 실패가 비영업일 `as_of`의 실행에서 난 경우다.
 - `REPEATED_FAILURE`를 `CONNECTED`에만 두는 이유: 한 번도 성공하지 않은 `CONNECTING` 계좌는 계좌번호가 틀렸을 수 있어 "앱키를 바꿨다면 갱신하라"가 맞지 않는다. 그 계좌는 연동 목록의 첫 수집 실패 줄이 앱키 · 계좌번호를 함께 말한다(계좌 연동 화면 설계 §3.1). 인증 실패 코드가 오면 `CONNECTING`도 `CREDENTIAL_INVALID`다.
-- `CREDENTIAL_UPDATED`는 갱신 직후에만 생긴다. `CONNECTED`는 성공한 수집이 있어야 되므로, `linked_at` 뒤에 끝난 실행이 없는 `CONNECTED` 계좌는 갱신으로 `linked_at`이 옮겨진 계좌다. `CONNECTING` 계좌는 갱신 직후인지 갓 등록 · 재연동했는지 가를 수 없어 안내가 없다. 연동 목록이 `연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`를 보인다.
+- `CREDENTIAL_UPDATED`는 갱신 직후에만 생긴다. `CONNECTED`는 성공한 수집이 있어야 되므로, `linked_at` 뒤에 끝난 실행이 없는 `CONNECTED` 계좌는 갱신으로 `linked_at`이 옮겨진 계좌다. `linked_at`이 빈 계좌는 그 전에 연동해 갱신한 적이 없는 계좌이므로 안내가 없다. `CONNECTING` 계좌는 갱신 직후인지 갓 등록 · 재연동했는지 가를 수 없어 안내가 없다. 연동 목록이 `연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`를 보인다.
 - **`next_pickup_at`**은 `portfolio.sync.pickup-cron`으로 구한 `linked_at` 뒤 첫 수집 시각이다. 그 시각의 수집이 도는 동안에도 같은 값이어야 해서 지금이 아니라 `linked_at`을 기준으로 한다. 그 시각에서 3시간이 지났는데도 끝난 실행이 없으면 수집이 돌지 않은 것이므로 지금 뒤 첫 수집 시각을 싣는다. 백엔드는 Airflow가 실제로 도는지 모르므로 이 값은 예정이다.
 - 판정 범위는 `DISCONNECTED`가 아닌 계좌다.
 
@@ -470,9 +470,9 @@ CI는 실제 Postgres(`postgres:16-alpine`, `portfolio_test`)로 돈다. 실제 
 |---|---|
 | `KisAccountNumberTest` | 앞뒤 공백 · 하이픈 유무가 같은 10자리로 정규화된다 · 01/22 → 유형과 기본 `label` · 29 · 55 · 자릿수 · 숫자 아님은 거부 · 거부 메시지와 `toString`에 입력값이 없다 |
 | `AccountRefIssuerTest` | 같은 입력은 같은 값 · 소금이나 계좌번호가 다르면 다른 값 · `ar_` + 32hex · 고정 벡터 1건(가짜 소금 · 가짜 계좌번호) |
-| `SsmCredentialStoreTest` | `SsmClient` 목으로 요청 모양(이름, `SecureString`, `Overwrite`, 값 JSON의 다섯 키, `env`는 소문자, `env`가 없으면 키도 없다) · 계좌 정보 값의 쓰기 모양(두 키) · 읽기(`WithDecryption`, 없으면 empty, 모양이 다르면 저장소 장애 예외) · `ParameterNotFound` 삭제는 성공 · SDK 예외는 저장소 장애 예외 |
+| `SsmCredentialStoreTest` | `SsmClient` 목으로 요청 모양(이름, `SecureString`, `Overwrite`, 값 JSON의 다섯 키, `env`는 소문자, `env`가 없으면 키도 없다) · 계좌 정보 값의 쓰기 모양(두 키) · 읽기(`WithDecryption`, 없거나 모양이 다르거나 계좌번호 규칙에 맞지 않으면 empty) · `ParameterNotFound` 삭제는 성공 · SDK 예외는 저장소 장애 예외 |
 | `AccountNumberMaskTest` | `0000567801` → `****5678-01` · 입력값의 앞 4자리가 결과에 없다 |
-| `CollectionAlertTest` | 판정 표(§3.7)의 순서 · 마지막 `DONE` 뒤의 실패에 인증 실패 코드가 있으면 `CREDENTIAL_INVALID`(뒤에 다른 코드의 실패가 이어져도) · 마지막이 `DONE`이면 안내 없음 · `as_of` 단위 연속 일수(같은 날 실행 여럿 · 하루라도 `DONE` · 열린 실행은 보지 않음 · 비영업일 `as_of`는 세지 않음 · `REAUTH_REQUIRED`도 실패) · 1일은 안내 없음, 2일은 `CONNECTED`면 `REPEATED_FAILURE`, `CONNECTING`이면 없음 · `CREDENTIAL_INVALID`의 `failed_days` 0 · `CONNECTED`이고 끝난 실행이 없으면 `CREDENTIAL_UPDATED`, `CONNECTING`이면 없음 |
+| `CollectionAlertTest` | 판정 표(§3.7)의 순서 · 마지막 `DONE` 뒤의 실패에 인증 실패 코드가 있으면 `CREDENTIAL_INVALID`(뒤에 다른 코드의 실패가 이어져도) · 마지막이 `DONE`이면 안내 없음 · `as_of` 단위 연속 일수(같은 날 실행 여럿 · 하루라도 `DONE` · 열린 실행은 보지 않음 · 비영업일 `as_of`는 세지 않음 · 캘린더에 없는 날은 월~금으로 봄 · `REAUTH_REQUIRED`도 실패) · 1일은 안내 없음, 2일은 `CONNECTED`면 `REPEATED_FAILURE`, `CONNECTING`이면 없음 · `CREDENTIAL_INVALID`의 `failed_days` 0 · `CONNECTED`이고 `linked_at`이 있으며 끝난 실행이 없으면 `CREDENTIAL_UPDATED`, `linked_at`이 비었거나 `CONNECTING`이면 없음 |
 | `NextPickupTest` | `linked_at` 뒤 첫 수집 시각 · 그 시각이 지난 지 3시간 안이면 그대로, 넘으면 지금 뒤 첫 수집 시각 |
 | 기동 검사 | 소금이 없거나 짧을 때, `portfolio.credentials.store`가 없을 때 컨텍스트가 뜨지 않는다(`ApplicationContextRunner`) |
 
