@@ -33,7 +33,7 @@
 | 웹 | `http://localhost:8081` | `http://localhost:8081`(앱 `.env`의 API 주소를 `http://localhost:18080`으로) |
 | DB | 로컬 Docker `portfolio` | 클러스터 `portfolio-db-0` |
 | 계정 | `yhr@a.com` · `hhj@a.com` · `jdh@a.com` · `test_empty@a.com`(계좌 없음) | `it1@a.com`(본인 역) · `it2@a.com`(격리 확인용) |
-| 띄우는 법 | [앱 실행 안내서](../guide/2026-10-17-app-run-guide.md) 1부. 백엔드는 §2.1의 명령으로 | 안내서 2부. 터널과 포트포워드는 사람이 연다 |
+| 띄우는 법 | front-end `README.md` 「실행 — A. 로컬 서버 + 로컬 DB」. 백엔드는 §2.1의 명령으로 | front-end `README.md` 「실행 — B. 클러스터 서버」. 터널과 포트포워드는 사람이 연다 |
 
 ### 2.1 로컬 백엔드
 
@@ -49,7 +49,7 @@ SNAPSHOT_RUNTIME_ENABLED=true ./gradlew bootRun --args='--spring.profiles.active
 
 알림 평가기 · 발송기 · 영수증 확인기를 끈 기동이 필요한 케이스는 사전조건에 `알림 스케줄 끈 백엔드`라고 적는다. 그때는 `ALERT_RUNTIME_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `enabled: ${ALERT_RUNTIME_ENABLED:true}`).
 
-로그인 세션 수명은 세 값이다(포트폴리오 §8.8). 접근 토큰 `PORTFOLIO_AUTH_ACCESS_TTL`(기본 `PT30M`), 마지막 갱신 뒤 유휴 한도 `PORTFOLIO_AUTH_IDLE_TTL`(`P7D`), 로그인 뒤 절대 상한 `PORTFOLIO_AUTH_ABSOLUTE_TTL`(`P30D`). 세션 만료를 보는 케이스는 사전조건에 `세션 5분 백엔드`라고 적는다. 그때는 아래처럼 세 값을 함께 줄여 띄운다.
+로그인 세션 수명은 세 값이다(공통 4.1). 접근 토큰 `PORTFOLIO_AUTH_ACCESS_TTL`(기본 `PT30M`), 마지막 갱신 뒤 유휴 한도 `PORTFOLIO_AUTH_IDLE_TTL`(`P7D`), 로그인 뒤 절대 상한 `PORTFOLIO_AUTH_ABSOLUTE_TTL`(`P30D`). 세션 만료를 보는 케이스는 사전조건에 `세션 5분 백엔드`라고 적는다. 그때는 아래처럼 세 값을 함께 줄여 띄운다.
 
 ```bash
 SNAPSHOT_RUNTIME_ENABLED=true PORTFOLIO_AUTH_ACCESS_TTL=PT2M PORTFOLIO_AUTH_IDLE_TTL=PT5M \
@@ -60,7 +60,7 @@ SNAPSHOT_RUNTIME_ENABLED=true PORTFOLIO_AUTH_ACCESS_TTL=PT2M PORTFOLIO_AUTH_IDLE
 - 유휴 한도만 줄이면 웹 화면이 다시 보일 때 다시 받는 요청이 갱신을 일으켜 세션이 이어질 수 있다. 절대 상한도 5분으로 두어 로그인 5분 뒤에는 활동과 상관없이 세션이 끝나게 한다.
 - 세션의 절대 상한은 로그인할 때 정해진다. 기동 전에 만든 세션에는 줄인 값이 적용되지 않으므로 띄운 뒤 다시 로그인한다.
 
-수급 · 장중 데이터 닫힘(알림 §5.6)을 보는 케이스는 사전조건에 `데이터 닫힌 백엔드`라고 적는다. 그때는 `ALERT_FLOW_ENABLED=false ALERT_INTRADAY_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `flow-enabled: ${ALERT_FLOW_ENABLED:true}` · `intraday-enabled: ${ALERT_INTRADAY_ENABLED:true}`). 하나만 닫을 때는 그 변수만 더한다. 값은 기동할 때 읽으므로 바꾸면 다시 띄운다.
+수급 · 장중 데이터 닫힘(알림 4.11)을 보는 케이스는 사전조건에 `데이터 닫힌 백엔드`라고 적는다. 그때는 `ALERT_FLOW_ENABLED=false ALERT_INTRADAY_ENABLED=false`를 더해 띄운다(백엔드 `application.yaml`의 `flow-enabled: ${ALERT_FLOW_ENABLED:true}` · `intraday-enabled: ${ALERT_INTRADAY_ENABLED:true}`). 하나만 닫을 때는 그 변수만 더한다. 값은 기동할 때 읽으므로 바꾸면 다시 띄운다.
 
 운영은 두 값을 백엔드 `k8s/deployment.yaml`에 둔다. 바꾸려면 그 값을 고쳐 main에 푸시하고, Argo CD의 롤아웃이 끝난 뒤에 확인한다. 운영 배포라 사람이 승인한 뒤에만 한다.
 
@@ -95,7 +95,7 @@ SNAPSHOT_RUNTIME_ENABLED=true BASIS_ENABLED=true ./gradlew bootRun --args='--spr
 
 ### 3.1 `로컬` — 에이전트가 한다
 
-로컬 계정 비밀번호는 공개된 개발용 값(`local-dev-password`, 안내서 1.5)이다.
+로컬 계정 비밀번호는 공개된 개발용 값(`local-dev-password`, back-end `README.md` 「로그인하고 부르기」)이다.
 
 ```bash
 login_local() {
@@ -166,6 +166,23 @@ curl -s -o "$OUT/01-post-sync.json" -D "$OUT/01-post-sync.headers" -w '%{http_co
 
 `-D`로 남긴 응답 헤더에는 요청의 `Authorization`이 들어가지 않는다.
 
+**입출금 저장** — `PUT /portfolio/cashflows/{id}`. `{id}`는 요청하는 쪽이 만든 UUID다(앱은 저장 버튼마다 하나를 만들고, 응답을 잃어 다시 누르면 같은 id를 다시 보낸다). 한 케이스에서 새 행을 만들 때마다 새 UUID를 쓴다.
+
+```bash
+CF=$(uuidgen | tr 'A-Z' 'a-z')
+curl -s -o "$OUT/02-put-cashflow.json" -w '%{http_code}\n' \
+  -X PUT "$API/portfolio/cashflows/$CF" \
+  -H "Authorization: Bearer $(cat ~/.cache/stock-it/$ENV/$ME)" \
+  -H 'Content-Type: application/json' \
+  -d '{"account_id": "20000000-0000-0000-0000-000000000001", "type": "DEPOSIT", "amount": 10000, "occurred_on": "2026-07-26"}'
+```
+
+| 보낸 것 | 응답 |
+|---|---|
+| 처음 보낸 id | `201`, 본문 `{ "id": "<그 id>" }` |
+| 같은 id · 같은 내용을 다시 보냄 | `200`, 같은 본문. 행은 하나다(`Q-PF8-CASHFLOWS`) |
+| 같은 id · 다른 내용, 또는 남의 행과 같은 id | `409` `CASHFLOW_ID_CONFLICT`. 저장된 행은 그대로다 |
+
 **요청 묶음**
 
 | ID | 내용 |
@@ -206,7 +223,7 @@ docker compose -f <작업폴더>/back-end/docker-compose.yml exec -T \
 
 | ID | 언제 | 하는 일 |
 |---|---|---|
-| `R-LOCAL` | `로컬` 묶음을 시작할 때, 케이스의 사전조건이 앞 케이스에 깨졌을 때 | 샘플 두 파일을 다시 넣고(안내서 1.2) `F-00` · `F-01`을 적용한다. 샘플은 `app_user` 밖의 앱 표(계좌 · 라인 · 처리 기록 · 동기화 · 평단 · 실현손익 · 입출금 · 알림 · 기기 · `snapshot_run`)와 종목 · 수집 · 잔고 · 환율 · 시세 · 캘린더 미러를 비우고 다시 만들며, 배당 · 수수료 · 세금 원장과 커버리지(`cln_cashflow` · `cln_cashflow_coverage`)는 비워 둔다. 체결 · 기업행위 미러(`cln_trade` · `cln_trade_coverage` · `corporate_action` · `ca_coverage`)는 `F-01`이 비운다. 브라우저 저장소의 마지막 동기화 실행 id(`sync.last_run_id`)는 남지만, 그 실행 조회가 `403`이면 앱이 지운다 |
+| `R-LOCAL` | `로컬` 묶음을 시작할 때, 케이스의 사전조건이 앞 케이스에 깨졌을 때 | 샘플 두 파일을 다시 넣고(back-end `README.md` 「샘플 데이터」) `F-00` · `F-01`을 적용한다. 샘플은 `app_user` 밖의 앱 표(계좌 · 라인 · 처리 기록 · 동기화 · 평단 · 실현손익 · 입출금 · 알림 · 기기 · `snapshot_run`)와 종목 · 수집 · 잔고 · 환율 · 시세 · 캘린더 미러를 비우고 다시 만들며, 배당 · 수수료 · 세금 원장과 커버리지(`cln_cashflow` · `cln_cashflow_coverage`)는 비워 둔다. 체결 · 기업행위 미러(`cln_trade` · `cln_trade_coverage` · `corporate_action` · `ca_coverage`)는 `F-01`이 비운다. 브라우저 저장소의 마지막 동기화 실행 id(`sync.last_run_id`)는 남지만, 그 실행 조회가 `403`이면 앱이 지운다 |
 
 `연계`는 초기화하지 않는다. 테스트 계정의 상태는 앱 조작과 API로만 바꾼다.
 
@@ -331,7 +348,7 @@ SELECT a.account_id,
 SELECT count(*) AS sync_runs FROM sync_run s JOIN app_user u ON u.id = s.user_id WHERE u.email = :'email';
 ```
 
-**`Q-PF3-ACCOUNT-AS-OF` 계좌별 기준일** — 사용자의 가장 늦은 `as_of` 라인에서 계좌마다 가장 이른 `source_as_of`의 KST 날짜(동기화 설계 §4.2)
+**`Q-PF3-ACCOUNT-AS-OF` 계좌별 기준일** — 사용자의 가장 늦은 `as_of` 라인에서 계좌마다 가장 이른 `source_as_of`의 KST 날짜(포트폴리오 8.4)
 
 ```sql
 WITH mine AS (SELECT a.account_id FROM account a JOIN app_user u ON u.id = a.user_id WHERE u.email = :'email'),
@@ -575,7 +592,7 @@ SELECT al.alert_id, al.name, al.status, s.last_result, s.unknown_reason, s.evalu
 
 ### 7.5 PF5 · PF6 · PF7
 
-질의의 범위는 화면과 같다. 최신 기준일은 그 사용자 계좌에 라인이 있는 가장 늦은 `as_of`(해제 계좌 포함)이고, 현재 보유 값은 `DISCONNECTED`가 아닌 계좌만 더한다(포트폴리오 §3.8 · §7.5). 자산 변화의 기초 · 기말은 해제 계좌의 과거도 센다.
+질의의 범위는 화면과 같다. 최신 기준일은 그 사용자 계좌에 라인이 있는 가장 늦은 `as_of`(해제 계좌 포함)이고, 현재 보유 값은 `DISCONNECTED`가 아닌 계좌만 더한다(공통 5.4 · 포트폴리오 6.7). 자산 변화의 기초 · 기말은 해제 계좌의 과거도 센다.
 
 **`F-PF5-SAME-INSTRUMENT` 삼성전자를 두 번째 계좌에도 보유시킨다** — `yhr@a.com`의 `…0002`(국내주식)에 `2026-07-27` 삼성전자 100주(매입 7,000,000 · 평가 7,120,000)
 
@@ -813,7 +830,7 @@ SELECT i.symbol, i.name, coalesce(c.state, '없음') AS coverage_state, c.as_of 
  ORDER BY i.symbol;
 ```
 
-**`Q-PF7-PAIR` 자산 변화의 기초 · 기말과 넣은 돈** — `from` · `to`는 `YYYY-MM-DD`, `account`는 비우거나 쉼표로 이은 계좌 id. 규칙은 포트폴리오 §2.9를 그대로 옮긴다. 서버 구현의 질의를 옮겨 쓰지 않는다 — 같은 식을 쓰면 서버가 틀려도 같은 값이 나와 판정이 되지 않는다.
+**`Q-PF7-PAIR` 자산 변화의 기초 · 기말과 넣은 돈** — `from` · `to`는 `YYYY-MM-DD`, `account`는 비우거나 쉼표로 이은 계좌 id. 규칙은 포트폴리오 4.8을 그대로 옮긴다. 서버 구현의 질의를 옮겨 쓰지 않는다 — 같은 식을 쓰면 서버가 틀려도 같은 값이 나와 판정이 되지 않는다.
 
 - 기초는 기간 시작 전 마지막 라인 날짜(없으면 기간 안 첫 라인 날짜), 기말은 기간 끝 이하 마지막 라인 날짜다. 날짜는 사용자의 모든 계좌로 정하고 계좌 필터와 상관없다.
 - 계좌 편입: 기초 날짜에 라인이 없던 계좌는 기초 ~ 기말 사이 그 계좌의 첫 라인 날짜 총자산.
@@ -1267,7 +1284,7 @@ SELECT e.event_id, e.alert_id, a.name AS alert_name, e.as_of, e.fired_at,
  ORDER BY e.as_of DESC, e.event_id;
 ```
 
-**`Q-AL3-UNREAD` 사용자의 미확인 발화 수** — 삭제된 알림의 발화도 센다(알림 §6.8)
+**`Q-AL3-UNREAD` 사용자의 미확인 발화 수** — 삭제된 알림의 발화도 센다(알림 8.5)
 
 ```sql
 SELECT count(*) AS unread
@@ -1352,7 +1369,7 @@ INSERT INTO market_data_run (market, kind, as_of, state, finished_at)
 VALUES (:'market', 'INTRADAY_QUOTE', :'at', 'DONE', now());
 ```
 
-**`F-AL5-PRIOR-FIRE` 알림이 `at`보다 `ago`분 앞에 울린 것으로** — 그 시점의 발화 한 행을 넣고 평가 상태를 그 시점으로 맞춘다. `known`은 지금 엣지 기준(`TRUE` · `FALSE`). `cadence`는 넣지 않는다 — 비어 있으면 알림의 평가 시점으로 읽는다(알림 §10.1 `alert_event`)
+**`F-AL5-PRIOR-FIRE` 알림이 `at`보다 `ago`분 앞에 울린 것으로** — 그 시점의 발화 한 행을 넣고 평가 상태를 그 시점으로 맞춘다. `known`은 지금 엣지 기준(`TRUE` · `FALSE`). `cadence`는 넣지 않는다 — 비어 있으면 알림의 평가 시점으로 읽는다(알림 7 `alert_event`)
 
 ```sql
 INSERT INTO alert_event (event_id, alert_id, as_of, fired_at, title, body, lines, observed, read_at)
@@ -2127,7 +2144,7 @@ docker exec -e PGOPTIONS='-c search_path=app,data' back-end-db-1 psql -U portfol
 
 시각 값(`at`)은 `2026-10-29T10:20:00+09:00` 꼴, 날짜 값(`d`)은 `2026-09-28` 꼴로 넘긴다(실행 부록 §7.8과 같다).
 
-**`F-N-STALE-HASH` 평가 상태의 해시를 지금 코드의 컴파일 결과와 다른 값으로** — 템플릿 로직 · 업캐스팅이 바뀐 배포 직후를 흉내 낸다(알림 §6.6)
+**`F-N-STALE-HASH` 평가 상태의 해시를 지금 코드의 컴파일 결과와 다른 값으로** — 템플릿 로직 · 업캐스팅이 바뀐 배포 직후를 흉내 낸다(알림 4.9)
 
 ```sql
 UPDATE alert_state SET spec_hash = 'it-stale' WHERE alert_id = :'alert';
@@ -2153,7 +2170,7 @@ INSERT INTO adjusted_price_daily (instrument_id, date, open, high, low, close, v
 VALUES (:'instrument', :'d', :'close', :'high', :'low', :'close', :'volume', 1);
 ```
 
-**`F-N-ADJUST-HISTORY` 그날 이전의 봉을 보정 계열로 다시 쓴다** — `factor`는 행위 뒤 가격 ÷ 행위 전 가격(2:1 분할이면 `0.5`). 데이터가 보정된 계열을 준 뒤를 흉내 낸다(알림 §7.3)
+**`F-N-ADJUST-HISTORY` 그날 이전의 봉을 보정 계열로 다시 쓴다** — `factor`는 행위 뒤 가격 ÷ 행위 전 가격(2:1 분할이면 `0.5`). 데이터가 보정된 계열을 준 뒤를 흉내 낸다(알림 4.10)
 
 ```sql
 UPDATE adjusted_price_daily
@@ -2320,13 +2337,13 @@ SELECT a.alert_id, u.email AS owner, a.status, a.deleted_at, a.trigger_spec, s.v
 | 값 | 뜻 |
 |---|---|
 | 언제든 | 시각 제약이 없다 |
-| 확정 전 | 월 · 화 · 수 · 목 23:00 전, 또는 금요일. 다음 픽업이 그날 확정 마감 전이라 이미 확정으로 판정되지 않는다(동기화 설계 §2.1 · §5.3) |
+| 확정 전 | 월 · 화 · 수 · 목 23:00 전, 또는 금요일. 다음 픽업이 그날 확정 마감 전이라 이미 확정으로 판정되지 않는다(포트폴리오 5.7 · 5.6) |
 | 일 · 월 · 화 · 수 · 목 23:00 전 | 요청한 그날 밤 수집된다 |
 | 다음 수집 뒤 | 요청 뒤 첫 일 · 월 · 화 · 수 · 목 23:00 수집과 반영이 끝난 뒤. 수집은 데이터 쪽이 돌고, 반영은 생성기가 1분마다 집는다 |
-| 월 · 화 · 수 · 목 23:00 뒤 | 다음 날이 KR 영업일이면, 다음 픽업(다음 가동일 23:00)이 그날 확정 마감(다음 날 08:00) 뒤라 이미 확정으로 판정된다(동기화 설계 §2.1 · §5.3) |
+| 월 · 화 · 수 · 목 23:00 뒤 | 다음 날이 KR 영업일이면, 다음 픽업(다음 가동일 23:00)이 그날 확정 마감(다음 날 08:00) 뒤라 이미 확정으로 판정된다(포트폴리오 5.7 · 5.6) |
 | 비영업일 | 토 · 일 · 휴장일 |
 | 영업일 | KR 영업일 아무 때 |
-| KR 영업일 08:00 뒤(그날 안) | 직전 KR 영업일의 확정 마감(다음 KR 영업일 08:00)이 지났고 오늘의 마감은 오지 않았다. 생성기 확정 단계가 직전 영업일 하루만 확정하고 오늘에서 멈춘다(생성기 설계 §6.2) |
+| KR 영업일 08:00 뒤(그날 안) | 직전 KR 영업일의 확정 마감(다음 KR 영업일 08:00)이 지났고 오늘의 마감은 오지 않았다. 생성기 확정 단계가 직전 영업일 하루만 확정하고 오늘에서 멈춘다(포트폴리오 6.5) |
 | 국내 장중 | 평일 09:10 ~ 15:30 KST |
 | 국내 장 시간 밖 | 평일 15:30 ~ 다음 날 09:00 KST, 또는 토 · 일 |
 | 클러스터 가동 시간 안 | 3주 계획의 클러스터 가동 시간 |

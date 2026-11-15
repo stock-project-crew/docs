@@ -4,7 +4,7 @@
 - **관련 계획**: [통합테스트 · 운영테스트 3주 계획](2026-10-11-integration-and-operation-test-plan.md)
 - **원칙**: 두 머신은 같은 도구 버전과 같은 절차를 쓴다. 머신마다 다른 값은 §3에, 회사 네트워크에만 필요한 설정은 §4에 모아두고 저장소에 커밋하지 않는다
 
-로컬에서 백엔드·앱을 띄우는 절차는 각 저장소 README가 단일 출처다 — `back-end/README.md` §실행·§테스트, `front-end/README.md` §실행·§검사. 이 문서는 그 절차가 도는 데 필요한 머신 상태만 다룬다.
+로컬에서 백엔드·앱을 띄우는 절차는 각 저장소 README가 단일 출처다 — `back-end/README.md` 「로컬에서 실행」 · 「테스트」, `front-end/README.md` 「실행」 · 「검사」. 이 문서는 그 절차가 도는 데 필요한 머신 상태만 다룬다.
 
 ---
 
@@ -199,7 +199,7 @@ kubectl -n portfolio port-forward svc/portfolio-api 18080:8080
 curl -s localhost:18080/actuator/health        # {"status":"UP",...}
 ```
 
-상태 점검 말고는 전부 토큰이 필요하다. 로그인과 조회는 `back-end/README.md` §실행과 같고 주소만 `localhost:18080`이다.
+상태 점검 말고는 전부 토큰이 필요하다. 로그인과 조회는 `back-end/README.md` 「로그인하고 부르기」와 같고 주소만 `localhost:18080`이다.
 
 **클러스터 DB** — 앱이 쓰는 DB는 StatefulSet `portfolio-db`의 `portfolio-db-0`이다. 같은 네임스페이스의 Deployment `postgres`는 앱이 쓰지 않는다. 파드 안의 psql을 쓰고, 세션을 읽기 전용으로 연다.
 
