@@ -348,7 +348,7 @@ SELECT a.account_id,
 SELECT count(*) AS sync_runs FROM sync_run s JOIN app_user u ON u.id = s.user_id WHERE u.email = :'email';
 ```
 
-**`Q-PF3-ACCOUNT-AS-OF` 계좌별 기준일** — 사용자의 가장 늦은 `as_of` 라인에서 계좌마다 가장 이른 `source_as_of`의 KST 날짜(포트폴리오 8.4)
+**`Q-PF3-ACCOUNT-AS-OF` 계좌별 기준일** — 사용자의 가장 늦은 `as_of` 라인에서 계좌마다 가장 이른 `source_as_of`의 KST 날짜(포트폴리오 5.6 계좌 `as_of` · 8.2 `source_as_of`)
 
 ```sql
 WITH mine AS (SELECT a.account_id FROM account a JOIN app_user u ON u.id = a.user_id WHERE u.email = :'email'),
