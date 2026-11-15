@@ -1532,28 +1532,17 @@ UPDATE collection_run r
 COMMIT;
 ```
 
-**`F-N-FX-NEAR` 오늘보다 8일 앞선 환율 하나만 두고, 그 사이 평일 하루를 KR 휴장일로 바꾼다** — 앞의 `\gset`이 바꿀 날을 `holiday`로 정한다. 끝나면 `F-N-FX-NEAR-UNDO`(`holiday`). `prev_trading_day` · `next_trading_day`는 고치지 않는다
+**`F-N-FX-NEAR` 오늘보다 7일 앞선 환율 하나만 둔다** — 7일은 낡은 환율 경고가 뜨지 않는 마지막 날이다
 
 ```sql
-SELECT (now() AT TIME ZONE 'Asia/Seoul')::date AS today,
-       (now() AT TIME ZONE 'Asia/Seoul')::date - 8 AS fx_day
+SELECT (now() AT TIME ZONE 'Asia/Seoul')::date - 7 AS fx_day
 \gset
-SELECT max(date) AS holiday FROM dim_market_calendar
- WHERE market = 'KR' AND date > :'fx_day'::date AND date < :'today'::date AND is_trading_day
-\gset
-\echo fx_day=:fx_day holiday=:holiday
+\echo fx_day=:fx_day
 BEGIN;
 DELETE FROM fx_rate WHERE currency_pair = 'USD/KRW';
 INSERT INTO fx_rate (as_of, currency_pair, rate_type, rate, source)
 VALUES (:'fx_day'::date, 'USD/KRW', 'BASE', 1400, 'np-local');
-UPDATE dim_market_calendar SET is_trading_day = false WHERE market = 'KR' AND date = :'holiday'::date;
 COMMIT;
-```
-
-**`F-N-FX-NEAR-UNDO`** — `holiday`
-
-```sql
-UPDATE dim_market_calendar SET is_trading_day = true WHERE market = 'KR' AND date = :'holiday'::date;
 ```
 
 **`F-N-HOLIDAY-TODAY` 오늘(KST)을 KR 휴장일로** — 끝나면 `F-N-HOLIDAY-TODAY-UNDO`
