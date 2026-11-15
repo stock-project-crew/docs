@@ -502,6 +502,12 @@ UPDATE collection_run r
  WHERE a.account_id = :'account' AND r.account_ref = a.account_ref AND r.state = 'REQUESTED';
 ```
 
+**`F-PF1-CONNECTED` 계좌를 연동됨으로 올린다** — `account`. 생성기가 첫 성공 수집을 처리한 것과 같은 상태만 만든다(라인은 쓰지 않는다)
+
+```sql
+UPDATE account SET link_state = 'CONNECTED' WHERE account_id = :'account' AND link_state = 'CONNECTING';
+```
+
 **`F-PF2-DROP-ACCOUNT` 라인 · 수집 행이 없는 계좌 행을 없앤다** — 해제 시트가 열린 사이 "이미 없는 계좌"를 만든다. 다른 표가 참조하면 실패한다
 
 ```sql
@@ -1112,6 +1118,41 @@ SELECT :'today'::date, account_id, instrument_id, quantity, cost_amount_local,
  WHERE as_of = '2026-07-27'
    AND account_id IN ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002',
                       '20000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004');
+```
+
+**`F-PF11-ALERTS` `yhr@a.com` 계좌들에 수집 안내를 만들 끝난 실패 수집을 넣는다** — `…0004`: `2026-07-27` `SOURCE_CREDENTIAL_INVALID`와 가린 번호 `****1234-22`. `…0001`: `2026-07-24`(금) · `07-25`(토) 실패. `…0002`: 캘린더 밖 `2025-07-11`(금) · `07-12`(토) · `07-14`(월) 실패. `생성기 끈 백엔드`에서 `R-LOCAL` 직후에 쓴다
+
+```sql
+BEGIN;
+INSERT INTO collection_run (run_id, account_ref, requested_by, as_of, requested_at, state, finished_at, failure_reason)
+SELECT gen_random_uuid(), a.account_ref, 'SCHEDULE', v.as_of, v.as_of + time '23:00' AT TIME ZONE 'Asia/Seoul',
+       'FAILED', v.as_of + time '23:10' AT TIME ZONE 'Asia/Seoul', v.reason
+  FROM account a JOIN (VALUES
+       ('20000000-0000-0000-0000-000000000004'::uuid, DATE '2026-07-27', 'SOURCE_CREDENTIAL_INVALID'),
+       ('20000000-0000-0000-0000-000000000001'::uuid, DATE '2026-07-24', 'SOURCE_TIMEOUT'),
+       ('20000000-0000-0000-0000-000000000001'::uuid, DATE '2026-07-25', 'SOURCE_TIMEOUT'),
+       ('20000000-0000-0000-0000-000000000002'::uuid, DATE '2025-07-11', 'SOURCE_TIMEOUT'),
+       ('20000000-0000-0000-0000-000000000002'::uuid, DATE '2025-07-12', 'SOURCE_TIMEOUT'),
+       ('20000000-0000-0000-0000-000000000002'::uuid, DATE '2025-07-14', 'SOURCE_TIMEOUT')
+     ) AS v(account_id, as_of, reason) ON v.account_id = a.account_id;
+UPDATE account SET account_number_masked = '****1234-22' WHERE account_id = '20000000-0000-0000-0000-000000000004';
+COMMIT;
+```
+
+**`F-PF11-ALERTS-MON` `…0001`에 `2026-07-27`(월) 실패 수집을 더한다**
+
+```sql
+INSERT INTO collection_run (run_id, account_ref, requested_by, as_of, requested_at, state, finished_at, failure_reason)
+SELECT gen_random_uuid(), account_ref, 'SCHEDULE', DATE '2026-07-27', TIMESTAMPTZ '2026-07-27 23:00+09', 'FAILED', TIMESTAMPTZ '2026-07-27 23:10+09', 'SOURCE_TIMEOUT'
+  FROM account WHERE account_id = '20000000-0000-0000-0000-000000000001';
+```
+
+**`F-PF11-ALERTS-DONE` `…0004` · `…0001`에 `2026-07-28` 성공 수집을 더한다**
+
+```sql
+INSERT INTO collection_run (run_id, account_ref, requested_by, as_of, requested_at, state, finished_at, silver_synced_at)
+SELECT gen_random_uuid(), account_ref, 'SCHEDULE', DATE '2026-07-28', TIMESTAMPTZ '2026-07-28 23:00+09', 'DONE', TIMESTAMPTZ '2026-07-28 23:10+09', TIMESTAMPTZ '2026-07-28 23:10+09'
+  FROM account WHERE account_id IN ('20000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001');
 ```
 
 **`Q-PF11-LINES` 그날 사용자의 계좌별 라인 요약**

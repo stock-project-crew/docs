@@ -69,7 +69,7 @@
 | PF1-12 | 연동 요청을 보내는 동안 연동하기를 다시 누를 수 없다 | 로컬 | 3 | 통과 |
 | PF1-13 | 첫 수집 전에는 계좌별이 보유 없음이고 최근 수집이 없다 | 둘 다 | 2 | 통과 |
 | PF1-14 | 첫 수집이 성공하면 연동됨이 되고 계좌별에 계좌 행이 생긴다 | 둘 다 | 2 | 통과 |
-| PF1-15 | 첫 수집이 실패하면 연동 중에 머물고 해제 뒤 재등록을 안내한다 | 둘 다 | 2 | 통과 |
+| PF1-15 | 첫 수집이 실패하면 연동 중에 머물고 앱키 · 계좌번호 두 길을 함께 안내한다 | 둘 다 | 2 | 통과 |
 | PF1-16 | 지원하지 않는 상품코드는 계좌번호 칸 아래에 서버 문구가 보인다 | 로컬 | 2 | 통과 |
 | PF1-17 | 형식이 틀린 등록 요청은 같은 400으로 거절하고 입력값을 되풀이하지 않는다 | 로컬 | 1 | 통과 |
 | PF1-18 | 이미 연동 중인 계좌를 다시 등록하면 폼 위에 서버 문구가 보인다 | 로컬 | 2 | 통과 |
@@ -81,6 +81,14 @@
 | PF1-24 | 실제 자격증명이 연계 응답 · DB · 백엔드 로그에 남지 않는다 | 연계 | 1 | 통과 |
 | PF1-25 | 첫 수집 전 사용자의 빈 봉투에도 동기화 안내가 실린다 | 로컬 | 2 | 통과 |
 | PF1-26 | 연금저축(22) 계좌는 연금 유형과 기본 라벨로 등록된다 | 로컬 | 1 | 통과 |
+| PF1-27 | 연동 중 계좌의 인증 정보를 갱신하면 연동 중에 머물고 이전 실패가 최근 수집에서 빠진다 | 로컬 | 2 | 통과 |
+| PF1-28 | 첫 수집이 인증 실패로 끝나면 인증 실패 안내 · 점 · 카드가 뜨고 카드 버튼이 갱신 폼을 연다 | 로컬 | 1 | 통과 |
+| PF1-29 | 갱신 폼은 키 칸을 비우고 계좌번호 · 구분을 읽기 전용으로 두며, 갱신하면 폼이 닫힌다 | 로컬 | 2 | 실패 |
+| PF1-30 | 연동됨 계좌의 인증 정보를 갱신하면 다음 수집에서 확인한다는 안내가 뜨고 점은 켜지지 않는다 | 로컬 | 1 | 통과 |
+| PF1-31 | 남의 · 없는 계좌, 해제된 계좌, 계좌 정보 값이 없는 계좌의 갱신은 거절한다 | 로컬 | 1 | 통과 |
+| PF1-32 | 저장소가 실패하면 갱신은 503이고 폼에 머문다 | 로컬 | 2 | 유보 |
+| PF1-33 | 실제 저장소에 계좌 정보 값을 쓰고 읽고 지우며, 백엔드 키로는 수집용 값을 읽지 못한다 | 연계 | 1 | 미실행 |
+| PF1-34 | 운영자 스크립트로 계좌 정보 값을 만들면 한 시간 안에 가린 계좌번호가 차고 갱신 버튼이 보인다 | 연계 | 2 | 미실행 |
 | PF2-01 | 확인 시트에서 해제하면 204이고 목록에서 빠진다 | 둘 다 | 2 | 통과 |
 | PF2-02 | 해제를 보내는 동안 해제를 다시 눌러도 한 번만 보낸다 | 로컬 | 3 | 통과 |
 | PF2-03 | 해제가 실패하면 시트를 닫지 않고 시트 안에 오류가 보인다 | 로컬 | 2 | 통과 |
@@ -248,6 +256,12 @@
 | PF11-09 | 기초 경계 잔고만 이월이어도 경고하고 다음 성공의 증감이 투자손익에 들어간다 | 로컬 | 1 | 통과 |
 | PF11-10 | 계좌 필터를 걸면 경계 이월 경고를 그 계좌들 안에서 센다 | 로컬 | 2 | 실패 |
 | PF11-11 | 연동된 계좌의 마지막 수집이 실패하면 계좌 연동 목록이 그 날짜와 함께 알린다 | 로컬 | 2 | 통과 |
+| PF11-12 | 인증 실패 수집이 있으면 계좌별 카드 · 배지 · 점과 연동 목록 상태 줄이 인증 정보 갱신을 안내한다 | 로컬 | 1 | 통과 |
+| PF11-13 | 연동됨 계좌가 KR 영업일 이틀 연달아 실패하면 연속 실패를 알린다 | 로컬 | 1 | 통과 |
+| PF11-14 | 안내가 여러 계좌에 걸리면 카드 버튼은 계좌 연동으로 가고, 갱신 버튼은 가린 번호가 있는 계좌에만 있다 | 로컬 | 2 | 통과 |
+| PF11-15 | 수집 안내는 계좌별 뷰에만 실리고 이월 안내 바로 뒤에 온다 | 로컬 | 2 | 통과 |
+| PF11-16 | 뒤에 성공한 수집이 있으면 인증 실패 · 연속 실패 안내가 사라진다 | 로컬 | 2 | 통과 |
+| PF11-17 | 실제 앱키를 폐기하면 인증 실패나 연속 실패로 알리고, 갱신 뒤 정기 수집이 성공하면 사라진다 | 연계 | 1 | 미실행 |
 | AL1-01 | 새 알림을 열면 보유 종목 구역이 가나다순으로 보인다 | 로컬 | 2 | 통과 |
 | AL1-02 | 검색 결과는 종목코드 완전 일치 → 이름 시작 → 이름 포함 순이다 | 로컬 | 2 | 통과 |
 | AL1-03 | 검색 중에는 자리 표시가, 결과가 없으면 안내가 보인다 | 로컬 | 2 | 통과 |
@@ -489,6 +503,7 @@
 | N-112 | 해제가 닿지 않은 채 로그아웃해도 앱을 끄지 않고 연결이 돌아온 뒤 앞으로 오면 기기 행이 지워진다 | 연계 | 1 | 미실행 |
 | N-113 | 해제가 닿지 않은 채 로그아웃하고 앱을 끄면 서버가 보내도 그 기기에 푸시가 울리지 않는다 | 연계 | 1 | 미실행 |
 | N-114 | iOS 날짜 칸은 한 번 누르면 한국어 달력이 열리고, 고르거나 바깥을 누를 때만 닫힌다 | 로컬 | 2 | 미실행 |
+| N-115 | 작은 화면에서 수집 안내 카드가 맞게 놓이고 키보드가 앱키 · 시크릿을 학습하지 않는다 | 로컬 | 3 | 미실행 |
 
 ## 3. 시나리오 케이스
 
@@ -1066,7 +1081,7 @@
 | 선행 | — |
 | 실행 시점 | 언제든 |
 | 절차 | ① `계좌 연동 관리` → `＋ 계좌 추가` → 세 칸을 넣고 `모의투자 계좌`를 체크 → `연동하기` ② 네트워크 요청에서 `POST /accounts`의 응답을 읽는다 ③ 화면을 읽는다 ④ `GET /accounts` ⑤ `Q-PF1-LINK`(`email=test_empty@a.com`) ⑥ `Q-PF1-RUNS`(`account={a}`) |
-| 기대 결과 | ② `202`, 본문 `link_state = CONNECTING`, `challenge = null`, `account_id` 있음 ③ 헤더 `계좌 연동`. 행 하나: `한국투자 위탁`, 둘째 줄 `위탁 · 모의 · 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`, `해제` 버튼 ④ `accounts` 1개: `broker = 한국투자증권`, `label = 한국투자 위탁`, `account_type = GENERAL`, `source = KIS`, `env = DEMO`, `link_state = CONNECTING`, `last_synced_at = null`, `last_collection = null`. `account_ref` · `credential_ref` 키가 없다 ⑤ 1행: `source = KIS`, `link_state = CONNECTING`, `kis_env = DEMO`, `linked_at` 있음, `credential_ref_matches = t` ⑥ 0행(등록은 수집 행을 만들지 않는다) |
+| 기대 결과 | ② `202`, 본문 `link_state = CONNECTING`, `challenge = null`, `account_id` 있음 ③ 헤더 `계좌 연동`. 행 하나: `한국투자 위탁`, 둘째 줄 `위탁 · 모의 · 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`, `해제` 버튼 ④ `accounts` 1개: `broker = 한국투자증권`, `label = 한국투자 위탁`, `account_type = GENERAL`, `source = KIS`, `env = DEMO`, `link_state = CONNECTING`, `last_synced_at = null`, `last_collection = null`, `account_number_masked = ****0000-01`, `collection_alert = null`. `account_ref` · `credential_ref` 키가 없다 ⑤ 1행: `source = KIS`, `link_state = CONNECTING`, `kis_env = DEMO`, `linked_at` 있음, `credential_ref_matches = t` ⑥ 0행(등록은 수집 행을 만들지 않는다) |
 | 증거 | ②④ 응답 ③ 스크린샷 ⑤⑥ 질의 결과 |
 | 근거 절 | 포트폴리오 §7.1 · §7.2 · 등록 API §2.1 · §3.1 · §3.3 · §3.4 · §5 · 화면 설계 §2.2 · §3.1 · §4 |
 | 환경 | 로컬 |
@@ -1074,18 +1089,18 @@
 | 수단 | `크롬` · `API` · `DB` |
 | 자동화 | `자동-기존` `AccountApiTest.등록하면_202와_연동_중_상태를_돌려준다` · `실전_모의_구분을_행과_저장소에_쓰고_목록에_싣는다` · `목록은_본인의_연동_중인_계좌만_내리고_내부_식별자를_싣지_않는다` · `accountLinkFlow.test.tsx` `목록에서 추가 폼을 열어 등록하면 목록으로 돌아와 연동 중 계좌가 보이고 입력값은 남지 않는다` · `accountLinkFormScreen.test.tsx` `모의투자 계좌는 체크하지 않은 채로 시작하고, 체크하면 DEMO로 보낸다` · `accountLink.test.tsx` `모의투자 계좌에만 모의를 붙인다` |
 | 결과 | 통과 |
-| 비고 | 전이 E03. 계좌 연동 기본 상태. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF1-10/` |
+| 비고 | 전이 E03. 계좌 연동 기본 상태. 등록은 수집용 값과 함께 계좌 정보 값(계좌번호)도 저장소에 쓴다. `로컬`은 메모리 저장소라 백엔드를 다시 띄우면 둘 다 사라진다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF1-10/` |
 
 #### PF1-11 실제 KIS 모의계좌를 연동하면 연동 중으로 목록에 돌아온다
 
 | 항목 | 내용 |
 |---|---|
-| 사전조건 | `it1@a.com`에 `DISCONNECTED` 밖의 계좌가 없다(`Q-USER-ACCOUNTS`). 앱이 `연계` API를 가리킨다 |
+| 사전조건 | `it1@a.com`에 `DISCONNECTED` 밖의 계좌가 없다(`Q-USER-ACCOUNTS`). 앱이 `연계` API를 가리킨다. 백엔드가 계좌 정보 값을 쓸 수 있는 IAM 정책이 적용돼 있다 — 없으면 등록이 `202`가 아니다 |
 | 테스트 데이터 | `it1@a.com`. 사람이 가진 KIS 모의계좌의 앱키 · 시크릿 · 계좌번호(위탁 `01`) |
 | 선행 | — |
 | 실행 시점 | 일 · 월 · 화 · 수 · 목 23:00 전 |
 | 절차 | ① [사람] 앱(실기기, 또는 웹 출처 허용이 배포됐으면 웹)에서 `계좌` 탭 → `계좌 연동 관리` → `＋ 계좌 추가` → 앱키 · 앱 시크릿 · 계좌번호를 넣고 `모의투자 계좌` 체크 → `연동하기`. 에이전트는 이 동안 화면을 읽거나 찍지 않는다 ② [사람] 목록으로 돌아온 화면을 알려 준다 ③ `GET /accounts`(`it1@a.com`) ④ `Q-PF1-LINK`(`email=it1@a.com`) ⑤ `Q-PF1-RUNS`(`account=<④의 account_id>`) |
-| 기대 결과 | ② 행 `한국투자 위탁` · `위탁 · 모의 · 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요` ③ `env = DEMO`, `link_state = CONNECTING`, `last_collection = null`. `account_ref` · `credential_ref` 키가 없다 ④ `link_state = CONNECTING`, `kis_env = DEMO`, `credential_ref_matches = t` ⑤ 0행 |
+| 기대 결과 | ② 행 `한국투자 위탁` · `위탁 · 모의 · 연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요` ③ `env = DEMO`, `link_state = CONNECTING`, `last_collection = null`, `account_number_masked`가 `****NNNN-NN` 꼴, `collection_alert = null`. `account_ref` · `credential_ref` 키가 없다 ④ `link_state = CONNECTING`, `kis_env = DEMO`, `credential_ref_matches = t` ⑤ 0행 |
 | 증거 | ② 사람이 남긴 스크린샷(값이 없는 목록 화면만) ③ 응답 ④⑤ 질의 결과 |
 | 근거 절 | 포트폴리오 §7.1 · 등록 API §2.1 · §3.1 · §3.3 · 화면 설계 §2.2 · §3.1 |
 | 환경 | 연계 |
@@ -1123,7 +1138,7 @@
 | 선행 | `로컬`: PF1-10. `연계`: PF1-11 |
 | 실행 시점 | `연계`: PF1-11과 같은 날 23:00 전 |
 | 절차 | ① `GET /portfolio/views/accounts` ② `GET /accounts` ③ `계좌` 탭 화면을 읽는다(`연계`는 [사람]이 화면을 알려 준다) ④ 다른 탭에서 `계좌` 탭의 접근성 이름을 읽는다 |
-| 기대 결과 | ① `200`, `data.rows` 빈 배열, `empty_reason = NO_HOLDINGS`, `notices`에 `STALE_ACCOUNTS`가 없다 ② 그 계좌 `last_collection = null` ③ `보유 중인 종목이 없어요`와 버튼 `지금 동기화` · `계좌 연동 관리`. `연동된 계좌가 없어요`가 아니다 ④ `계좌`(점 없음) |
+| 기대 결과 | ① `200`, `data.rows` 빈 배열, `empty_reason = NO_HOLDINGS`, `notices`에 `STALE_ACCOUNTS`가 없다 ② 그 계좌 `last_collection = null`, `collection_alert = null` ③ `보유 중인 종목이 없어요`와 버튼 `지금 동기화` · `계좌 연동 관리`. `연동된 계좌가 없어요`가 아니다 ④ `계좌`(점 없음) |
 | 증거 | ①② 응답 ③④ 스크린샷 |
 | 근거 절 | 포트폴리오 §8.2 · §8.6 · 등록 API §2.3 · §3.3 · 화면 설계 §2.2 · §3.4 · §8의 1 |
 | 환경 | 둘 다 |
@@ -1131,7 +1146,7 @@
 | 수단 | `API` · `크롬` · `사람` |
 | 자동화 | `자동-기존` `accounts.test.tsx` `첫 수집 전(NO_HOLDINGS)에도 계좌 연동 관리가 있다` · `AccountUnlinkServiceTest.수집이_없는_계좌의_최근_수집은_null이다` |
 | 결과 | 통과 |
-| 비고 | 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-13/`. 실행: 2026-11-09 22:58 ~ 23:03 · `연계` · `~/stock-it-evidence/2026-11-09/PF1-13/cluster/`. `연계` ③ 화면에 열린 실행의 안내가 `다음 수집 11-10(화) 23:00`으로 보였다(SG-40) |
+| 비고 | ②는 2026-11-15 · `로컬`에서 다시 봤다(`~/stock-it-evidence/2026-11-15/PF1-KIS/accounts1.json`). 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-13/`. 실행: 2026-11-09 22:58 ~ 23:03 · `연계` · `~/stock-it-evidence/2026-11-09/PF1-13/cluster/`. `연계` ③ 화면에 열린 실행의 안내가 `다음 수집 11-10(화) 23:00`으로 보였다(SG-40) |
 
 #### PF1-14 첫 수집이 성공하면 연동됨이 되고 계좌별에 계좌 행이 생긴다
 
@@ -1152,7 +1167,7 @@
 | 결과 | 통과 |
 | 비고 | `로컬`은 `test_empty@a.com`에 라인이 생기므로 끝나면 `R-LOCAL`. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-14/`. 실행: 2026-11-09 23:10 · `연계` · `~/stock-it-evidence/2026-11-09/PF1-14/cluster/`. 수집 23:05 `DONE` → 23:10 `CONNECTED`, 라인 6개, 계좌 행 `market_value_krw = 9976475` |
 
-#### PF1-15 첫 수집이 실패하면 연동 중에 머물고 해제 뒤 재등록을 안내한다
+#### PF1-15 첫 수집이 실패하면 연동 중에 머물고 앱키 · 계좌번호 두 길을 함께 안내한다
 
 | 항목 | 내용 |
 |---|---|
@@ -1161,15 +1176,15 @@
 | 선행 | `로컬`: PF1-10 |
 | 실행 시점 | `로컬`: 언제든. `연계`: ②부터 다음 수집 뒤 |
 | 절차 | `로컬`: ① `F-PF1-EOD`(`account={a}`) → 1분 뒤 `F-PF1-FINISH`(`state=FAILED`, `reason=SOURCE_API_ERROR`). `연계`: ① [사람] 가짜 값 등록을 허락하면 `POST /accounts`(`it2@a.com`) 본문 `{"app_key": "test-app-key", "app_secret": "test-app-secret", "account_number": "0000000001", "env": "DEMO"}`. 공통: ② 2분 뒤(`연계`는 다음 수집 뒤) `Q-PF1-RUNS`(`account={a}`) ③ `Q-PF1-LINK`(그 이메일) ④ `GET /accounts` ⑤ `GET /portfolio/views/accounts` ⑥ `계좌 연동 관리` 화면과 다른 탭의 `계좌` 탭 접근성 이름을 읽는다 ⑦ `연계`만: `DELETE /accounts/{a}` |
-| 기대 결과 | ② 그 행 `state = FAILED`, `build_outcome = SKIPPED` ③ `link_state = CONNECTING` ④ `link_state = CONNECTING`, `last_collection.state = FAILED`, `last_collection.as_of = <수집일>`, `로컬`은 `last_collection.failure_reason = SOURCE_API_ERROR` ⑤ `empty_reason = NO_HOLDINGS` ⑥ 행 둘째 줄 `위탁 · 모의 · 첫 수집에 실패했어요. 앱키·계좌번호를 확인하고 해제한 뒤 다시 등록해 주세요`. 탭 이름 `계좌`(점 없음) ⑦ `204` |
+| 기대 결과 | ② 그 행 `state = FAILED`, `build_outcome = SKIPPED` ③ `link_state = CONNECTING` ④ `link_state = CONNECTING`, `last_collection.state = FAILED`, `last_collection.as_of = <수집일>`, `로컬`은 `last_collection.failure_reason = SOURCE_API_ERROR`, `collection_alert = null`(인증 실패 코드가 아니다) ⑤ `empty_reason = NO_HOLDINGS` ⑥ 행 둘째 줄 `위탁 · 모의 · 첫 수집에 실패했어요 · 앱키·시크릿이 틀렸다면 인증 정보를 갱신하고, 계좌번호가 틀렸다면 해제한 뒤 다시 등록해 주세요`(경고색), 행에 `갱신` · `해제`. 탭 이름 `계좌`(점 없음) ⑦ `204` |
 | 증거 | ④⑤ 응답 ②③ 질의 결과 ⑥ 스크린샷 |
 | 근거 절 | 포트폴리오 §7.2 · §10 계좌 연동 첫 수집 실패 · 등록 API §2.3 · §3.3 · 화면 설계 §3.1 · §3.4 |
 | 환경 | 둘 다 |
 | 등급 | 2 |
 | 수단 | `API` · `DB` · `크롬` · `사람` |
-| 자동화 | `자동-기존` `RunProcessorTest.실패는_라인을_건드리지_않고_RUN_NOT_DONE` · `linkStatus.test.ts` `픽스처 다섯 계좌`. 데이터 워커 쪽은 `수동` |
+| 자동화 | `자동-기존` `RunProcessorTest.실패는_라인을_건드리지_않고_RUN_NOT_DONE` · `linkStatus.test.ts` `픽스처 일곱 계좌`. 데이터 워커 쪽은 `수동` |
 | 결과 | 통과 |
-| 비고 | `연계`는 데이터 워커가 가짜 키로 KIS 모의 서버를 한 번 부른다. 사람이 허락할 때만 돈다. `연계`의 `failure_reason` 값은 데이터 워커가 정하므로 비교하지 않는다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-15/`. `연계`는 미실행 |
+| 비고 | `연계`는 데이터 워커가 가짜 키로 KIS 모의 서버를 한 번 부른다. 사람이 허락할 때만 돈다. `연계`의 `failure_reason` 값은 데이터 워커가 정하므로 비교하지 않는다. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/`(일요일이라 ② `build_reason = NOT_TRADING_DAY`). `연계`는 미실행. 인증 실패 코드로 끝난 첫 수집은 PF1-28 |
 
 #### PF1-16 지원하지 않는 상품코드는 계좌번호 칸 아래에 서버 문구가 보인다
 
@@ -1264,7 +1279,7 @@
 | 수단 | `크롬` · `DB` |
 | 자동화 | `자동-기존` `AccountApiTest.저장소_장애는_503` · `AccountLinkServiceTest.저장소가_실패하면_새_행이_남지_않는다` |
 | 결과 | 유보 |
-| 비고 | 주입 수단이 없다. `local` 프로파일의 `InMemoryCredentialStore`는 실패하지 않고, 실패를 일으키는 `ControllableCredentialStore`는 테스트 코드에만 있다 |
+| 비고 | 등록은 수집용 값 · 계좌 정보 값 순서로 쓰고 어느 쪽이 실패해도 `503`이다. 주입 수단이 없다. `local` 프로파일의 `InMemoryCredentialStore`는 실패하지 않고, 실패를 일으키는 `ControllableCredentialStore`는 테스트 코드에만 있다 |
 
 #### PF1-21 연동 요청이 서버에 닿지 못하면 폼 위에 연결 실패 문구가 보인다
 
@@ -1312,7 +1327,7 @@
 | 테스트 데이터 | 찾을 문자열: `test-app-key` · `test-app-secret` · `0000000001` · `00000000-01` |
 | 선행 | PF1-10 · PF1-16 · PF1-17 · PF1-18 · PF1-19 · PF1-21을 이 백엔드 기동 안에서 돈다 |
 | 실행 시점 | 선행 케이스 직후 |
-| 절차 | ① 선행 케이스가 남긴 응답 본문 · 헤더 파일 전부를 네 문자열로 찾는다 ② `Q-PF1-RAW`를 네 문자열로 ③ 크롬 `javascript_tool`로 `JSON.stringify({...localStorage})` · `JSON.stringify({...sessionStorage})` · `location.href`를 읽어 네 문자열로 찾는다 ④ 크롬 콘솔 메시지를 네 문자열로 찾는다 ⑤ 백엔드 로그 파일을 네 문자열과 `/stock-project/accounts/`로 찾는다 ⑥ `GET /accounts`(`test_empty@a.com`) 본문의 키를 읽는다 |
+| 절차 | ① 선행 케이스가 남긴 응답 본문 · 헤더 파일 전부를 네 문자열로 찾는다 ② `Q-PF1-RAW`를 네 문자열로 ③ 크롬 `javascript_tool`로 `JSON.stringify({...localStorage})` · `JSON.stringify({...sessionStorage})` · `location.href`를 읽어 네 문자열로 찾는다 ④ 크롬 콘솔 메시지를 네 문자열로 찾는다 ⑤ 백엔드 로그 파일을 네 문자열과 `/stock-project/accounts/` · `/stock-project/account-numbers/`로 찾는다 ⑥ `GET /accounts`(`test_empty@a.com`) 본문의 키를 읽는다. 선행 케이스에 인증 정보 갱신(PF1-27 · PF1-30 · PF1-31)이 있으면 그 응답과 로그도 ①~⑤에 든다 |
 | 기대 결과 | ① 0건 ② 모든 행 `account_rows = 0`, `collection_run_rows = 0` ③ 0건 ④ 0건 ⑤ 0건 ⑥ `account_ref` · `credential_ref` 키가 없다 |
 | 증거 | ①~⑤ 찾은 결과(건수만) ⑥ 응답 |
 | 근거 절 | 포트폴리오 §7.1 자격증명 격리 · 등록 API §3.3 · §3.5 · §6.3 · 화면 설계 §5.1 · §5.2 · 설계 §6.2(자격증명 비노출) |
@@ -1321,7 +1336,7 @@
 | 수단 | `API` · `DB` · `크롬` · `사람` |
 | 자동화 | `자동-기존` `AccountApiTest.자격증명과_계좌번호가_로그와_응답에_남지_않는다` · `AccountLinkConfigTest.자격증명을_문자열로_바꿔도_값이_보이지_않는다` · `KisAccountNumberTest.문자열로_바꿔도_계좌번호가_보이지_않는다` · `accountLinkFormScreen.test.tsx` `자격증명이 남지 않는다` |
 | 결과 | 통과 |
-| 비고 | 요청 본문 파일에는 값이 있으므로 ①에서 빼고 응답만 찾는다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF1-23/` |
+| 비고 | 요청 본문 파일에는 값이 있으므로 ①에서 빼고 응답만 찾는다. 실행: 2026-11-08 · `로컬` · `~/stock-it-evidence/2026-11-08/PF1-23/`. 갱신 경로를 더한 범위는 2026-11-15 · `로컬`에서 다시 봤다(`~/stock-it-evidence/2026-11-15/PF1-KIS/`, 갱신 · 거절 응답과 백엔드 로그 · DB 덤프 · 브라우저 저장소 모두 0건) |
 
 #### PF1-24 실제 자격증명이 연계 응답 · DB · 백엔드 로그에 남지 않는다
 
@@ -1331,8 +1346,8 @@
 | 테스트 데이터 | `it1@a.com` |
 | 선행 | PF1-11 |
 | 실행 시점 | PF1-11과 같은 날 |
-| 절차 | ① `GET /accounts`(`it1@a.com`) 본문의 키를 읽는다 ② `Q-PF1-LINK`(`email=it1@a.com`) ③ [사람] 자기 터미널에서 백엔드 파드 로그를 자기 앱키 · 시크릿 · 계좌번호 10자리 · `/stock-project/accounts/`로 찾고 건수만 알려 준다 |
-| 기대 결과 | ① `account_ref` · `credential_ref` 키가 없다 ② `credential_ref_matches = t` ③ 네 가지 모두 0건 |
+| 절차 | ① `GET /accounts`(`it1@a.com`) 본문의 키를 읽는다 ② `Q-PF1-LINK`(`email=it1@a.com`) ③ [사람] 자기 터미널에서 백엔드 파드 로그를 자기 앱키 · 시크릿 · 계좌번호 10자리 · `/stock-project/accounts/` · `/stock-project/account-numbers/`로 찾고 건수만 알려 준다 |
+| 기대 결과 | ① `account_ref` · `credential_ref` 키가 없다 ② `credential_ref_matches = t` ③ 다섯 가지 모두 0건 |
 | 증거 | ① 응답 ② 질의 결과 ③ 사람이 알려 준 건수 |
 | 근거 절 | 포트폴리오 §7.1 · 등록 API §3.3 · §6.3 · 설계 §6.2 |
 | 환경 | 연계 |
@@ -1359,7 +1374,7 @@
 | 수단 | `API` · `크롬` |
 | 자동화 | `자동-기존` `SyncNoticeApiTest.스냅샷이_없는_사용자의_빈_봉투에도_싣는다` · 프론트 `syncCard.test.tsx` |
 | 결과 | 통과 |
-| 비고 | PF3-04 비고가 자동 테스트로만 덮는다고 적은 분기다. `F-C1-EMPTY-ACCOUNT`로 화면 조작 없이 만든다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-25/rerun/` |
+| 비고 | 수집 안내(`CREDENTIAL_INVALID` 등)가 있는 사용자면 빈 봉투의 계좌별 뷰에 그 안내도 실린다(PF1-28). PF3-04 비고가 자동 테스트로만 덮는다고 적은 분기다. `F-C1-EMPTY-ACCOUNT`로 화면 조작 없이 만든다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF1-25/rerun/` |
 
 #### PF1-26 연금저축(22) 계좌는 연금 유형과 기본 라벨로 등록된다
 
@@ -1379,6 +1394,159 @@
 | 자동화 | `자동-기존` `KisAccountNumberTest.위탁은_일반_연금저축은_연금이다` |
 | 결과 | 통과 |
 | 비고 | 끝나면 `R-LOCAL`. 실행: 2026-11-05 · `로컬` · `~/stock-it-evidence/2026-11-05/PF1-26/` |
+
+
+#### PF1-27 연동 중 계좌의 인증 정보를 갱신하면 연동 중에 머물고 이전 실패가 최근 수집에서 빠진다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-15 직후(`{a}`가 `CONNECTING`, 마지막 수집 `FAILED`). 같은 백엔드 기동 안이다 — 메모리 저장소의 계좌 정보 값이 남아 있어야 한다 |
+| 테스트 데이터 | `test_empty@a.com`, `{a}` |
+| 선행 | PF1-15 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `Q-PF1-LINK`(`email=test_empty@a.com`)로 `linked_at`을 적는다 ② `PUT /accounts/{a}/credentials` 본문 `{"app_key": "test-app-key-2", "app_secret": "test-app-secret-2", "label": "한국투자 위탁"}` ③ `Q-PF1-LINK` ④ `GET /accounts` |
+| 기대 결과 | ② `204`, 본문 없음 ③ `link_state = CONNECTING`, `linked_at`이 ②의 시각으로 옮겨졌다 ④ `link_state = CONNECTING`, `last_collection = null`(갱신 전 실패는 세지 않는다), `collection_alert = null` |
+| 증거 | ① ③ 질의 결과 ② ④ 응답 |
+| 근거 절 | 포트폴리오 §7.1 · §7.2 · API 설계 §3.6 · §3.7 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `API` · `DB` |
+| 자동화 | `자동-기존` `AccountRefreshApiTest.연동_중_계좌도_갱신하고_상태는_그대로다` · `갱신하면_앱키_시크릿만_바뀌고_linked_at이_옮겨진다` · `갱신_전_실패는_last_collection에서_빠진다` · `CollectionAlertJudgeTest.CONNECTING이고_끝난_실행이_없으면_안내가_없다` |
+| 결과 | 통과 |
+| 비고 | 연동 상태는 바뀌지 않고 수집도 요청하지 않는다. 화면의 상태 줄은 `연동 중 · 다음 정기 수집 뒤 잔고가 반영돼요`다(화면 설계 §3.1). 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/` |
+
+#### PF1-28 첫 수집이 인증 실패로 끝나면 인증 실패 안내 · 점 · 카드가 뜨고 카드 버튼이 갱신 폼을 연다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-27 직후. 웹이 떠 있다 |
+| 테스트 데이터 | `test_empty@a.com`, `{a}` |
+| 선행 | PF1-27 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `F-PF1-EOD`(`account={a}`) → 1분 뒤 `F-PF1-FINISH`(`state=FAILED`, `reason=SOURCE_CREDENTIAL_INVALID`) ② `GET /accounts` ③ `GET /portfolio/views/accounts` · `GET /portfolio/views/summary` ④ 웹에 `test_empty@a.com`으로 로그인해 탭 바의 `계좌` 탭 접근성 이름을 읽는다 ⑤ `계좌` 탭을 읽는다 ⑥ 카드의 `인증 정보 갱신`을 누른다 ⑦ 돌아가 `계좌 연동 관리`를 읽는다 |
+| 기대 결과 | ② `link_state = CONNECTING`, `last_collection.failure_reason = SOURCE_CREDENTIAL_INVALID`, `collection_alert = {code: CREDENTIAL_INVALID, failed_days: 0, next_pickup_at: null}`(일요일이라 0) ③ 계좌별: `empty_reason = NO_HOLDINGS`, `notices`에 `CREDENTIAL_INVALID`(`warn`) 하나, `message = 한국투자 위탁 · 인증에 실패했어요 · 인증 정보를 갱신해 주세요`, `params.account_ids = [{a}]`. 요약 `notices`에 없다 ④ `계좌, 확인할 계좌 있음`, 점이 보인다 ⑤ 맨 위 카드에 ③의 문장과 버튼 `인증 정보 갱신`, 그 아래 `보유 중인 종목이 없어요` ⑥ 헤더 `인증 정보 갱신` 폼 ⑦ 행 둘째 줄 `위탁 · 모의 · 인증 실패 · 인증 정보를 갱신해 주세요`(경고색) |
+| 증거 | ② ③ 응답 ⑤ ⑦ 스크린샷 |
+| 근거 절 | 포트폴리오 §7.2 · §7.5 · §8.2 `CREDENTIAL_INVALID` · API 설계 §3.7 · 화면 설계 §3.1 · IA 탭 점 |
+| 환경 | 로컬 |
+| 등급 | 1 — 안내가 없으면 매일 실패해도 원인과 할 일을 모른다 |
+| 수단 | `API` · `DB` · `크롬` |
+| 자동화 | `자동-기존` `CollectionAlertJudgeTest.CONNECTING도_인증_실패는_CREDENTIAL_INVALID다` · `CREDENTIAL_INVALID의_일수는_0일_수_있다` · `CollectionAlertNoticeApiTest.첫_수집_전_계좌의_인증_실패를_빈_봉투에도_싣는다` · `NoticeCollectorTest.인증_실패_계좌_하나는_라벨로_알린다` · 프론트 `collectionAlertCards.test.tsx` `첫 수집 전 빈 상태(NO_HOLDINGS)에도 빈 상태 위에 뜬다` · `계좌가 하나이고 가린 계좌번호가 있으면 그 계좌의 갱신 폼으로 간다` · `accountTabDot.test.tsx` `인증 실패 안내만 있어도 점을 단다` · `linkStatus.test.ts` `픽스처 일곱 계좌` |
+| 결과 | 통과 |
+| 비고 | 인증 실패 안내는 연동 상태와 관계없이 뜬다. 카드 버튼은 대상이 한 계좌이고 가린 번호가 있어서 갱신 폼으로 간다(여러 계좌면 PF11-14). 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/` |
+
+#### PF1-29 갱신 폼은 키 칸을 비우고 계좌번호 · 구분을 읽기 전용으로 두며, 갱신하면 폼이 닫힌다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-15 직후. 웹이 떠 있다 |
+| 테스트 데이터 | `test_empty@a.com`, `{a}`, 새 값 `test-app-key-2` · `test-app-secret-2` |
+| 선행 | PF1-15 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `계좌 연동 관리` → `{a}` 행의 `갱신` ② 폼을 읽는다 ③ 크롬 `javascript_tool`로 입력 칸의 `autocomplete` · `autocorrect` · `autocapitalize` · `spellcheck`를 읽는다 ④ 앱키 · 시크릿을 넣고 `갱신하기` ⑤ 화면과 칸 값을 읽는다 |
+| 기대 결과 | ② 헤더 `인증 정보 갱신`, 앱키 · 앱 시크릿 빈 칸, `계좌번호` `****0000-01` · `구분` `모의`가 글자로만 보이고, `라벨` 칸에 `한국투자 위탁`. 아래 `갱신한 키는 다음 수집에서 확인돼요` ③ 세 칸 모두 `autocomplete = off`, `autocorrect = off`, `autocapitalize = none`, `spellcheck = false` ④ `204` ⑤ 폼이 닫히고 계좌 연동 목록이다 |
+| 증거 | ② ⑤ 스크린샷 ③ 결과 |
+| 근거 절 | 화면 설계 §2.2 · §4 · API 설계 §3.6 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `크롬` |
+| 자동화 | `자동-기존` 프론트 `credentialRefreshScreen.test.tsx` `앱키 · 시크릿은 빈 칸, 계좌번호 · 구분은 읽기 전용, 라벨은 지금 값이다` · `accountLinkFlow.test.tsx` `카드에서 갱신 폼을 열어 204를 받으면 계좌 탭으로 돌아와 갱신 뒤 안내가 보인다` |
+| 결과 | 실패 |
+| 비고 | 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/`. ②③은 기대대로다. ④ 웹에서 `PUT /accounts/{a}/credentials`의 CORS 사전 요청이 `403`이라 요청이 나가지 않고 폼 위에 `연결에 실패했어요. 잠시 후 다시 시도해 주세요`가 뜬다. 이때 앱키는 남고 시크릿만 비워진다(오류 때의 동작은 기대대로다). D-44. 실기기에는 CORS가 없어 이 문제가 없다 |
+
+#### PF1-30 연동됨 계좌의 인증 정보를 갱신하면 다음 수집에서 확인한다는 안내가 뜨고 점은 켜지지 않는다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-28 직후. `F-PF1-CONNECTED`(`account={a}`). 웹이 떠 있다 |
+| 테스트 데이터 | `test_empty@a.com`, `{a}`. 비교용으로 `yhr@a.com`의 샘플 계좌(`linked_at` 빈 `CONNECTED`, 수집 기록 없음) |
+| 선행 | PF1-28 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `PUT /accounts/{a}/credentials` 본문 `{"app_key": "test-app-key-3", "app_secret": "test-app-secret-3", "label": "위탁 갱신"}` ② `GET /accounts` ③ `GET /portfolio/views/accounts` ④ 웹을 새로 고쳐 탭 바와 `계좌` 탭을 읽는다 ⑤ `계좌 연동 관리`를 읽는다 ⑥ `GET /accounts`(`yhr@a.com`) |
+| 기대 결과 | ① `204` ② `label = 위탁 갱신`, `link_state = CONNECTED`, `collection_alert = {code: CREDENTIAL_UPDATED, failed_days: 0, next_pickup_at: <다음 정기 수집 시각>}`. 갱신 전의 `CREDENTIAL_INVALID`는 없다 ③ `notices`에 `CREDENTIAL_UPDATED`(`info`), `message = 위탁 갱신 · 인증 정보를 갱신했어요 · 다음 수집(MM-dd(요일) HH:mm)에서 확인해요` ④ `계좌` 탭에 점이 없다. 맨 위 카드에 ③의 문장이 있고 버튼이 없다 ⑤ 행 둘째 줄 `위탁 · 모의 · 연동됨 · 갱신했어요 · 다음 수집(MM-dd(요일) HH:mm)에서 확인해요`(보조색) ⑥ 모든 계좌 `collection_alert = null` |
+| 증거 | ① ② ③ ⑥ 응답 ④ ⑤ 스크린샷 |
+| 근거 절 | 포트폴리오 §7.2 · §8.2 `CREDENTIAL_UPDATED` · API 설계 §3.7 · 화면 설계 §3.1 · IA 탭 점 |
+| 환경 | 로컬 |
+| 등급 | 1 |
+| 수단 | `API` · `DB` · `크롬` |
+| 자동화 | `자동-기존` `AccountRefreshApiTest.CONNECTED_계좌를_갱신하면_CREDENTIAL_UPDATED다` · `CollectionAlertJudgeTest.linked_at이_없는_CONNECTED는_끝난_실행이_없어도_안내가_없다` · `CollectionAlertNoticeApiTest.갱신한_CONNECTED_계좌는_행과_notice에_CREDENTIAL_UPDATED를_싣는다` · 프론트 `accountTabDot.test.tsx` `갱신 뒤 확인 대기만 있으면 거짓이다` · `linkStatus.test.ts` `픽스처 일곱 계좌` |
+| 결과 | 통과 |
+| 비고 | 갱신은 웹에서 막혀(D-44) ①을 API로 보냈다. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/`(`11-15(일) 23:00`) |
+
+#### PF1-31 남의 · 없는 계좌, 해제된 계좌, 계좌 정보 값이 없는 계좌의 갱신은 거절한다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-30 직후 |
+| 테스트 데이터 | `test_empty@a.com`, `{a}` |
+| 선행 | PF1-30 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `PUT /accounts/20000000-0000-0000-0000-000000000001/credentials`(남의 계좌) · `/accounts/not-a-uuid/credentials` · `/accounts/00000000-0000-0000-0000-00000000dead/credentials` ② `PUT /accounts/{a}/credentials` 본문 `{"app_key": "", "app_secret": ""}` ③ `DELETE /accounts/{a}` → `PUT /accounts/{a}/credentials` ④ `POST /accounts`로 같은 계좌를 다시 등록하고 백엔드를 다시 띄운 뒤 `PUT /accounts/{a}/credentials` |
+| 기대 결과 | ① 셋 모두 `403`, `error.code = FORBIDDEN_ACCOUNT` ② `400`, `error.code = INVALID_ACCOUNT_REQUEST` ③ `204` → `409`, `error.code = ACCOUNT_DISCONNECTED` ④ `202` → `409`, `error.code = ACCOUNT_NUMBER_UNAVAILABLE`, `message = 이 계좌는 아직 인증 정보를 갱신할 수 없습니다` |
+| 증거 | 응답 |
+| 근거 절 | API 설계 §3.6 · §4.4 |
+| 환경 | 로컬 |
+| 등급 | 1 — 다른 계좌의 번호로 수집용 값을 덮어쓰면 남의 계좌를 수집한다 |
+| 수단 | `API` |
+| 자동화 | `자동-기존` `AccountRefreshApiTest.남의_계좌_없는_id_UUID_아닌_id는_403이다` · `형식_오류는_400이다` · `해제된_계좌는_409이고_저장소에_쓰지_않는다` · `계좌_정보_값이_없으면_409다` · `다른_계좌의_계좌_정보_값이면_쓰지_않는다` |
+| 결과 | 통과 |
+| 비고 | ④는 메모리 저장소가 재기동으로 비워져 계좌 정보 값이 없는 상태다. 폼이 `403` · `409 ACCOUNT_DISCONNECTED`에 닫히고 그 밖의 오류에 한 줄을 띄우는 화면 동작은 웹에서 갱신이 막혀(D-44) 보지 못했다. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF1-KIS/` |
+
+#### PF1-32 저장소가 실패하면 갱신은 503이고 폼에 머문다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | 자격증명 저장소 호출을 실패시키는 주입 수단(설계 §7.1) |
+| 테스트 데이터 | `test_empty@a.com` |
+| 선행 | — |
+| 실행 시점 | 언제든 |
+| 절차 | ① 주입을 켜고 갱신 폼에서 `갱신하기` ② 화면을 읽는다 |
+| 기대 결과 | ① `503`, `error.code = CREDENTIAL_STORE_UNAVAILABLE` ② 폼 위에 한 줄, 시크릿 칸만 빈다 |
+| 증거 | 응답 · 스크린샷 |
+| 근거 절 | API 설계 §3.6 · 화면 설계 §4 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `API` · `크롬` |
+| 자동화 | `자동-기존` `AccountRefreshApiTest.저장소_읽기_실패면_503이고_아무것도_바뀌지_않는다` · `저장소_쓰기_실패면_503이고_linked_at과_label이_그대로다` |
+| 결과 | 유보 |
+| 비고 | PF1-20과 같은 이유로 주입 수단이 없다 |
+
+#### PF1-33 실제 저장소에 계좌 정보 값을 쓰고 읽고 지우며, 백엔드 키로는 수집용 값을 읽지 못한다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | 클러스터에 계좌 정보 값용 IAM 정책이 적용돼 있다. `it2@a.com`에 `DISCONNECTED` 밖의 계좌가 없다 |
+| 테스트 데이터 | `it2@a.com`, 가짜 값 등록(PF1-15 `연계`와 같은 본문) |
+| 선행 | — |
+| 실행 시점 | 클러스터 가동 시간 안 |
+| 절차 | ① [사람] 가짜 값 등록을 허락하면 `POST /accounts`(`it2@a.com`) ② `GET /accounts` ③ [사람] 자기 터미널에서 SSM에 그 계좌의 계좌 정보 값 이름이 있는지 확인하고 있음 · 없음만 알려 준다 ④ `PUT /accounts/{a}/credentials` ⑤ `DELETE /accounts/{a}` ⑥ [사람] ③을 다시 한다 ⑦ [사람] 백엔드 역할로 수집용 값 읽기를 시도해 거부되는지 알려 준다 |
+| 기대 결과 | ① `202` ② `account_number_masked = ****0000-01` ③ 있음 ④ `204` ⑤ `204` ⑥ 없음 ⑦ 거부 |
+| 증거 | 응답 · 사람이 알려 준 결과 |
+| 근거 절 | API 설계 §3.6 · §4.4 · 포트폴리오 §7.1 |
+| 환경 | 연계 |
+| 등급 | 1 |
+| 수단 | `API` · `사람` |
+| 자동화 | `수동` |
+| 결과 | 미실행 |
+| 비고 | IAM 정책 적용 전에는 등록 · 해제가 실패할 수 있어 돌리지 않는다. 에이전트는 SSM 값을 읽지 않는다 |
+
+#### PF1-34 운영자 스크립트로 계좌 정보 값을 만들면 한 시간 안에 가린 계좌번호가 차고 갱신 버튼이 보인다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | IAM 정책 적용 · 배포 뒤. `it1@a.com`의 계좌가 이 기능 전에 연동돼 `account_number_masked`가 비어 있다 |
+| 테스트 데이터 | `it1@a.com` |
+| 선행 | — |
+| 실행 시점 | 클러스터 가동 시간 안 |
+| 절차 | ① `GET /accounts`(`it1@a.com`) ② [사람] 운영자 스크립트를 dry-run으로 돌려 대상 수만 알려 준 뒤 `--apply`로 돌린다 ③ 한 시간 안에 ①을 다시 한다 ④ [사람] 앱의 `계좌 연동 관리`를 알려 준다 |
+| 기대 결과 | ① `account_number_masked = null` ③ `****NNNN-NN` 꼴 ④ 그 계좌 행에 `갱신` 버튼이 있다 |
+| 증거 | 응답 · 사람이 알려 준 화면 |
+| 근거 절 | API 설계 §4.4 · 화면 설계 §3 |
+| 환경 | 연계 |
+| 등급 | 2 |
+| 수단 | `API` · `사람` |
+| 자동화 | `자동-기존` `AccountNumberMaskJobsConfigTest.설정이_없으면_기동_30초_뒤와_1시간마다_도는_작업으로_등록된다` · `AccountNumberMaskFillerTest.계좌_정보_값이_있고_가린_번호가_빈_계좌만_채운다`. 실제 저장소는 `수동` |
+| 결과 | 미실행 |
+| 비고 | 가린 번호 채우기는 기동 30초 뒤 한 번, 그 뒤 한 시간마다 돈다 |
 
 ### PF2. 연동을 해제하고 다시 연동한다
 
@@ -1401,7 +1569,7 @@
 | 수단 | `크롬` · `API` · `DB`. `연계` 화면은 웹 출처 허용 전이면 `실기기`(사람) |
 | 자동화 | `자동-기존` `accountLink.test.tsx` `해제를 확인하면 DELETE 뒤 목록을 다시 받는다` · `취소하면 요청하지 않는다` · `AccountUnlinkServiceTest.해제하면_상태와_참조를_비우고_저장소에서_지운다` |
 | 결과 | 통과 |
-| 비고 | 전이 E01 · E04. `연계`는 PF2-09 · PF2-14 · PF2-12가 이 해제를 이어 쓴다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF2-01/`. `연계`는 미실행 |
+| 비고 | 전이 E01 · E04. 해제는 저장소에서 수집용 값과 계좌 정보 값을 함께 지운다. `로컬` 메모리 저장소에서는 지워졌는지 볼 수단이 없어 `연계`(PF1-33)에서 본다. `연계`는 PF2-09 · PF2-14 · PF2-12가 이 해제를 이어 쓴다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF2-01/`. `연계`는 미실행 |
 
 #### PF2-02 해제를 보내는 동안 해제를 다시 눌러도 한 번만 보낸다
 
@@ -4513,7 +4681,7 @@ PF11-01 ~ PF11-07은 같은 날 이어서 돈다. `로컬` 백엔드는 생성�
 | 선행 | PF11-01 |
 | 실행 시점 | PF11-01과 같은 날 |
 | 절차 | ① `F-PF11-RECOVER` ② `GET /portfolio/views/accounts` ③ `GET /portfolio/views/summary` ④ 웹 페이지를 새로 고치고 요약에서 탭 바를 읽는다 ⑤ `계좌` 탭 글자를 읽는다 |
-| 기대 결과 | ② `STALE_ACCOUNTS`가 없다. 네 행 모두 `is_carried_forward = false`, `source_as_of = {오늘}`. `…0003` 행 `market_value_krw = 12500000` ③ `total.total_assets_krw = 58500000`, `total.daily_change_krw = 500000` ④ `계좌` 탭에 점이 없고 접근성 이름에 `확인할 계좌 있음`이 없다 ⑤ 경고 줄과 `기준` 배지가 없다 |
+| 기대 결과 | ② `STALE_ACCOUNTS`가 없다. 네 행 모두 `is_carried_forward = false`, `source_as_of = {오늘}`. `…0003` 행 `market_value_krw = 12500000` ③ `total.total_assets_krw = 58500000`, `total.daily_change_krw = 500000` ④ `계좌` 탭에 점이 없고 접근성 이름에 `확인할 계좌 있음`이 없다(이월 · 인증 실패 · 연속 실패 안내가 모두 없다) ⑤ 경고 줄과 `기준` 배지가 없다 |
 | 증거 | ② ③ 응답 ④ ⑤ 스크린샷 |
 | 근거 절 | 포트폴리오 §2.7 · §7.3 · §7.5 · IA §3 |
 | 환경 | 로컬 |
@@ -4595,9 +4763,124 @@ PF11-01 ~ PF11-07은 같은 날 이어서 돈다. `로컬` 백엔드는 생성�
 | 환경 | 로컬 |
 | 등급 | 2 |
 | 수단 | `API` · `크롬` |
-| 자동화 | `자동-기존` 프론트 `linkStatus.test.ts` `픽스처 다섯 계좌` · `AccountUnlinkServiceTest.목록은_연동_중인_본인_계좌와_최근_수집_결과를_담는다` |
+| 자동화 | `자동-기존` 프론트 `linkStatus.test.ts` `픽스처 일곱 계좌` · `AccountUnlinkServiceTest.목록은_연동_중인_본인_계좌와_최근_수집_결과를_담는다` |
 | 결과 | 통과 |
-| 비고 | 날짜를 함께 보이는 것은 화면 설계 §3.1의 구현 판단이다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF11-11/rerun/` |
+| 비고 | 하루 실패라 수집 안내는 없다. 연동됨 계좌가 KR 영업일 2일 이상 연달아 실패하면 상태 줄이 연속 실패 문구로 바뀐다(PF11-13). 날짜를 함께 보이는 것은 화면 설계 §3.1의 구현 판단이다. 실행: 2026-11-09 · `로컬` · `~/stock-it-evidence/2026-11-09/PF11-11/rerun/` |
+
+
+#### PF11-12 인증 실패 수집이 있으면 계좌별 카드 · 배지 · 점과 연동 목록 상태 줄이 인증 정보 갱신을 안내한다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | `R-LOCAL` · `생성기 끈 백엔드` → `F-PF11-ALERTS`. 웹이 떠 있다 |
+| 테스트 데이터 | `yhr@a.com`. `…0004`(연금저축, 07-24 기준 이월)의 `2026-07-27` 수집이 `SOURCE_CREDENTIAL_INVALID`로 실패했고 가린 번호 `****1234-22`가 있다 |
+| 선행 | — |
+| 실행 시점 | 언제든 |
+| 절차 | ① `GET /accounts` ② `GET /portfolio/views/accounts` ③ 웹 `계좌` 탭과 탭 바를 읽는다 ④ `계좌 연동 관리`를 읽는다 |
+| 기대 결과 | ① `…0004` `collection_alert.code = CREDENTIAL_INVALID`, `account_number_masked = ****1234-22` ② `CREDENTIAL_INVALID`(`warn`) `message = 연금저축 · 인증에 실패했어요 · 인증 정보를 갱신해 주세요`, `params.account_ids = ["…0004"]` ③ 맨 위 카드에 ②의 문장과 `인증 정보 갱신` 버튼. `연금저축` 행 배지 `인증 실패 · 07-24 기준`. `계좌` 탭에 점 ④ `연금저축` 둘째 줄 `연금저축 · 인증 실패 · 인증 정보를 갱신해 주세요`(경고색), 행에 `갱신` · `해제` |
+| 증거 | ① ② 응답 ③ ④ 스크린샷 |
+| 근거 절 | 포트폴리오 §7.2 · §7.5 · §8.2 · API 설계 §3.7 · 화면 설계 §3.1 · IA 탭 점 |
+| 환경 | 로컬 |
+| 등급 | 1 |
+| 수단 | `API` · `DB` · `크롬` |
+| 자동화 | `자동-기존` `CollectionAlertJudgeTest.마지막_DONE_뒤에_인증_실패가_있으면_CREDENTIAL_INVALID다` · `인증_실패_뒤의_다른_실패가_안내를_가리지_않는다` · 프론트 `stateBadge.test.ts` · `accountTabDot.test.tsx` `인증 실패 · 연속 실패 안내가 있으면 참이다` |
+| 결과 | 통과 |
+| 비고 | `F-PF11-ALERTS`는 과거 날짜의 `FAILED` 수집 행을 넣으므로 생성기가 그 행을 처리해 라인을 바꾸지 않게 생성기를 끄고 쓴다. 끝나면 `R-LOCAL`. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF11-KIS/` |
+
+#### PF11-13 연동됨 계좌가 KR 영업일 이틀 연달아 실패하면 연속 실패를 알린다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF11-12와 같다 |
+| 테스트 데이터 | `F-PF11-ALERTS`: `…0001`(한국투자 위탁)은 `2026-07-24`(금) · `07-25`(토) 실패, `…0002`(국내주식)는 캘린더 밖 `2025-07-11`(금) · `07-12`(토) · `07-14`(월) 실패 |
+| 선행 | — |
+| 실행 시점 | 언제든 |
+| 절차 | ① `GET /accounts` ② `GET /portfolio/views/accounts` ③ `F-PF11-ALERTS-MON`(`…0001`의 `2026-07-27`(월) 실패) ④ ① · ② ⑤ 웹 `계좌 연동 관리`를 읽는다 |
+| 기대 결과 | ① `…0001` `collection_alert = null`(토요일은 세지 않아 하루). `…0002` `{code: REPEATED_FAILURE, failed_days: 2}`(캘린더 밖이라 월~금으로 센다) ② `REPEATED_FAILURE` `message = 국내주식 · 2일째 수집하지 못했어요 · 앱키를 바꿨다면 인증 정보를 갱신해 주세요`, `params.failed_days = 2` ④ `…0001`도 `{code: REPEATED_FAILURE, failed_days: 2}`. `message = 2개 계좌의 수집이 연달아 실패했어요 · 앱키를 바꿨다면 인증 정보를 갱신해 주세요`, `params.account_ids` 둘 ⑤ 두 행 둘째 줄 `위탁 · 2일째 수집 실패 · 앱키를 바꿨다면 인증 정보를 갱신해 주세요`(경고색) |
+| 증거 | 응답 · 스크린샷 |
+| 근거 절 | 포트폴리오 §7.2 · §8.2 `REPEATED_FAILURE` · API 설계 §3.7 · 화면 설계 §3.1 |
+| 환경 | 로컬 |
+| 등급 | 1 |
+| 수단 | `API` · `DB` · `크롬` |
+| 자동화 | `자동-기존` `CollectionAlertJudgeTest.CONNECTED가_이틀_실패하면_REPEATED_FAILURE다` · `하루_실패는_안내가_없다` · `비영업일_기준일은_세지_않는다` · `CollectionAlertPortTest.캘린더에_없는_날은_월에서_금만_영업일로_센다` · `NoticeCollectorTest.연속_실패_계좌_여럿은_가장_긴_일수를_싣는다` |
+| 결과 | 통과 |
+| 비고 | 연속 실패 안내는 `CONNECTED` 계좌에만 온다. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF11-KIS/` |
+
+#### PF11-14 안내가 여러 계좌에 걸리면 카드 버튼은 계좌 연동으로 가고, 갱신 버튼은 가린 번호가 있는 계좌에만 있다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF11-13 ④ 뒤 |
+| 테스트 데이터 | `yhr@a.com` |
+| 선행 | PF11-13 |
+| 실행 시점 | 언제든 |
+| 절차 | ① 웹 `계좌` 탭에서 연속 실패 카드의 `인증 정보 갱신`을 누른다 ② 화면을 읽는다 |
+| 기대 결과 | ① 헤더 `계좌 연동` ② 네 행 가운데 `연금저축`(가린 번호 있음)에만 `갱신`이 있고 나머지는 `해제`만 있다 |
+| 증거 | 스크린샷 |
+| 근거 절 | 화면 설계 §2.2 · §3 · IA 인증 정보 갱신 화면 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `크롬` |
+| 자동화 | `자동-기존` 프론트 `collectionAlertCards.test.tsx` `계좌가 여럿이면 목록으로 가고 연동 목록을 받지 않는다` · `accountLink.test.tsx` `가린 계좌번호가 있는 계좌에만 갱신이 있다` |
+| 결과 | 통과 |
+| 비고 | 한 계좌 · 가린 번호 있음이면 갱신 폼으로 간다(PF1-28). 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF11-KIS/` |
+
+#### PF11-15 수집 안내는 계좌별 뷰에만 실리고 이월 안내 바로 뒤에 온다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF11-13 ④ 뒤 |
+| 테스트 데이터 | `yhr@a.com` |
+| 선행 | PF11-13 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `GET /portfolio/views/accounts` ② `GET /portfolio/views/summary` · `/positions?lens=DIRECT` · `/allocation?axis=sector` · `/asset-change?period=THIS_MONTH` · `/realized-pnl?period=THIS_YEAR` |
+| 기대 결과 | ① `notices` 코드 순서 `FX_APPLIED` · `STALE_ACCOUNTS` · `CREDENTIAL_INVALID` · `REPEATED_FAILURE` · `PRICE_LAG_MARKET` ② 다섯 응답 모두 `CREDENTIAL_INVALID` · `REPEATED_FAILURE` · `CREDENTIAL_UPDATED`가 없다 |
+| 증거 | 응답 |
+| 근거 절 | 포트폴리오 §8.2 순서 · API 설계 §3.7 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `API` |
+| 자동화 | `자동-기존` `NoticeCollectorTest.수집_안내는_이월_안내_바로_뒤에_code별로_실린다` |
+| 결과 | 통과 |
+| 비고 | 빈 봉투에도 실린다(PF1-28). 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF11-KIS/` |
+
+#### PF11-16 뒤에 성공한 수집이 있으면 인증 실패 · 연속 실패 안내가 사라진다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF11-13 ④ 뒤 |
+| 테스트 데이터 | `yhr@a.com` |
+| 선행 | PF11-13 |
+| 실행 시점 | 언제든 |
+| 절차 | ① `F-PF11-ALERTS-DONE`(`…0004` · `…0001`의 `2026-07-28` 성공) ② `GET /accounts` ③ `GET /portfolio/views/accounts` |
+| 기대 결과 | ② `…0004` · `…0001` `collection_alert = null`. `…0002`는 `REPEATED_FAILURE` 그대로 ③ `notices`에 `CREDENTIAL_INVALID`가 없고 `REPEATED_FAILURE`만 남는다 |
+| 증거 | 응답 |
+| 근거 절 | 포트폴리오 §7.2 · API 설계 §3.7 |
+| 환경 | 로컬 |
+| 등급 | 2 |
+| 수단 | `API` · `DB` |
+| 자동화 | `자동-기존` `CollectionAlertJudgeTest.마지막이_DONE이면_안내가_없다` |
+| 결과 | 통과 |
+| 비고 | 끝나면 `R-LOCAL`과 생성기를 켠 기동으로 돌린다. 실행: 2026-11-15 · `로컬` · `~/stock-it-evidence/2026-11-15/PF11-KIS/` |
+
+#### PF11-17 실제 앱키를 폐기하면 인증 실패나 연속 실패로 알리고, 갱신 뒤 정기 수집이 성공하면 사라진다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | PF1-34가 끝나 `it1@a.com` 계좌에 가린 번호가 있다. 클러스터 가동 시간 안 |
+| 테스트 데이터 | `it1@a.com` |
+| 선행 | PF1-34 |
+| 실행 시점 | 다음 수집 뒤 |
+| 절차 | ① [사람] KIS에서 그 계좌의 앱키를 폐기한다 ② 다음 정기 수집 뒤 `GET /accounts` ③ [사람] 앱 `계좌` 탭을 알려 준다 ④ [사람] 새 앱키를 발급해 갱신 폼으로 갱신한다 ⑤ `GET /accounts`의 `next_pickup_at`과 Airflow의 다음 실행 시각을 견준다 ⑥ 다음 정기 수집 뒤 ② |
+| 기대 결과 | ② `last_collection.failure_reason = SOURCE_CREDENTIAL_INVALID`, `collection_alert.code = CREDENTIAL_INVALID`. 데이터 운영 이미지가 이 코드를 아직 내지 않으면 이틀 실패 뒤 `REPEATED_FAILURE` ③ 인증 실패 카드와 점 ④ `204`, `CREDENTIAL_UPDATED` ⑤ 같다 ⑥ `collection_alert = null`, `last_collection.state = DONE` |
+| 증거 | 응답 · 사람이 알려 준 화면 |
+| 근거 절 | 포트폴리오 §7.2 · API 설계 §3.6 · §3.7 |
+| 환경 | 연계 |
+| 등급 | 1 |
+| 수단 | `API` · `사람` |
+| 자동화 | `수동` |
+| 결과 | 미실행 |
+| 비고 | 데이터 파이프라인 운영 이미지에 `SOURCE_CREDENTIAL_INVALID`가 들어갔는지 아직 확인하지 않았다. 앱키 폐기 · 발급과 입력은 사람이 한다 |
 
 ### AL1. 프리셋으로 알림을 만든다
 
@@ -9316,6 +9599,26 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 자동화 | `자동-기존` 프론트 `dateField.test.tsx › 칸을 누르면 달력이 inline · 한국어로 바로 열린다` · `날짜를 고르면 값을 넘기고 달력이 닫힌다` · `바깥을 누르면 값을 바꾸지 않고 닫는다` · `고를 수 있는 범위를 그대로 넘긴다`. 실기기 표시는 `수동` |
 | 결과 | 미실행 |
 | 비고 | Android와 웹의 날짜 칸은 바뀌지 않았다. 오늘 뒤를 막는 동작은 N-40 |
+
+#### N-115 작은 화면에서 수집 안내 카드가 맞게 놓이고 키보드가 앱키 · 시크릿을 학습하지 않는다
+
+| 항목 | 내용 |
+|---|---|
+| 사전조건 | `실기기 로컬 백엔드` · PF1-28 또는 PF11-12의 상태. [사람] 작은 화면의 iOS · Android 실기기 |
+| 테스트 데이터 | `test_empty@a.com` 또는 `yhr@a.com` |
+| 선행 | — |
+| 실행 시점 | 언제든 |
+| 절차 | ① [사람] `계좌` 탭의 수집 안내 카드를 본다 ② [사람] 갱신 폼에서 앱키 · 시크릿 칸에 가짜 값을 넣는다 ③ [사람] 다른 입력 칸에서 같은 글자를 치기 시작해 키보드 추천을 본다 |
+| 기대 결과 | ① 문장이 잘리지 않고 버튼이 카드 안에 있다 ② 키보드가 자동 수정 · 대문자화를 하지 않는다 ③ 넣었던 값이 추천에 나오지 않는다 |
+| 증거 | 스크린샷 |
+| 근거 절 | 화면 설계 §4 · 포트폴리오 §7.1 |
+| 환경 | 로컬 |
+| 등급 | 3 |
+| 수단 | `실기기` · `사람` |
+| 자동화 | `수동` |
+| 결과 | 미실행 |
+| 비고 | 웹의 입력 칸 속성은 PF1-29 ③ |
+
 ## 5. 스펙 훑기 결과
 
 설계 §4의 출처마다 분기를 나열하고, 그 분기를 비교하는 케이스를 적는다. `덮임`은 그 케이스의 기대 결과가 분기의 동작을 실제로 비교한다는 뜻이다. 유보 케이스가 비교하면 덮는 케이스 칸에 `(유보)`를 붙인다. 같은 분기를 여러 출처가 말하면 케이스는 하나이고 `(→ 출처 n)`으로 가리킨다. `시나리오 단계`는 설계 §3의 시나리오에 그 단계가 있다는 뜻이다.
@@ -9323,7 +9626,7 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 - "덮임"은 그 케이스의 기대 결과가 그 분기의 동작을 비교할 때만 적는다. 유보 케이스가 기대 결과로 비교하면 "덮임"으로 두고 덮는 케이스 칸에 `(유보)`를 붙인다
 - §9.2(스키마 · 코드 규약)는 런타임 분기가 아니라 설계 §5의 구조 강제 테스트(`MigrationLintTest` 등)가 맡아 행으로 세지 않았다
 - 데이터 요구사항 §4.1 `instrument`의 "갱신이 늦으면 신규상장 종목이 검색되지 않는다"는 검색(앱 공통 · 알림) 분기라 세지 않았다
-- 포트폴리오 스펙 머리의 비범위(KIS 밖 기관의 연동 · 수집, 증권사 자격증명 재인증)는 분기가 아니라 세지 않았다
+- 포트폴리오 스펙 머리의 비범위(KIS 밖 기관의 연동 · 수집)는 분기가 아니라 세지 않았다
 
 ### 5.1 포트폴리오
 
@@ -9515,6 +9818,14 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 7 계좌 · 동기화 | §7.2 | `DISCONNECTED → CONNECTING`(재연동) | PF2-12 | 덮임 |
 | 7 계좌 · 동기화 | §7.2 | 연동 상태와 수집 결과 직교 — 연동됨 + 마지막 수집 실패 | PF11-03 ① | 덮임 |
 | 7 계좌 · 동기화 | §7.2 | 그 직교 상태를 계좌 연동 목록이 보인다 | — | 시나리오 단계 · PF11-11 |
+| 7 계좌 · 동기화 | §7.1 · §7.2 | 인증 정보 갱신 — 연동 상태 유지 · `linked_at` 이동 · 이전 실패 제외 | PF1-27 · PF1-30 | 덮임 |
+| 7 계좌 · 동기화 | §7.2 수집 안내 | 인증 실패 — 마지막 성공 뒤 인증 실패 코드 · 연동 상태 무관 | PF1-28 · PF11-12 | 덮임 |
+| 7 계좌 · 동기화 | §7.2 수집 안내 | 연속 실패 — `CONNECTED` · KR 영업일 2일 · 비영업일 제외 · 캘린더 밖 월~금 | PF11-13 | 덮임 |
+| 7 계좌 · 동기화 | §7.2 수집 안내 | 갱신 뒤 확인 대기 — `CONNECTED` · `linked_at` 있음 · 끝난 수집 없음 | PF1-30 | 덮임 |
+| 7 계좌 · 동기화 | §7.2 수집 안내 | 뒤에 성공한 수집이 있으면 사라진다 | PF11-16 · PF11-17(미실행) | 덮임 |
+| 7 계좌 · 동기화 | §7.1 · API 설계 §3.6 | 갱신 거절 `403` · `400` · `409 ACCOUNT_DISCONNECTED` · `409 ACCOUNT_NUMBER_UNAVAILABLE` | PF1-31 | 덮임 |
+| 7 계좌 · 동기화 | §7.1 · API 설계 §3.6 | 갱신 `503` | PF1-32(유보) | 덮임 |
+| 7 계좌 · 동기화 | §8.2 | 수집 안내 셋은 계좌별 뷰에만 · `STALE_ACCOUNTS` 바로 뒤 · 빈 봉투에도 | PF11-15 · PF1-28 | 덮임 |
 | 7 계좌 · 동기화 | §7.2 | `last_collection`은 최신 수집에서 | PF1-14 · PF11-03 · PF2-12 | 덮임 |
 | 7 계좌 · 동기화 | §7.2 | `DISCONNECTED` 계좌는 수집 행을 만들지 않는다 | PF2-14 | 덮임 |
 | 7 계좌 · 동기화 | §7.3 | 수집 `FAILED`인 날 이월 | PF11-01 | 덮임 |
@@ -10048,6 +10359,8 @@ B-COMP-62000   {"instrument_id":"10000000-0000-0000-0000-000000000001","name":"A
 | 9 IA §3 · §4 | §3 알림 탭 | 0이면 배지 없음 | AL3-11 ③ · C1-09 | 덮임 |
 | 9 IA §3 · §4 | §3 알림 탭 | 지운 알림의 미확인 발화도 센다(→ 출처 2 §6.8) | — | 시나리오 단계 · AL4-18 |
 | 9 IA §3 · §4 | §3 계좌 탭 | 이월 계좌가 있으면 점 | PF11-05 | 덮임 |
+| 9 IA §3 · §4 | §3 계좌 탭 | 인증 실패 · 연속 실패면 점, 갱신 뒤 확인 대기만으로는 켜지 않는다 | PF1-28 · PF11-12 · PF1-30 | 덮임 |
+| 9 IA §3 · §4 | 인증 정보 갱신 화면 | 카드 버튼 — 한 계좌 · 가린 번호면 폼, 아니면 계좌 연동 · 갱신 버튼은 가린 번호가 있는 계좌만 | PF1-28 · PF11-14 | 덮임 |
 | 9 IA §3 · §4 | §3 계좌 탭 | 누르면 계좌별, 해당 행에 배지 | PF11-05 | 덮임 |
 | 9 IA §3 · §4 | §3 계좌 탭 | 숫자가 아닌 점 | PF11-05 | 덮임 |
 | 9 IA §3 · §4 | §3 계좌 탭 | 성공하면 점이 사라짐 | PF11-07 | 덮임 |
