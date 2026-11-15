@@ -239,7 +239,7 @@ flowchart LR
 
 | 단위 | 상태 | back-end 브랜치 | 실습 노트 |
 |---|---|---|---|
-| A-gen | 완료. `practice/base`에 합침 | `practice/A-gen` `1c0ec4f` | `practice-note/A-gen` `77be4bc` |
+| A-gen | 완료. main 반영(`07ca61a`..`00e634f`), `practice/base`에도 합침 | `practice/A-gen` `1c0ec4f` | main `b1678b7` |
 | E-base | 완료. `practice/base`에 합침(main 반영은 마무리에서) | `practice/E-base` `8ab9493` | main `7a0ac18` |
 | (기반) | E-base·A-gen 합침 | `practice/base` `1bac894`(origin/main `f178657` + E-base + A-gen, 전체 테스트 1,471개 통과) | — |
 | C | 완료. main 반영(`843c432`) | `practice/C` | `practice-note/C` `6059be4` |
