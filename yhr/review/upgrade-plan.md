@@ -43,7 +43,7 @@
 - 컨테이너·서버 기동
   - 단위별 Postgres 컨테이너 `pf-a`~`pf-g`(5501~5507)의 생성·기동·정지·삭제. 자원 제한과 시작 옵션(`shared_preload_libraries` 등)을 붙이는 것도 포함한다
   - Prometheus 컨테이너 하나(9090)
-  - 로컬 앱 `bootRun`(local 프로필, 단위당 최대 2개, 82xx 포트). 자기 컨테이너만 가리키고, 푸시(`EXPO_PUSH_ENABLED`)와 실현손익 생성기(`BASIS_ENABLED`)는 끈다. 스케줄 작업은 측정 목적에 따라 켜고 끈다
+  - 로컬 앱 기동(`bootRun`, 또는 `bootJar`로 만든 jar를 `java -jar`로. local 프로필, 단위당 최대 2개, 0.2 테이블의 앱·관리 포트). 자기 컨테이너만 가리키고, 푸시(`EXPO_PUSH_ENABLED`)와 실현손익 생성기(`BASIS_ENABLED`)는 끈다. 스케줄 작업은 측정 목적에 따라 켜고 끈다
   - 로컬 앱을 대상으로 한 k6 실행
   - 자기 컨테이너(`TEST_DB_URL`)를 쓰는 Gradle 테스트
 - DB 쓰기(`pf-*` 컨테이너 안에서만)
@@ -102,7 +102,7 @@
 | D | 리더 없는 복제본의 비용 | A-gen, E-base(LOST 계수기) | 방식 검토 결과 |
 | F | 마이그레이션 호환 검사 | 전제 | 검사 두 방식의 비교 |
 | G | API 계약 검사 | 진행 여부와 방향(명세 방식, 산출물로 쓸지)이 정해지는 것 | 명세 방식 비교, 깨지는 변경 검사 |
-| E-cluster | 운영 Prometheus가 앱 지표를 수집하고 경보 규칙이 도는지 확인. 롤링 배포 중 파드가 몇 대까지 겹치는지 함께 본다(C의 경계 경로) | E-alert, E-base의 main 반영 결정, 클러스터 가동 | 운영 확인 결과 |
+| E-cluster | 운영 Prometheus가 앱 지표를 수집하고 경보 규칙이 도는지 확인. 롤링 배포 중 파드가 몇 대까지 겹치는지(C의 경계 경로), Ingress 유무와 경로 규칙, 운영 Prometheus가 수집 대상을 찾는 방식(Service에 관리 포트가 없다), NetworkPolicy가 없는 상태를 함께 본다 | E-alert, E-base의 main 반영 결정, 클러스터 가동 | 운영 확인 결과 |
 
 ```mermaid
 flowchart LR
@@ -162,15 +162,20 @@ flowchart LR
   - 단위마다 자기 Postgres 컨테이너를 쓴다. compose의 `portfolio`·`portfolio_test`는 쓰지 않는다.
   - 앱 포트는 8081을 피한다. 로컬 설정이 Expo 웹 개발 서버 주소로 8081을 쓴다.
 
-| 단위 | 컨테이너 | DB 포트 | 앱 포트 |
-|---|---|---|---|
-| A-gen, A-query, A-batch | `pf-a` | 5501 | 8201, 8202 |
-| B | `pf-b` | 5502 | 8211, 8212 |
-| C | `pf-c` | 5503 | 없음(테스트만) |
-| D | `pf-d` | 5504 | 8221, 8222 |
-| E-base, E-alert | `pf-e` | 5505 | 8231, 8232. Prometheus 9090 |
-| F | `pf-f` | 5506 | 없음(테스트만) |
-| G | `pf-g` | 5507 | 없음(테스트만) |
+| 단위 | 컨테이너 | DB 포트 | 앱 포트 | 관리 포트 |
+|---|---|---|---|---|
+| A-gen, A-query, A-batch | `pf-a` | 5501 | 8201, 8202 | 8203, 8204 |
+| B | `pf-b` | 5502 | 8211, 8212 | 8213, 8214 |
+| C | `pf-c` | 5503 | 없음(테스트만) | — |
+| D | `pf-d` | 5504 | 8221, 8222 | 8223, 8224 |
+| E-base, E-alert | `pf-e` | 5505 | 8231, 8232 | 8233, 8234. Prometheus 9090 |
+| F | `pf-f` | 5506 | 없음(테스트만) | — |
+| G | `pf-g` | 5507 | 없음(테스트만) | — |
+
+- 관리 포트는 `practice/base`부터 있다(`MANAGEMENT_PORT`, 운영 기본값 8090). 앱 포트에는 `/livez`·`/readyz`만 열리고, `/actuator/prometheus`는 관리 포트에 열린다.
+- 앱 두 개를 띄울 때는 `bootJar`로 한 번 빌드하고 `java -jar`로 두 번 띄운다. 같은 worktree에서 `bootRun` 두 개를 돌리면 Gradle 빌드 디렉터리 잠금에서 부딪힌다.
+  - 환경변수: `SERVER_PORT`, `MANAGEMENT_PORT`, `SPRING_PROFILES_ACTIVE=local`, `DB_URL=jdbc:postgresql://localhost:<DB 포트>/portfolio?currentSchema=app,data`, `EXPO_PUSH_ENABLED=false`, `BASIS_ENABLED=false`
+- Prometheus 수집 설정(`metrics_path: /actuator/prometheus`, 대상 `host.docker.internal:<관리 포트>`, 간격 15초)은 쓰는 단위의 브랜치에 파일로 둔다. 세션 임시 폴더는 세션이 끝나면 지워질 수 있다.
 
 - B와 D는 A-gen의 생성기를 자기 컨테이너에서 다시 돌려 같은 데이터를 만든다.
 - C는 `deadlock_timeout` 같은 서버 설정을 바꾼다. 그래서 다른 단위와 컨테이너를 나눈다.
@@ -184,9 +189,9 @@ flowchart LR
 | A-query | 실행 계획 읽기, 인덱스 선택, 일반 계획, 파티션 가지치기 | 후보별 "채택 / 데이터팀 요청 / 불필요", 파티셔닝 판정 |
 | A-batch | 고정 지연 스케줄과 회차 상한으로 처리량 계산 | batch-size를 바꿀지 |
 | E-base | 지표 종류(Counter·Gauge·Timer), 태그 카디널리티, 노출 범위 | 노출 방식(앱 포트 / 관리 포트), 지표 이름 규칙 |
-| E-alert | 증상 경보와 원인 경보, 지속 시간, 거짓 경보 | 경보 문턱, 확정 멈춤에서 캘린더 누락(데이터팀)과 이쪽 결함을 나눌지 |
+| E-alert | 증상 경보와 원인 경보, 지속 시간, 거짓 경보 | 경보 문턱, 확정 멈춤에서 캘린더 누락(데이터팀)과 이쪽 결함을 나눌지, 캘린더에 날짜가 없어 마감을 못 정할 때 확정 지연을 어떻게 낼지, `spring_security_*` 지표를 끌지 |
 | E-cluster | 운영 수집 구성(수집 대상 찾기), 노출 경로 보호 | 운영 노출 범위, 경보를 받을 곳 |
-| B | 부하 모양, 리틀의 법칙(동시 요청 = 처리량 × 응답 시간), 연결 풀 대기 | 고칠 병목 하나 |
+| B | 부하 모양, 리틀의 법칙(동시 요청 = 처리량 × 응답 시간), 연결 풀 대기 | 고칠 병목 하나, 서버 p95를 Prometheus HTTP 히스토그램으로도 볼지(켠다면 B 브랜치에서만) |
 | C | 잠금 모드와 대기열, 교착 검출기, 잠금 순서 | 결과에 따른 규약 판정, 고친다면 방법 |
 | D | 낙관적 동시성, 작업 분할과 넘겨받기 | 다른 방식을 검토할지 |
 | F | 확장-축소(expand/contract) 마이그레이션, 롤링 배포 중 두 판의 공존 | 채택할 검사 방식 |
@@ -228,7 +233,8 @@ flowchart LR
 | 단위 | 상태 | back-end 브랜치 | 실습 노트 |
 |---|---|---|---|
 | A-gen | 진행 중 | `practice/A-gen` | — |
-| E-base | 진행 중 | `practice/E-base` | — |
+| E-base | 완료. `practice/base`에 합침(main 반영은 마무리에서) | `practice/E-base` `8ab9493` | `practice-note/E-base` `fad112f` |
+| (기반) | E-base 합침, A-gen 대기 | `practice/base` `766d44a`(origin/main `60048b1` + E-base, 전체 테스트 1,461개 통과) | — |
 | C | 완료. main 반영(`843c432`) | `practice/C` | `practice-note/C` `6059be4` |
 | F | 진행 중 | `practice/F` | — |
 | A-query, A-batch, E-alert, B, D | 시작 전 | — | — |
@@ -630,7 +636,7 @@ A5
 - 계측(E에 포함): 파드별로 다음을 낸다.
   - LOST 계수기
   - 평가 시점 수
-  - 실행 처리에서 "이미 처리됨"으로 돌아선 수와 그 전의 잠금 대기 시간
+  - 실행 처리에서 "이미 처리됨"으로 돌아선 수와 그 전의 잠금 대기 시간. E-base의 지표 목록에 없다. D가 자기 브랜치에서 이름 규칙(`portfolio.<영역>.<대상>`)대로 더한다.
 - 환경: 로컬 앱 두 개, A의 사용자 축 데이터.
   - 활성 알림 수: 2천 / 2만 / 20만. 20만은 사용자 축 100배에 사용자당 알림을 늘린 값이다.
   - 새 데이터 시점이 있는 주기와 없는 주기를 나눠 잰다.
@@ -642,7 +648,8 @@ A5
   - 3·4에는 복제본 번호가 필요하다. StatefulSet 순번과 Kubernetes Lease를 비교 대상으로 적는다. 실습에서는 로컬 두 프로세스에 번호를 환경변수로 준다.
 - 잴 것
   - 한 주기의 DB 총 시간(두 파드 합)
-  - 중복 평가 비율(LOST ÷ 평가 시점 수)
+  - 중복 평가 비율: `sum(rate(portfolio_alert_apply_total{outcome="lost"}[5m])) / sum(rate(portfolio_alert_apply_total[5m]))`
+    - LOST는 다른 복제본에 진 경우와 사용자 변경에 진 경우를 함께 센다(코드를 읽고 낸 추론). 측정 중에는 사용자 변경을 넣지 않아 복제본 경합만 남긴다.
   - 주기 소요
   - 복제본 하나를 죽였을 때 남은 쪽이 넘겨받기까지의 시간(분할 방식만)
 
@@ -764,10 +771,17 @@ A5
 
 ### 결과
 
-측정 안 함.
+- E-base: 완료. 실습 노트 `yhr/practice/E-base.md`, 지표 이름·라벨 목록은 그 부록에 있다.
+  - `/actuator/prometheus`를 관리 포트(운영 기본값 8090)에 열었다. 앱 포트에서는 404이고, 프로브는 앱 포트의 `/livez`·`/readyz`(200)로 본다. 관리 포트에도 같은 Spring Security가 걸려 `permitAll`이 필요하다.
+  - LOST 계수기는 `portfolio_alert_apply_total{outcome="lost"}`이다. 결과 4종(applied, fired, ended, lost)이 처음부터 0으로 나오고, 테스트가 이름·라벨을 고정한다.
+  - 로컬 앱 두 개를 Prometheus(수집 15초)가 `instance`로 구분해 긁었다. 유휴 앱 하나의 시계열은 189~204개이고, 그중 `spring_security_*`가 53개다.
+  - 조건: 로컬 macOS, `postgres:16-alpine`(데이터 없음), Spring Boot 3.4.5, Micrometer 1.14.6, Prometheus 3.16.0. 시간을 잰 측정은 없다.
+  - 이름 규칙은 `portfolio.<영역>.<대상>`이다. 라벨은 코드에 고정된 영문 식별자만 쓴다. 히스토그램은 평가 주기의 30초 버킷만 둔다.
+- E-alert: 측정 안 함. 가설 세 가지(DB Gauge 부하, 경보 발화 시간, 거짓 경보)는 E-alert에서 판정한다.
 
 ### 실습 시 고칠 문서
 
+- back-end `docs/decisions-deploy.md`: 관리 포트 행과 "되돌리는 조건". E-base를 main에 올릴 때 같이 고친다
 - `yhr/specs/common.md` 서버 런타임: 지표·경보 절(새로)
 - `yhr/specs/alert.md` 평가 런타임·발화 전달: 평가·발송 지표
 - `yhr/specs/portfolio.md` 스냅샷 생성·확정: 확정 지연·실패 지표
