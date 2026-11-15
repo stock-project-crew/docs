@@ -164,7 +164,8 @@ flowchart LR
 
 | 단위 | 컨테이너 | DB 포트 | 앱 포트 | 관리 포트 |
 |---|---|---|---|---|
-| A-gen, A-query, A-batch | `pf-a` | 5501 | 8201, 8202 | 8203, 8204 |
+| A-gen, A-query | `pf-a` | 5501 | 8201, 8202 | 8203, 8204 |
+| A-batch | `pf-a`(DB `batch_x10`·`batch_x100`) | 5501 | 8205, 8206 | 8207, 8208 |
 | B | `pf-b` | 5502 | 8211, 8212 | 8213, 8214 |
 | C | `pf-c` | 5503 | 없음(테스트만) | — |
 | D | `pf-d` | 5504 | 8221, 8222 | 8223, 8224 |
@@ -178,6 +179,12 @@ flowchart LR
 - Prometheus 수집 설정(`metrics_path: /actuator/prometheus`, 대상 `host.docker.internal:<관리 포트>`, 간격 15초)은 쓰는 단위의 브랜치에 파일로 둔다. 세션 임시 폴더는 세션이 끝나면 지워질 수 있다.
 
 - B와 D는 A-gen의 생성기를 자기 컨테이너에서 다시 돌려 같은 데이터를 만든다.
+  - 실행법은 back-end `scripts/synthetic/README.md`에 있다. 예: `DB_NAME=portfolio_x10 scripts/synthetic/load.sh pf-b --scale 10`. 호스트에 psql을 설치하지 않고 컨테이너 안의 psql을 쓴다.
+  - Postgres 컨테이너는 `--shm-size=1g`로 만든다. 기본 64MB면 VACUUM과 병렬 쿼리가 실패한다. 생성기는 256MB 미만이면 시작에서 멈춘다.
+  - Flyway는 `TEST_DB_URL=... ./gradlew cleanTest test --tests SchemaSmokeTest`로 적용한다. `cleanTest`가 없으면 캐시 때문에 테스트가 돌지 않는다.
+  - 같은 옵션과 같은 `--end`면 같은 행이 나온다. 다른 컨테이너에서 돌리면 다섯 표의 체크섬을 pf-a와 견준다.
+- 데이터를 바꾸는 단위는 조회만 하는 단위와 DB를 나눈다. A-batch는 EOD 처리로, D는 평가기로 행을 쓴다. 그래서 A-batch는 pf-a 안에 `batch_x10`·`batch_x100`을 따로 만들고, A-query가 읽는 `portfolio_x10`·`portfolio_x100`은 건드리지 않는다.
+- 100배 DB는 하나에 약 12GB다. Docker 볼륨이 커지므로 100배 DB는 기록에 쓸 때만 만들고 끝나면 지운다. 적재 전에 `docker system df`로 볼륨 크기를 본다.
 - C는 `deadlock_timeout` 같은 서버 설정을 바꾼다. 그래서 다른 단위와 컨테이너를 나눈다.
 - 테스트는 `TEST_DB_URL`로 자기 컨테이너를 가리킨다. 앱은 `DB_URL`로 가리킨다.
 
@@ -232,9 +239,9 @@ flowchart LR
 
 | 단위 | 상태 | back-end 브랜치 | 실습 노트 |
 |---|---|---|---|
-| A-gen | 진행 중 | `practice/A-gen` | — |
+| A-gen | 완료. `practice/base`에 합침 | `practice/A-gen` `1c0ec4f` | `practice-note/A-gen` `77be4bc` |
 | E-base | 완료. `practice/base`에 합침(main 반영은 마무리에서) | `practice/E-base` `8ab9493` | main `7a0ac18` |
-| (기반) | E-base 합침, A-gen 대기 | `practice/base` `766d44a`(origin/main `60048b1` + E-base, 전체 테스트 1,461개 통과) | — |
+| (기반) | E-base·A-gen 합침 | `practice/base` `1bac894`(origin/main `f178657` + E-base + A-gen, 전체 테스트 1,471개 통과) | — |
 | C | 완료. main 반영(`843c432`) | `practice/C` | `practice-note/C` `6059be4` |
 | F | 완료. main 반영(`6d6c18c`·`cb55d7f`·`d0d22d0`) | `practice/F` | main `f45238e`·`2107afe` |
 | A-query, A-batch, E-alert, B, D | 시작 전 | — | — |
@@ -411,10 +418,18 @@ A5
 
 ### 결과
 
-측정 안 함.
+- A-gen: 완료. 실습 노트 `yhr/practice/A-gen.md`
+  - 생성기는 SQL `generate_series` 스크립트다(`scripts/synthetic/load.sh`). 규모마다 DB를 나눴다: `portfolio`(1배), `portfolio_x10`, `portfolio_x100`.
+  - 기준 조합은 사용자 축 10배 + 후보별 가운데 값(A1 기준일 250, A3 사용자당 발화 5,000, A4 종목 3만, A5 계좌당 매도 1,000)이다. 한 번에 한 축만 `--only`로 바꾼다.
+  - 분포: 사용자별 쏠림 로그정규 σ = 1, 종목 편중 지프 s = 1, ETF 보유 몫 0.2(`--etf-share`), 알림 조건 네 종류 같은 비율(`--alert-mix`). 모두 근거 없는 출발값이라 파라미터로 열었다.
+  - 적재(검사·VACUUM ANALYZE 포함): 10배 약 41초·1.8GB, 100배 약 299초·12GB. 행 수는 0.3 테이블과 맞는다(100배 position_line 29,985,250, alert_event 9,999,944).
+  - EOD 입력(`--only eod`, `burst`·`held`)과 평가기 입력(`--only alert-state`)으로 A-batch·D가 측정마다 같은 입력으로 되돌린다. 조건 해시는 앱이 저장한 값과 대조했다.
+  - 측정 아닌 동작 확인(1배): LOOK_THROUGH가 6.5~17초였다. `etf_constituent`를 376만 행 Seq Scan했다. A1 가설과 같은 현상이고, 판정은 A-query가 한다.
+- A-query, A-batch: 측정 안 함.
 
 ### 실습 시 고칠 문서
 
+- `yhr/test/` 테스트 설계: 성능 범주에 합성 데이터 생성기의 경로와 쓰는 법
 - ADR 5 조회 성능: "실행 계획 미확인", 후보별 판정, 인덱스 목록, 파티셔닝 판정
 - `yhr/specs/common.md` 서버 런타임: 스냅샷 회차의 처리 상한
 - `yhr/specs/data-contract.md`: etf_constituent·collection_run·instrument 인덱스 요청과 그 근거
