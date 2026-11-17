@@ -2,11 +2,13 @@
 
 - 날짜: 2026-11-15 ~ 2026-11-16
 - 계획: `yhr/review/upgrade-plan.md`의 E절, 0.2의 E-alert 단위
-- back-end: `practice/E-alert` `ea45cc5` (`practice/base`에서 땀, 로컬 커밋만)
-  - `c3b5d2f` 지표 구현과 테스트
-  - `f43eeab` 경보 규칙·promtool 테스트·런북·장애 주입 스크립트
-  - `9137095` DB Gauge 부하 측정 스크립트, 가짜 Expo 서버 수정
-  - `ea45cc5` Grafana 대시보드와 프로비저닝, 런북이 패널 이름을 가리키게 함
+- back-end: `practice/E-alert`, main 반영 `825cc71`..`d9abf71`
+  - `e7d9cfb` 지표 구현과 테스트
+  - `45a54ac` 경보 규칙·promtool 테스트·런북·장애 주입 스크립트
+  - `c24d9bc` DB Gauge 부하 측정 스크립트, 가짜 Expo 서버 수정
+  - `270b21e` Grafana 대시보드와 프로비저닝, 런북이 패널 이름을 가리키게 함
+  - `825cc71` E-base(관리 포트, Prometheus 노출, LOST 계수기), `d9abf71` 기술 선택 · README의 관리 포트 서술
+  - main 반영 전 전체 테스트 1,500개 통과(실패 0, 건너뜀 0)
 - 범위
   - E-base 부록의 지표 가운데 E-alert 몫을 구현했다.
   - 경보 규칙을 Prometheus 파일로 썼다.
@@ -362,16 +364,16 @@ E-base가 지표 노출 기반과 이름 목록을 만들었다. 그래도 주�
 
 ### 계획서 "실습 시 고칠 문서"
 
-- 고친 것(back-end `practice/E-alert`)
+- 고친 것(back-end main)
   - `docs/ops/alerts.md`: 경보 런북(새로)
-- 남긴 것
-  - `application.yaml` 노출 범위 주석. 이 단위는 `spring.security` 관측을 끄는 설정과 그 이유 주석만 더했다
-  - `yhr/specs/common.md`·`alert.md`·`portfolio.md`의 지표·경보 절
-  - ADR 1·2
+  - `docs/tech-choices.md`의 관리 경로 절: 관리 포트 8090에 `health` · `prometheus`, 프로브는 `/livez` · `/readyz`. 옛 `docs/decisions-deploy.md`는 main에서 이 파일로 합쳐졌다
+  - README 상태 점검 행
+  - `application.yaml` 노출 범위 주석과 `k8s/deployment.yaml`의 관리 포트 주석은 E-base에서 이미 썼다
+- 남긴 것(docs 레포, 총괄 세션 몫)
+  - `yhr/specs/common.md` · `alert.md` · `portfolio.md`의 지표 · 경보 절
+  - ADR 1 · 2
   - `yhr/test/` 관측 범주(T7)
-  - `docs/decisions-deploy.md`의 관리 포트 행
-  - `k8s/deployment.yaml` 수집 대상 주석, README
-  - 모두 main에 올릴 때(E-base와 함께) 같이 고치는 편이 맞다고 보고 남겼다.
+  - `k8s/deployment.yaml`의 수집 대상 주석. 운영 Prometheus가 대상을 찾는 방식을 E-cluster에서 확인한 뒤 쓴다
 
 ## 부록: 경보 · 지표 대응
 
