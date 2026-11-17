@@ -6,7 +6,7 @@
 
 | 레포 | 무엇 |
 |---|---|
-| back-end | Spring Boot · MyBatis · PostgreSQL API와 주기 작업. 운영 절차는 `docs/ops/` |
+| back-end | Spring Boot · MyBatis · PostgreSQL API와 주기 작업. 운영 절차는 `docs/ops/`, 작은 기술 선택은 `docs/tech-choices.md` |
 | front-end | React Native · Expo 앱. 실행 방법은 README |
 | dataeng | 데이터팀 수집 · 정제 파이프라인(데이터팀 소유) |
 
@@ -17,12 +17,14 @@
    - [specs/portfolio.md](specs/portfolio.md) — 포트폴리오: 화면, 집계 모델, 평단 · 실현손익, 계좌 연동 · 동기화, 보유 스냅샷 생성 · 확정, API
    - [specs/alert.md](specs/alert.md) — 알림: 화면, 조건 모델, 평가, 평가 런타임, 울림 전달, API
 3. [specs/data-contract.md](specs/data-contract.md) — 데이터팀과의 약속: 어떤 표를 언제까지 어떤 모양으로 주나, 안 지켜질 때 백엔드가 어떻게 하나
+4. [decisions/](decisions/README.md) — 왜 그렇게 골랐나(ADR)
 
 ## 디렉터리
 
 | 경로 | 무엇 |
 |---|---|
 | `specs/` | 현행 설계서 네 개. 지금 코드의 동작을 적는다 |
+| `decisions/` | 결정 기록(ADR) 여덟 개. 무엇을 대신해 무엇을 골랐고, 그 뒤에 무엇이 드러났나 |
 | `test/` | 통합 · 운영 테스트 계획, 테스트 환경, 시나리오 · 케이스 · 실행 절차 · 결함 기록 |
 | `review/` | 회고 리뷰 작업물: 진단 · 분류 · 용어표 · 주석 규칙 · 고도화 구상 · 산출물 계획 |
 | `practice/` | 고도화 과제 실습 노트 |
