@@ -131,7 +131,8 @@ E-base 스스로의 기대는 이랬다. 관리 포트에 지표가 열리고 �
 - **F2. 관리 포트를 따로 두면 health도 그 포트로 옮겨 간다.**
   - 프로브를 앱 포트에 남기려면 `management.endpoint.health.probes.add-additional-paths=true`로 앱 포트에 `/livez`·`/readyz`를 연다(3.4.5 설정 메타데이터로 확인).
 - **F3. 기존 결정과 운영 네트워크**
-  - back-end `docs/decisions-deploy.md`는 "관리 포트는 8080, 외부 노출은 Ingress 경로 규칙으로 막는다"로 정해 두었다. 되돌리는 조건으로 "지표 수집이 붙으면 다시 본다"고 적혀 있었다.
+  - back-end `docs/tech-choices.md` «관리 경로 — `health`만, 앱과 같은 포트»는 "관리 포트를 따로 두지 않고 앱과 같은 8080을 쓴다"로 정해 두었다. 되돌리는 조건은 "지표 수집이 붙으면 노출 목록에 `metrics`를 더하고, `/actuator`가 토큰 없이 열리는 범위를 다시 본다"이다.
+  - 실습 당시에는 같은 결정이 `docs/decisions-deploy.md`에 "외부 노출은 Ingress 경로 규칙으로 막는다"와 함께 적혀 있었고, 이후 `docs/tech-choices.md`로 옮겨졌다.
   - 레포에는 Ingress 매니페스트가 없고, README에는 "API가 인터넷에 열려 있지 않다"고 적혀 있다.
   - 운영의 Ingress 유무는 확인하지 않았다.
 
@@ -265,7 +266,7 @@ LOST에는 한계가 하나 있다. "다른 복제본에 진 경우"와 "사용�
 
 ### main에 올릴 때
 
-- back-end `docs/decisions-deploy.md`의 관리 포트 행과 "되돌리는 조건"을 고친다
+- back-end `docs/tech-choices.md` «관리 경로 — `health`만, 앱과 같은 포트» 절의 본문과 "되돌리는 조건"을 고친다
 - 계획서 "실습 시 고칠 문서" 중 설계서, 런북, ADR, 테스트 문서, README는 E-base에서 고치지 않았다
 
 ## 부록: 지표 이름·라벨 목록

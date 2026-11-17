@@ -810,7 +810,7 @@ A5
 
 ### 실습 시 고칠 문서
 
-- back-end `docs/decisions-deploy.md`: 관리 포트 행과 "되돌리는 조건". E-base를 main에 올릴 때 같이 고친다
+- back-end `docs/tech-choices.md` «관리 경로 — `health`만, 앱과 같은 포트»: 본문과 "되돌리는 조건". E-base를 main에 올릴 때 같이 고친다
 - `yhr/specs/common.md` 서버 런타임: 지표·경보 절(새로)
 - `yhr/specs/alert.md` 평가 런타임·발화 전달: 평가·발송 지표
 - `yhr/specs/portfolio.md` 스냅샷 생성·확정: 확정 지연·실패 지표
