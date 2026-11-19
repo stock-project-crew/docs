@@ -172,3 +172,7 @@ docs/hhj, docs/jdh, team-architecture-agreement.md, docs/verify/  손대지 않�
 이어지는 작업:
 - 1단계: 옛 절 → 새 문서·절 대응표를 만든다(2단계에서 테스트 문서 근거 절을 기계적으로 치환하는 데 쓴다).
 - 말단: origin main을 다시 받아 자격증명 갱신(back-end feat/credential-refresh, front-end 미커밋 변경)을 현행화하고, 산출물도 같이 점검한다.
+  - 산출물마다 다시 만들기 절을 따라 재생성한다(ERD · API · 여정 · 구성도).
+  - 설계서 · ADR · 테스트 문서 링크가 모두 열리는지 확인한다.
+  - 계좌번호 · 이메일 · 실제 금액이 들어가 있는지 찾는다.
+  - 고도화 실습이 끝났으면 "측정 안 함" 문장과 README «하지 않은 것» 절을 채운다.
